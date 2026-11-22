@@ -51,6 +51,14 @@ Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor
 - **ID Badge (`badge-id`)**, **Wi-Fi Waves (`wifi`)**, **Bluetooth (`bluetooth`)**: Credits, LAN PIN sync, and local file exchange tabs.
 - **Stacked Layers (`layers`)**, **Shield (`shield`)**, **Code File (`file-code`)**: Integrated extensions, `.bvext` sandbox, and official file format specs.
 
+### Bottom Status Bar & Sprint Controls (`15m`, `Start`, `Reset`)
+- **Words / Chars / Pages Ledger (Bottom Left)**: Shows live Scene words and characters, Chapter words, Book progress against word target, estimated standard print pages (`~250` words per page), and reading time.
+- **Sprint Duration Selector (`15m` / `25m` / `45m`, Bottom Right)**: Sets countdown length in minutes and resets session delta (`+0w`) to zero.
+- **`Start` / `Pause` (Bottom Right)**: Starts or pauses the sprint timer and tracks net words added during the active sprint.
+- **`Reset` (Bottom Right)**: Stops any active timer, restores the full selected interval (`15m`, `25m`, or `45m`), and resets net sprint words to `+0w`.
+
+See also [docs/FAQ-AND-CONTROLS.md](FAQ-AND-CONTROLS.md) for a searchable online catalog covering every slider, lever switch, dropdown, button, and desktop window control.
+
 ---
 
 ## 2. File Extensions & Default Export Dropdown

@@ -37,6 +37,7 @@ import {
 } from '../src/core/migrate';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../src/core/provenance';
 import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from '../src/core/settings';
+import { CONTROL_REFERENCE_ITEMS } from '../src/ui/controls-catalog';
 import { ICON_DIRECTORY } from '../src/ui/icon-directory';
 import {
   applyExtensionPreset,
@@ -730,5 +731,19 @@ describe('Bookvibe v1.3 Beta Modules (Provenance, Settings, Fonts, Migration, Co
   it('keeps every entry in ICON_DIRECTORY assigned to a unique icon', () => {
     const names = ICON_DIRECTORY.map((entry) => entry.icon);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('documents bottom sprint controls (15m/Start/Reset), sliders, levers, and dropdowns uniquely', () => {
+    const ids = CONTROL_REFERENCE_ITEMS.map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(CONTROL_REFERENCE_ITEMS.every((item) => item.summary.length > 0 && item.howToUse.length > 0)).toBe(true);
+
+    const corpus = CONTROL_REFERENCE_ITEMS.map((i) => `${i.name} ${i.howToUse} ${i.keywords}`).join(' ');
+    expect(corpus).toContain('15m');
+    expect(corpus).toContain('Start');
+    expect(corpus).toContain('Reset');
+    expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Slider')).toBe(true);
+    expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Lever')).toBe(true);
+    expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Dropdown')).toBe(true);
   });
 });

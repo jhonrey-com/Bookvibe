@@ -353,3 +353,35 @@ export async function launchBluetoothShare(filePath?: string): Promise<string> {
   }
   return tauriInvoke<string>('launch_os_bluetooth_share', { filePath: filePath ?? null });
 }
+
+export async function minimizeDesktopWindow(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().minimize();
+}
+
+export async function toggleMaximizeDesktopWindow(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const win = getCurrentWindow();
+  await win.toggleMaximize();
+  return win.isMaximized();
+}
+
+export async function isDesktopWindowMaximized(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  return getCurrentWindow().isMaximized();
+}
+
+export async function closeDesktopWindow(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().close();
+}
+
+export async function startDesktopWindowDrag(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().startDragging();
+}

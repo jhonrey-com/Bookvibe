@@ -216,15 +216,18 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
   }
 
   const dropCapsToggle = el('input', {
-    attrs: { type: 'checkbox', checked: typo.dropCaps },
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.dropCaps },
     on: { change: () => updateTypography(actions, { dropCaps: dropCapsToggle.checked }) },
   });
   const smartTypeToggle = el('input', {
-    attrs: { type: 'checkbox', checked: typo.smartTypography },
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.smartTypography },
     on: { change: () => updateTypography(actions, { smartTypography: smartTypeToggle.checked }) },
   });
   const headerToggle = el('input', {
-    attrs: { type: 'checkbox', checked: typo.runningHeader },
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.runningHeader },
     on: { change: () => updateTypography(actions, { runningHeader: headerToggle.checked }) },
   });
 

@@ -2,20 +2,26 @@ import './styles/main.css';
 
 import type { AppActions, AppState, ExtensionsModalTab } from './core/app-context';
 import {
+  closeDesktopWindow,
   exportBookAsEpub,
   exportBookAsHtml,
   exportBookAsMarkdown,
   exportBookAsPlainText,
   exportCoverPngDownload,
   getStartupOpenedFile,
+  isDesktopWindowMaximized,
+  isTauriRuntime,
   loadDefaultExportFormat,
   loadPersistedLibrary,
   loadPersistedProject,
+  minimizeDesktopWindow,
   openBookvibeFile,
   persistLibrary,
   persistProject,
   saveBookvibeExtensionFile,
   saveDefaultExportFormat,
+  startDesktopWindowDrag,
+  toggleMaximizeDesktopWindow,
 } from './core/bridge';
 import { renderCoverToPngDataUrl, renderFullWrapToPngDataUrl } from './core/cover';
 import { EXPORT_FORMAT_OPTIONS } from './core/export';
@@ -58,8 +64,8 @@ import type {
   ExportFormatId,
   StudioViewId,
 } from './core/types';
-import { bookvibeLogo, clearNode, el, icon } from './ui/dom';
-import { LiquidGlassControl } from './ui/liquid-glass';
+import { bookvibeLogo, clearNode, el, icon, svgEl } from './ui/dom';
+import { LiquidGlassControl, mountGlobalControlGlass } from './ui/liquid-glass';
 import {
   destroyActiveTour,
   maybeRunFirstLaunchSplash,
@@ -627,13 +633,81 @@ function buildShell(root: HTMLElement): void {
     icon('panel-right', 15),
   );
 
+  const winControlsEl = isTauriRuntime()
+    ? el(
+        'div',
+        { className: 'bv-win-controls' },
+        el(
+          'button',
+          {
+            className: 'bv-win-btn',
+            tooltip: { title: 'Minimize Window', short: 'Minimize Bookvibe to the taskbar or dock.' },
+            attrs: { type: 'button', 'aria-label': 'Minimize window' },
+            on: { click: () => void minimizeDesktopWindow() },
+          },
+          (() => {
+            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+            s.appendChild(svgEl('line', { x1: 2, y1: 6.5, x2: 10, y2: 6.5, stroke: 'currentColor', 'stroke-width': 1.4 }));
+            return s;
+          })(),
+        ),
+        el(
+          'button',
+          {
+            className: 'bv-win-btn',
+            tooltip: { title: 'Maximize / Restore', short: 'Toggle full window size or restore bounds.' },
+            attrs: { type: 'button', 'aria-label': 'Maximize or restore window' },
+            on: { click: () => void toggleMaximizeDesktopWindow() },
+          },
+          (() => {
+            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+            s.appendChild(svgEl('rect', { x: 2.25, y: 2.25, width: 7.5, height: 7.5, rx: 1, stroke: 'currentColor', 'stroke-width': 1.3 }));
+            return s;
+          })(),
+        ),
+        el(
+          'button',
+          {
+            className: 'bv-win-btn bv-win-btn-close',
+            tooltip: { title: 'Close Window', short: 'Exit Bookvibe desktop window.' },
+            attrs: { type: 'button', 'aria-label': 'Close window' },
+            on: { click: () => void closeDesktopWindow() },
+          },
+          (() => {
+            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+            s.append(
+              svgEl('path', { d: 'M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5', stroke: 'currentColor', 'stroke-width': 1.4, 'stroke-linecap': 'round' }),
+            );
+            return s;
+          })(),
+        ),
+      )
+    : null;
+
   const topbar = el(
     'header',
-    { className: 'bv-topbar' },
+    {
+      className: 'bv-topbar',
+      attrs: { 'data-tauri-drag-region': '' },
+      on: {
+        mousedown: (e) => {
+          if (!isTauriRuntime() || e.button !== 0) return;
+          const t = e.target as HTMLElement | null;
+          if (!t || t.closest('button, input, select, .lg-host, a')) return;
+          void startDesktopWindowDrag();
+        },
+        dblclick: (e) => {
+          if (!isTauriRuntime()) return;
+          const t = e.target as HTMLElement | null;
+          if (!t || t.closest('button, input, select, .lg-host, a')) return;
+          void isDesktopWindowMaximized().then(() => toggleMaximizeDesktopWindow());
+        },
+      },
+    },
     el(
       'div',
       { className: 'bv-brand' },
-      el('div', { className: 'bv-logo-mark' }, bookvibeLogo(26)),
+      el('div', { className: 'bv-logo-mark', attrs: { 'data-tauri-drag-region': '' } }, bookvibeLogo(28)),
       binderToggleBtn,
       el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
     ),
@@ -717,6 +791,7 @@ function buildShell(root: HTMLElement): void {
         icon('help', 15),
       ),
       inspectorToggleBtn,
+      winControlsEl,
     ),
   );
 
@@ -753,6 +828,10 @@ function buildShell(root: HTMLElement): void {
     {
       className: 'bv-select',
       style: { height: '22px', fontSize: '11px' },
+      tooltip: {
+        title: 'Sprint Duration (15m / 25m / 45m)',
+        short: 'Select focus session length in minutes before clicking Start.',
+      },
       attrs: { 'aria-label': 'Sprint duration' },
       on: {
         change: () => {
@@ -777,6 +856,10 @@ function buildShell(root: HTMLElement): void {
   sprintToggleBtnEl = el('button', {
     className: 'bv-mini-btn',
     text: 'Start',
+    tooltip: {
+      title: 'Start / Pause Writing Sprint',
+      short: 'Begin or pause the countdown timer and track net words drafted (+0w).',
+    },
     attrs: { type: 'button' },
     on: {
       click: () => {
@@ -820,6 +903,10 @@ function buildShell(root: HTMLElement): void {
   const sprintResetBtn = el('button', {
     className: 'bv-mini-btn',
     text: 'Reset',
+    tooltip: {
+      title: 'Reset Sprint Timer',
+      short: 'Stops any running countdown, restores chosen duration (15m/25m/45m), and clears +0w delta.',
+    },
     attrs: { type: 'button' },
     on: {
       click: () => {
@@ -1025,6 +1112,7 @@ async function bootstrap(): Promise<void> {
   }
 
   applySettingsToDocument(state.settings);
+  mountGlobalControlGlass();
   loadCustomFonts();
   buildShell(root);
   wireGlobalShortcutsAndDrop();

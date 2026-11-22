@@ -184,7 +184,8 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
   bioIn.value = cover.authorBio || '';
 
   const barcodeChk = el('input', {
-    attrs: { type: 'checkbox', checked: cover.showBarcodeBox !== false },
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: cover.showBarcodeBox !== false },
     on: { change: () => mutateCover(actions, (c) => ({ ...c, showBarcodeBox: barcodeChk.checked })) },
   });
 
@@ -293,7 +294,8 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
   });
 
   const elVisibleChk = el('input', {
-    attrs: { type: 'checkbox', checked: activeEl.visible },
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: activeEl.visible },
     on: {
       change: () =>
         mutateCover(actions, (c) => ({

@@ -66,7 +66,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Bookvibe v__VERSION__'
-          releaseBody: 'Standalone native installers and portable executables for Windows, macOS, and Linux with official Bookvibe file extension associations (.bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle).'
-          releaseDraft: true
+          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb) with official Bookvibe file extensions (.bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle). Also available directly in the browser via GitHub Pages at https://jhonrey-com.github.io/Bookvibe/.'
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

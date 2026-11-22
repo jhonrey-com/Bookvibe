@@ -1,14 +1,20 @@
 import type { AppActions } from '../core/app-context';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
+import {
+  CONTROL_CATEGORIES,
+  CONTROL_REFERENCE_ITEMS,
+  type ControlCategory,
+} from '../ui/controls-catalog';
 import { el, icon } from '../ui/dom';
 import { ICON_DIRECTORY, type IconDirectoryEntry } from '../ui/icon-directory';
 
-export type HelpTab = 'tour' | 'icons' | 'guides' | 'reference';
+export type HelpTab = 'controls' | 'tour' | 'icons' | 'guides' | 'reference';
 
 const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
-  { id: 'tour', label: 'Guided Walkthrough' },
+  { id: 'controls', label: 'Controls & Sliders' },
   { id: 'icons', label: 'Icon Legend' },
   { id: 'guides', label: 'Basic to Pro Guides' },
+  { id: 'tour', label: 'Guided Walkthrough' },
   { id: 'reference', label: 'Formats & Shortcuts' },
 ];
 
@@ -28,8 +34,45 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
   if (existing) existing.remove();
 
   let activeTab: HelpTab = initialTab;
-  let iconSearch = '';
+  let globalSearchQuery = '';
+  let controlCatFilter: 'All' | ControlCategory = 'All';
   let locationFilter: 'All' | IconDirectoryEntry['location'] = 'All';
+
+  const globalSearchIn = el('input', {
+    className: 'bv-input bv-help-search-input',
+    attrs: {
+      type: 'search',
+      placeholder: 'Search any slider, lever, button, dropdown (e.g. 15m, reset, sprint, barcode, font, frameless)…',
+      'aria-label': 'Search all Bookvibe help topics, controls, icons, and shortcuts',
+      value: globalSearchQuery,
+    },
+    on: {
+      input: () => {
+        globalSearchQuery = globalSearchIn.value.trim().toLowerCase();
+        renderBody();
+      },
+    },
+  });
+
+  const clearSearchBtn = el('button', {
+    className: 'bv-mini-btn',
+    text: 'Clear',
+    attrs: { type: 'button' },
+    on: {
+      click: () => {
+        globalSearchQuery = '';
+        globalSearchIn.value = '';
+        renderBody();
+      },
+    },
+  });
+
+  const searchBar = el(
+    'div',
+    { className: 'bv-help-search-row' },
+    globalSearchIn,
+    clearSearchBtn,
+  );
 
   const tabBar = el('div', { className: 'bv-modal-tab-strip', attrs: { role: 'tablist' } });
   const bodyWrap = el('div', { className: 'bv-modal-scroll-area' });
@@ -49,6 +92,8 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           on: {
             click: () => {
               activeTab = tab.id;
+              globalSearchQuery = '';
+              globalSearchIn.value = '';
               renderTabs();
               renderBody();
             },
@@ -58,13 +103,190 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     }
   };
 
+  const renderSearchResults = (query: string) => {
+    const matchedControls = CONTROL_REFERENCE_ITEMS.filter((item) =>
+      `${item.name} ${item.category} ${item.controlType} ${item.location} ${item.summary} ${item.howToUse} ${item.keywords}`
+        .toLowerCase()
+        .includes(query),
+    );
+    const matchedIcons = ICON_DIRECTORY.filter((entry) =>
+      `${entry.name} ${entry.icon} ${entry.location} ${entry.meaning} ${entry.shortcut ?? ''}`
+        .toLowerCase()
+        .includes(query),
+    );
+    const matchedShortcuts = SHORTCUT_LIST.filter((s) =>
+      `${s.keys} ${s.action}`.toLowerCase().includes(query),
+    );
+
+    const total = matchedControls.length + matchedIcons.length + matchedShortcuts.length;
+    bodyWrap.appendChild(
+      el('div', {
+        className: 'bv-mono-tag',
+        text: `${total} matching result(s) for “${globalSearchIn.value.trim()}” across Controls, Icons & Shortcuts`,
+        style: { color: 'var(--accent-amber)' },
+      }),
+    );
+
+    if (total === 0) {
+      bodyWrap.appendChild(
+        el(
+          'section',
+          { className: 'bv-cork-card' },
+          el('strong', { text: 'No exact match found' }),
+          el('p', {
+            className: 'bv-label',
+            text: 'Try searching terms like sprint, 15m, reset, slider, lever, font, cover, barcode, graph, inspector, or click Clear above.',
+          }),
+        ),
+      );
+      return;
+    }
+
+    if (matchedControls.length > 0) {
+      const grid = el('div', { className: 'bv-help-control-grid' });
+      for (const item of matchedControls) {
+        grid.appendChild(
+          el(
+            'div',
+            { className: 'bv-help-control-card' },
+            el(
+              'div',
+              { className: 'bv-help-control-head' },
+              el('strong', { text: item.name, style: { fontSize: '12.5px' } }),
+              el('span', { className: 'bv-control-type-pill', text: item.controlType }),
+            ),
+            el('div', { className: 'bv-mono-tag', text: `${item.category} · ${item.location}` }),
+            el('p', { className: 'bv-label', text: item.summary, style: { margin: '2px 0 0', color: 'var(--text-primary)' } }),
+            el('p', { className: 'bv-label', text: item.howToUse, style: { margin: '2px 0 0' } }),
+          ),
+        );
+      }
+      bodyWrap.append(
+        el('span', { className: 'bv-panel-title', text: `Controls, Sliders & Levers (${matchedControls.length})` }),
+        grid,
+      );
+    }
+
+    if (matchedIcons.length > 0) {
+      const grid = el('div', { className: 'bv-help-icon-grid' });
+      for (const entry of matchedIcons) {
+        grid.appendChild(
+          el(
+            'div',
+            { className: 'bv-help-icon-card' },
+            el('div', { className: 'bv-help-icon-badge' }, icon(entry.icon, 18)),
+            el(
+              'div',
+              { style: { minWidth: '0', flex: '1' } },
+              el('strong', { text: entry.name, style: { fontSize: '12.5px' } }),
+              el('div', { className: 'bv-mono-tag', text: entry.location }),
+              el('p', { className: 'bv-label', text: entry.meaning, style: { margin: '4px 0 0' } }),
+            ),
+          ),
+        );
+      }
+      bodyWrap.append(
+        el('span', { className: 'bv-panel-title', text: `Matching Icons (${matchedIcons.length})` }),
+        grid,
+      );
+    }
+
+    if (matchedShortcuts.length > 0) {
+      const wrap = el('div', { className: 'bv-snap-list' });
+      for (const row of matchedShortcuts) {
+        wrap.appendChild(
+          el(
+            'div',
+            { className: 'bv-list-card' },
+            el('span', { text: row.action, style: { fontSize: '12.5px' } }),
+            el('span', { className: 'bv-kbd-chip', text: row.keys }),
+          ),
+        );
+      }
+      bodyWrap.append(
+        el('span', { className: 'bv-panel-title', text: `Shortcuts (${matchedShortcuts.length})` }),
+        wrap,
+      );
+    }
+  };
+
   const renderBody = () => {
     bodyWrap.textContent = '';
+
+    if (globalSearchQuery.length > 0) {
+      renderSearchResults(globalSearchQuery);
+      return;
+    }
+
     const state = actions.getState();
+
+    if (activeTab === 'controls') {
+      const catRow = el('div', { style: { display: 'flex', gap: '5px', flexWrap: 'wrap' } });
+      const cats: Array<'All' | ControlCategory> = ['All', ...CONTROL_CATEGORIES];
+      const grid = el('div', { className: 'bv-help-control-grid' });
+
+      const renderCats = () => {
+        catRow.textContent = '';
+        for (const cat of cats) {
+          catRow.appendChild(
+            el('button', {
+              className: `bv-mini-btn${controlCatFilter === cat ? ' is-active' : ''}`,
+              text: cat,
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  controlCatFilter = cat;
+                  renderCats();
+                  renderControlCards();
+                },
+              },
+            }),
+          );
+        }
+      };
+
+      const renderControlCards = () => {
+        grid.textContent = '';
+        const items = CONTROL_REFERENCE_ITEMS.filter(
+          (item) => controlCatFilter === 'All' || item.category === controlCatFilter,
+        );
+        for (const item of items) {
+          grid.appendChild(
+            el(
+              'div',
+              { className: 'bv-help-control-card' },
+              el(
+                'div',
+                { className: 'bv-help-control-head' },
+                el('strong', { text: item.name, style: { fontSize: '12.5px' } }),
+                el('span', { className: 'bv-control-type-pill', text: item.controlType }),
+              ),
+              el('div', { className: 'bv-mono-tag', text: `${item.category} · ${item.location}` }),
+              el('p', {
+                className: 'bv-label',
+                text: item.summary,
+                style: { margin: '2px 0 0', color: 'var(--text-primary)', lineHeight: '1.45' },
+              }),
+              el('p', {
+                className: 'bv-label',
+                text: item.howToUse,
+                style: { margin: '2px 0 0', lineHeight: '1.45' },
+              }),
+            ),
+          );
+        }
+      };
+
+      renderCats();
+      renderControlCards();
+      bodyWrap.append(catRow, grid);
+      return;
+    }
 
     if (activeTab === 'tour') {
       const tourChk = el('input', {
-        attrs: { type: 'checkbox', checked: state.settings.showOnboardingHints },
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: state.settings.showOnboardingHints },
         on: {
           change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }),
         },
@@ -145,10 +367,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'One Application, Offline First' }),
+            el('span', { className: 'bv-panel-title', text: 'Desktop & Direct Web Execution' }),
             el('p', {
               className: 'bv-label',
-              text: 'Everything in Bookvibe runs locally without accounts or cloud dependencies. Projects stay on disk as plain UTF-8 Bookvibe documents, and co-authors sync directly over local Wi-Fi or Bluetooth.',
+              text: 'Bookvibe runs locally in native frameless desktop windows on Windows, macOS, and Linux, or directly inside your browser on GitHub Pages without installations or logins.',
             }),
             el(
               'div',
@@ -191,18 +413,6 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     }
 
     if (activeTab === 'icons') {
-      const searchIn = el('input', {
-        className: 'bv-input',
-        attrs: { type: 'search', placeholder: 'Filter icons by name or purpose…', value: iconSearch },
-        style: { maxWidth: '280px' },
-        on: {
-          input: () => {
-            iconSearch = searchIn.value.toLowerCase();
-            renderIconGrid();
-          },
-        },
-      });
-
       const locRow = el('div', { style: { display: 'flex', gap: '5px', flexWrap: 'wrap' } });
       const locations: Array<'All' | IconDirectoryEntry['location']> = [
         'All',
@@ -236,15 +446,9 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
 
       const renderIconGrid = () => {
         grid.textContent = '';
-        const filtered = ICON_DIRECTORY.filter((entry) => {
-          if (locationFilter !== 'All' && entry.location !== locationFilter) return false;
-          if (!iconSearch.trim()) return true;
-          return (
-            entry.name.toLowerCase().includes(iconSearch) ||
-            entry.meaning.toLowerCase().includes(iconSearch) ||
-            entry.icon.toLowerCase().includes(iconSearch)
-          );
-        });
+        const filtered = ICON_DIRECTORY.filter(
+          (entry) => locationFilter === 'All' || entry.location === locationFilter,
+        );
 
         for (const entry of filtered) {
           grid.appendChild(
@@ -281,16 +485,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
 
       renderLocPills();
       renderIconGrid();
-
-      bodyWrap.append(
-        el(
-          'div',
-          { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' } },
-          locRow,
-          searchIn,
-        ),
-        grid,
-      );
+      bodyWrap.append(locRow, grid);
       return;
     }
 
@@ -298,31 +493,31 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
       const guides = [
         {
           tier: 'Basic Workflow',
-          title: 'Notes, Single Scenes & Markdown Builder',
+          title: 'Notes, Sprint Timer (15m / Start / Reset) & Markdown Builder',
           steps: [
             'Write fast notes or standalone chapters in Manuscript Draft mode on Obsidian, Parchment, or Ivory paper.',
-            'Press Ctrl+B, Ctrl+I, H2, blockquote, or * * * scene-break buttons to write standard Markdown inline.',
-            'Choose .md or .bvscene in the top-right Save format dropdown so one click writes a plain Markdown file or portable scene bundle.',
-            'Drag any .bookvibe, .bvbook, .bvbible, .bvscene, .md, or .txt file into the window to inspect or load it.',
+            'Use the bottom-right Sprint Bar to pick 15m, 25m, or 45m, click Start to track countdown and net words (+0w), or click Reset to restore your session clock.',
+            'Press Ctrl+B, Ctrl+I, H2, blockquote, or * * * scene-break buttons to write clean Markdown inline.',
+            'Choose .md or .bvscene in the top-right Save format dropdown so one click exports plain Markdown or a portable single scene.',
           ],
         },
         {
           tier: 'Intermediate Workflow',
           title: 'Story Bible, Proofread Markup & Live Story Graph',
           steps: [
-            'Build structured character, place, and lore cards in Story Bible. Add custom tabs (e.g. Magic Systems or Factions), drag-and-drop portraits, and add arbitrary key/value traits.',
-            'Switch Editor mode to Proofread to apply the 15 copyediting marks (delete strikethrough, caret insert, substitute, transpose, stet, inline margin comments). Toggle Clean Preview to read accepted changes without altering prose until accepted.',
-            'Open Story Graph to map character bonds and plot threads. Drag any card to see lines follow in real time, drag any edge port ● onto another node to wire a link, and toggle Detailed / Standard / Compact density.',
+            'Build structured character, place, and lore cards in Story Bible. Add custom tabs (Magic Systems, Factions), drag portraits onto cards, and add arbitrary key/value traits.',
+            'Switch Editor mode to Proofread to apply 15 copyediting marks (delete strikethrough, caret insert, substitute, transpose, stet, inline margin comments). Toggle Clean Preview to read accepted prose without overwriting draft text.',
+            'Open Story Graph to map character bonds and plot threads. Drag cards to see connecting lines follow at 60fps, drag hover ● port handles onto target cards to link them, and switch Compact / Standard / Detailed views.',
           ],
         },
         {
           tier: 'Professional Publishing',
-          title: 'Typography, Full Cover Wrap, Collaboration & Signing',
+          title: 'Custom Fonts, Full Cover Wrap, Collaboration & Signing',
           steps: [
-            'Install personal .ttf, .otf, .woff, or .woff2 fonts in Settings > Typefaces, then apply them to the Draft paper sheet, book Interior Typeset preview, and Cover Studio.',
-            'Design Front Cover, Back Cover (headline, blurb, author bio, barcode), Spine, and Dust Jacket Flaps in Cover Studio. Drop Canva SVGs or transparent PNG/WEBP emblems onto any face.',
-            'Configure Imprint, ISBN, and Editorial Stage in Settings > Publishing & Migration, import existing .docx or Google Docs .html manuscripts, and sign your final build with an ECDSA Author Key.',
-            'Review or sync revisions across laptops offline in Collaborate using a same-Wi-Fi PIN or Bluetooth / Nearby Share.',
+            'Install personal .ttf, .otf, .woff, or .woff2 fonts in Settings > Typefaces, then apply them to the Draft canvas, Interior Typeset spread, and Cover Studio.',
+            'Flip tactile switches for Drop Caps, Smart Quotes, Running Headers, and ISBN Barcode Box cleanly in Typeset and Cover Studio.',
+            'Design Front Cover, Back Cover, Spine, and Dust Jacket Flaps with sanitized Canva/vector SVGs or transparent PNG/WEBP overlays.',
+            'Configure Imprint, ISBN, and Editorial Stage in Settings > Publishing & Migration, import existing .docx or Google Docs .html manuscripts, and sign releases with ECDSA Author Keys.',
           ],
         },
       ];
@@ -391,7 +586,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Bookvibe Manual, Icon Directory & Guides' }),
+      el('span', { className: 'bv-panel-title', text: 'Bookvibe Manual, Controls, Icons & Searchable FAQ' }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',
@@ -399,7 +594,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
         on: { click: closeModal },
       }),
     ),
-    el('div', { className: 'bv-modal-body' }, tabBar, bodyWrap),
+    el('div', { className: 'bv-modal-body' }, searchBar, tabBar, bodyWrap),
   );
 
   const backdrop = el(

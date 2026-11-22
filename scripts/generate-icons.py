@@ -145,6 +145,14 @@ def encode_multi_ico(images: list[tuple[int, bytes]]) -> bytes:
     return header + bytes(entries) + bytes(blobs)
 
 
+def encode_icns(chunks: list[tuple[bytes, bytes]]) -> bytes:
+    body = bytearray()
+    for ostype, payload in chunks:
+        body.extend(struct.pack(">4sI", ostype, 8 + len(payload)))
+        body.extend(payload)
+    return struct.pack(">4sI", b"icns", 8 + len(body)) + bytes(body)
+
+
 def main() -> None:
     png_16 = encode_png(16, render_icon_rgba(16))
     png_32 = encode_png(32, render_icon_rgba(32))
@@ -153,6 +161,7 @@ def main() -> None:
     png_256 = encode_png(256, render_icon_rgba(256))
     png_512 = encode_png(512, render_icon_rgba(512))
     ico_bytes = encode_multi_ico([(16, png_16), (32, png_32), (48, png_48), (256, png_256)])
+    icns_bytes = encode_icns([(b"ic07", png_128), (b"ic08", png_256), (b"ic09", png_512)])
 
     for target_dir, files in [
         (
@@ -163,6 +172,7 @@ def main() -> None:
                 ("128x128@2x.png", png_256),
                 ("icon.png", png_512),
                 ("icon.ico", ico_bytes),
+                ("icon.icns", icns_bytes),
             ],
         ),
         (PUBLIC_DIR, [("favicon.ico", ico_bytes)]),

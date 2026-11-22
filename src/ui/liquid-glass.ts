@@ -1019,3 +1019,87 @@ export class LiquidGlassControl<T extends string = string> {
     window.removeEventListener('resize', this.handlePassiveViewportEvent);
   }
 }
+
+let globalControlGlassMounted = false;
+
+/**
+ * Registers shared SVG inside-corner displacement filter and delegated pointer listeners
+ * so custom sliders, levers, and checkboxes activate Liquid Glass optics only during interaction.
+ */
+export function mountGlobalControlGlass(): void {
+  if (typeof document === 'undefined' || globalControlGlassMounted) return;
+  globalControlGlassMounted = true;
+
+  const filterId = 'bv-control-refract';
+  if (!document.getElementById(filterId)) {
+    const svg = svgEl('svg', {
+      width: 0,
+      height: 0,
+      'aria-hidden': 'true',
+      style: 'position:fixed;width:0;height:0;pointer-events:none;opacity:0;overflow:hidden',
+    });
+    const defs = svgEl('defs');
+    const filter = svgEl('filter', {
+      id: filterId,
+      filterUnits: 'objectBoundingBox',
+      primitiveUnits: 'objectBoundingBox',
+      x: '0',
+      y: '0',
+      width: '1',
+      height: '1',
+      'color-interpolation-filters': 'sRGB',
+    });
+    const mapUrl = getDisplacementMapUrl();
+    if (mapUrl) {
+      filter.append(
+        svgEl('feImage', {
+          href: mapUrl,
+          x: '0',
+          y: '0',
+          width: '1',
+          height: '1',
+          preserveAspectRatio: 'none',
+          result: 'ctrl-map',
+        }),
+        svgEl('feDisplacementMap', {
+          in: 'SourceGraphic',
+          in2: 'ctrl-map',
+          scale: '0.036',
+          xChannelSelector: 'R',
+          yChannelSelector: 'G',
+        }),
+      );
+      defs.appendChild(filter);
+      svg.appendChild(defs);
+      document.body.appendChild(svg);
+      document.documentElement.style.setProperty('--bv-control-refract', `url(#${filterId})`);
+    }
+  }
+
+  let activeControl: HTMLElement | null = null;
+  const clearActive = () => {
+    if (!activeControl) return;
+    activeControl.classList.remove('is-glass-active');
+    activeControl = null;
+  };
+
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const ctrl = target.closest(
+        'input[type="range"], input[type="checkbox"], input[type="checkbox"].bv-lever',
+      ) as HTMLElement | null;
+      if (!ctrl) return;
+      clearActive();
+      activeControl = ctrl;
+      ctrl.classList.add('is-glass-active');
+    },
+    true,
+  );
+
+  window.addEventListener('pointerup', clearActive, true);
+  window.addEventListener('pointercancel', clearActive, true);
+  window.addEventListener('blur', clearActive);
+}

@@ -122,16 +122,47 @@ button {
 }
 
 .bv-logo-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 7px;
-  background: #0d0e12;
-  border: 1px solid #2a2e39;
-  display: grid;
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  display: inline-grid;
   place-items: center;
   color: var(--accent-ivory);
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.bv-win-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-hairline);
+}
+
+.bv-win-btn {
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-grid;
+  place-items: center;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.bv-win-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.bv-win-btn-close:hover {
+  background: #b54545;
+  color: #ffffff;
 }
 
 .bv-book-meta {
@@ -2087,7 +2118,7 @@ button {
   background: #404659;
 }
 
-input[type='checkbox'] {
+input[type='checkbox']:not(.bv-lever) {
   appearance: none;
   -webkit-appearance: none;
   width: 15px;
@@ -2100,19 +2131,23 @@ input[type='checkbox'] {
   place-items: center;
   cursor: pointer;
   margin: 0;
-  transition: background 110ms ease, border-color 110ms ease;
+  transition:
+    background 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-input[type='checkbox']:hover {
+input[type='checkbox']:not(.bv-lever):hover {
   border-color: var(--accent-ivory);
 }
 
-input[type='checkbox']:checked {
+input[type='checkbox']:not(.bv-lever):checked {
   background: var(--accent-ivory);
   border-color: var(--accent-ivory);
 }
 
-input[type='checkbox']:checked::after {
+input[type='checkbox']:not(.bv-lever):checked::after {
   content: '';
   width: 8px;
   height: 5px;
@@ -2121,16 +2156,103 @@ input[type='checkbox']:checked::after {
   transform: translateY(-1px) rotate(-45deg);
 }
 
+input[type='checkbox']:not(.bv-lever).is-glass-active,
+input[type='checkbox']:not(.bv-lever):active {
+  transform: scale(1.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1));
+  border-color: rgba(255, 255, 255, 0.56);
+  backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  -webkit-backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+/* Binary Toggle Levers (flat at rest, Liquid Glass optics on press/drag) */
+input[type='checkbox'].bv-lever {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px;
+  height: 19px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-canvas);
+  cursor: pointer;
+  margin: 0;
+  transition:
+    background 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 190ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+input[type='checkbox'].bv-lever::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: var(--text-secondary);
+  transition:
+    transform 210ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+input[type='checkbox'].bv-lever:hover {
+  border-color: var(--accent-ivory);
+}
+
+input[type='checkbox'].bv-lever:checked {
+  background: #232836;
+  border-color: var(--accent-ivory);
+}
+
+input[type='checkbox'].bv-lever:checked::before {
+  transform: translateX(15px);
+  background: var(--accent-ivory);
+}
+
+input[type='checkbox'].bv-lever.is-glass-active,
+input[type='checkbox'].bv-lever:active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  border-color: rgba(255, 255, 255, 0.45);
+  backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  -webkit-backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    0 6px 16px rgba(0, 0, 0, 0.48);
+}
+
+input[type='checkbox'].bv-lever.is-glass-active::before,
+input[type='checkbox'].bv-lever:active::before {
+  width: 16px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+input[type='checkbox'].bv-lever:checked.is-glass-active::before,
+input[type='checkbox'].bv-lever:checked:active::before {
+  transform: translateX(12px);
+}
+
 input[type='range'] {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
-  height: 4px;
+  height: 5px;
   border-radius: 99px;
   background: var(--border-strong);
   outline: none;
   cursor: pointer;
   margin: 6px 0;
+  transition: background 140ms ease;
 }
 
 input[type='range']::-webkit-slider-thumb {
@@ -2138,21 +2260,113 @@ input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--accent-ivory);
   border: 2px solid #08080a;
   box-shadow: 0 0 0 1px var(--border-strong);
   cursor: grab;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+input[type='range'].is-glass-active::-webkit-slider-thumb,
+input[type='range']:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.26);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  -webkit-backdrop-filter: var(--bv-control-refract) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 4px 14px rgba(0, 0, 0, 0.52);
 }
 
 input[type='range']::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--accent-ivory);
   border: 2px solid #08080a;
   box-shadow: 0 0 0 1px var(--border-strong);
   cursor: grab;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background 140ms ease, box-shadow 140ms ease;
+}
+
+input[type='range'].is-glass-active::-moz-range-thumb,
+input[type='range']:active::-moz-range-thumb {
+  cursor: grabbing;
+  transform: scale(1.26);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 4px 14px rgba(0, 0, 0, 0.52);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type='checkbox'],
+  input[type='checkbox']::before,
+  input[type='checkbox']::after,
+  input[type='range']::-webkit-slider-thumb,
+  input[type='range']::-moz-range-thumb {
+    transition: none !important;
+  }
+}
+
+:root[data-motion='reduce'] input[type='checkbox'],
+:root[data-motion='reduce'] input[type='checkbox']::before,
+:root[data-motion='reduce'] input[type='range']::-webkit-slider-thumb {
+  transition: none !important;
+}
+
+.bv-help-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.bv-help-search-input {
+  flex: 1 1 auto;
+}
+
+.bv-help-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.bv-help-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  border-radius: 7px;
+  background: var(--bg-bar);
+  border: 1px solid var(--border-hairline);
+}
+
+.bv-help-control-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bv-control-type-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-ivory);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 select.bv-input,

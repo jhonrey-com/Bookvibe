@@ -380,8 +380,9 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
       });
 
       const tourChk = el('input', {
+        className: 'bv-lever',
         id: 'bv-set-tours',
-        attrs: { type: 'checkbox', checked: settings.showOnboardingHints },
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.showOnboardingHints },
         on: { change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }) },
       });
 
@@ -560,7 +561,8 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
 
     // Developer Tab
     const devChk = el('input', {
-      attrs: { type: 'checkbox', checked: settings.developerMode },
+      className: 'bv-lever',
+      attrs: { type: 'checkbox', role: 'switch', checked: settings.developerMode },
       on: {
         change: () => {
           actions.updateSettings({ developerMode: devChk.checked });

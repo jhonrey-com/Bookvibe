@@ -4,8 +4,8 @@
 
 Bookvibe is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with traditional proofreading marks, manage story bibles and relationship graphs, install custom fonts, design print covers, and export release-ready books from one local workspace. It runs offline with zero account sign-ins, stores work in plain UTF-8 files you control, and syncs manuscripts directly across computers on your Wi-Fi or Bluetooth connection.
 
-> **Current Stage — Beta Source Release (`v1.3.0-beta`)**  
-> Source code and browser/desktop UI previews are active for community testing. Pre-compiled installers and terminal binary downloads will publish alongside our first tagged release.
+> **Use Directly in Browser (No Install Required):** **[Launch Bookvibe Web Studio (`jhonrey-com.github.io/Bookvibe`)](https://jhonrey-com.github.io/Bookvibe/)**  
+> **Desktop Releases (`v1.3.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Bookvibe/releases/latest)**
 
 <p align="center">
   <img src="assets/banners/bookvibe-workspace.svg" alt="Bookvibe five-stage studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline LAN Sync, Typeset & Full Cover Wrap" width="100%" />
@@ -16,14 +16,14 @@ Bookvibe is a cross-platform book writing application built so writers can draft
 ## Table of Contents
 
 1. [Why Keep Everything in One Workspace](#1-why-keep-everything-in-one-workspace)
-2. [How to Install and Launch Bookvibe](#2-how-to-install-and-launch-bookvibe)
+2. [How to Install, Run in Browser & Launch Bookvibe](#2-how-to-install-run-in-browser--launch-bookvibe)
 3. [Guides by Writing Level (Basic, Intermediate, Commercial)](#3-guides-by-writing-level-basic-intermediate-commercial)
-4. [All Studio Workspaces & Unique Icon Legend](#4-all-studio-workspaces--unique-icon-legend)
+4. [All Studio Workspaces, Bottom Sprint Controls & Icon Legend](#4-all-studio-workspaces-bottom-sprint-controls--icon-legend)
 5. [Custom Fonts, Cover Wrap Studio & Migration](#5-custom-fonts-cover-wrap-studio--migration)
 6. [File Formats & Double-Click Support](#6-file-formats--double-click-support)
 7. [Extensions, Permissions & Developer Add-ons](#7-extensions-permissions--developer-add-ons)
 8. [Keyboard Shortcuts](#8-keyboard-shortcuts)
-9. [Contributing & Project Stewardship](#9-contributing--project-stewardship)
+9. [FAQ, Controls Reference & Contributing](#9-faq-controls-reference--contributing)
 
 ---
 
@@ -38,22 +38,24 @@ Many writers split work across five programs: a text editor for Markdown notes, 
 
 ---
 
-## 2. How to Install and Launch Bookvibe
+## 2. How to Install, Run in Browser & Launch Bookvibe
 
-### Option A: One-Click Desktop Launchers (Local Repository)
-If you cloned this repository and want to open Bookvibe immediately in development mode:
-- **Windows**: Double-click `Start-Bookvibe.bat` (or drag a `.bookvibe` / `.bvscene` file onto the launcher).
-- **macOS**: Double-click `Start-Bookvibe.command`.
-- **Linux**: Run `./start-bookvibe.sh` (optionally pass a path such as `./start-bookvibe.sh examples/the-salt-cartographer.bookvibe`).
+### Option A: Open Immediately in Any Browser (GitHub Pages)
+Visit **[https://jhonrey-com.github.io/Bookvibe/](https://jhonrey-com.github.io/Bookvibe/)** to write, organize Story Bibles, proofread, design covers, and export `.bookvibe` / `.epub` / `.md` files immediately with zero setup.
 
-### Option B: Terminal Installers (Once Binary Releases Publish)
-Terminal scripts and package manifests are prepared in `scripts/` and `packaging/`:
+### Option B: Desktop Installers (Frameless Native App)
+Download from **[GitHub Releases (`v1.3.0`)](https://github.com/jhonrey-com/Bookvibe/releases/latest)** (uses a custom frameless obsidian titlebar with drag/minimize/maximize/close instead of default OS bars):
+- **Windows:** `.msi` or `.exe`
+- **macOS:** Universal `.dmg` (Apple Silicon & Intel)
+- **Linux:** `.AppImage` or `.deb`
+
+### Option C: Terminal Installers
 
 **Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.ps1 | iex
 ```
-*(Or via Winget once submitted: `winget install jhonrey.Bookvibe` using `packaging/winget/jhonrey.Bookvibe.yaml`.)*
+*(Or Winget manifest `packaging/winget/jhonrey.Bookvibe.yaml`.)*
 
 **macOS & Linux:**
 ```bash
@@ -61,8 +63,9 @@ curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/i
 ```
 *(Or Homebrew Cask via `packaging/homebrew/bookvibe.rb`.)*
 
-### Option C: Build & Run From Source
-Requirements: Node.js 20+ (and Rust toolchain if building the native Tauri window).
+### Option D: One-Click Repo Launchers & Source Build
+- **Windows / macOS / Linux repo launchers:** `Start-Bookvibe.bat`, `Start-Bookvibe.command`, or `./start-bookvibe.sh`
+- Requirements from source: Node.js 20+ (and Rust toolchain for `npm run tauri:build`)
 
 ```bash
 git clone https://github.com/jhonrey-com/Bookvibe.git
@@ -72,15 +75,9 @@ npm install
 # Start browser UI preview at http://localhost:1420
 npm run dev
 
-# Or run inside the native Tauri desktop shell
+# Or run / bundle the native desktop app
 npm run tauri:dev
-```
-
-Run checks without compiling native installers:
-```bash
-npm run typecheck
-npm test
-npm run build
+npm run tauri:build
 ```
 
 ---
@@ -115,9 +112,15 @@ For independent publishers, co-author teams, and full print production:
 
 ---
 
-## 4. All Studio Workspaces & Unique Icon Legend
+## 4. All Studio Workspaces, Bottom Sprint Controls & Icon Legend
 
-Every toolbar button and section tab in Bookvibe uses its own dedicated icon so controls never look ambiguous. Press `F1` or click the **Help (`?`)** button at any time inside the app for a searchable directory with live icon previews and shortcuts.
+Every toolbar button and section tab in Bookvibe uses its own dedicated icon so controls never look ambiguous. Press `F1` or click **Help (`?`)** inside the app to search every slider, lever, dropdown, icon, and section live, or read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)**.
+
+### Bottom Status Bar & Sprint Controls
+- **Metrics Ledger (Bottom Left):** Scene words/characters, Chapter words, Book progress against target, estimated print pages (`~250` w/p), and reading time.
+- **Sprint Duration (`15m` / `25m` / `45m`, Bottom Right):** Selects timed sprint minutes, resets the countdown, and zeroes session word delta (`+0w`).
+- **`Start` / `Pause` (Bottom Right):** Starts or freezes the countdown while counting newly drafted words.
+- **`Reset` (Bottom Right):** Clears any running sprint back to the full chosen interval and zeroes `+0w`.
 
 ### Top Header Controls
 - **Binder (`panel-left`)**: Toggle left manuscript tree (overlays cleanly on tablet/narrow windows).
@@ -174,7 +177,7 @@ More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-R
 
 Bookvibe distinguishes between **Integrated** toolkits shipped with the app and external **`.bvext`** community add-ons:
 - Integrated modules include Editorial Proofing, Typographic Punctuation Cleanup, Readability & Pacing Ledger, Print Trim Presets, and Editorial Font Packs.
-- External `.bvext` add-ons are declarative JSON manifests validated with SHA-256 fingerprints, sandboxed against network calls or filesystem access, and gated behind checkbox consent (`read:active-scene`, `add:proofread-marks`, `apply:prose-transform`, `read:manuscript-stats`, `write:typography-preset`, `add:font-pack`).
+- External `.bvext` add-ons are declarative JSON manifests validated with SHA-256 fingerprints, sandboxed against network calls or filesystem access, and gated behind checkbox consent (`read:active-scene`, `propose:proofread-marks`, `apply:text-transform`, `read:manuscript`, `read:bible`, `add:export-preset`, `add:font-pack`).
 - Every extension invocation is recorded in the local **Data Access Audit Log**.
 
 Developers building new add-ons can read the full specification in **[docs/DEVELOPER-EXTENSIONS.md](docs/DEVELOPER-EXTENSIONS.md)**.
@@ -194,12 +197,13 @@ Developers building new add-ons can read the full specification in **[docs/DEVEL
 
 ---
 
-## 9. Contributing & Project Stewardship
+## 9. FAQ, Controls Reference & Contributing
 
-Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before submitting pull requests:
-- **Fork & branch first**: Keep commits off `main` in forks; work in dedicated topic branches.
-- **Run local checks**: Ensure `npm run typecheck`, `npm test`, and `npm run build` succeed cleanly after your last edit.
-- **Build provenance**: Bookvibe packages and sample documents embed quiet origin verification marks belonging to **`jhonrey.com`** (`bookvibe@jhonrey.com`). Forks retain MIT rights while cleanly preserving upstream attribution.
+- **Complete UI & FAQ Reference:** Read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)** for full answers on every slider, lever, dropdown (`15m`/`25m`/`45m`), sprint `Start` / `Reset`, custom fonts, cover design, and offline sync.
+- **Contributions:** Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before submitting pull requests:
+  - **Fork & branch first**: Keep commits off `main` in forks; work in dedicated topic branches.
+  - **Run local checks**: Ensure `npm run typecheck`, `npm test`, and `npm run build` succeed cleanly after your last edit.
+  - **Build provenance**: Bookvibe packages and sample documents embed quiet origin verification marks belonging to **`jhonrey.com`** (`bookvibe@jhonrey.com`). Forks retain MIT rights while cleanly preserving upstream attribution.
 
 ## License
 
