@@ -1,6 +1,7 @@
 import { stripPrivateAuthorSecrets } from './identity';
 import { normalizeProjectDefaults } from './library';
 import { countWords, findSceneContext, newId } from './manuscript';
+import { getPublisherProvenance } from './provenance';
 import type {
   BookProject,
   BookvibeBiblePayload,
@@ -200,6 +201,7 @@ export function serializeExtensionFile(
     mimeType: def.mimeType,
     uti: def.uti,
     exportedAt: new Date().toISOString(),
+    provenanceMark: getPublisherProvenance(rawProject.id).mark,
     payload,
   };
 

@@ -1,6 +1,7 @@
 import type { AppActions, ExtensionsModalTab } from '../core/app-context';
 import { getOsExtensionStatus, registerOsExtensions } from '../core/bridge';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
+import { installFontPackFromExtension } from '../core/fonts';
 import {
   EXTENSION_PERMISSION_INFO,
   SANDBOX_BLOCKED_CAPABILITIES,
@@ -208,6 +209,31 @@ export async function showExtensionsModal(
             },
           },
         }),
+      );
+    }
+
+    if (ext.manifest.fonts && ext.manifest.fonts.length > 0) {
+      row.appendChild(
+        el(
+          'button',
+          {
+            className: 'bv-btn bv-btn-primary',
+            attrs: { type: 'button', disabled: !ext.enabled },
+            on: {
+              click: async () => {
+                try {
+                  const installed = await installFontPackFromExtension(ext);
+                  actions.notify(`Installed ${installed.length} font(s) from ${ext.manifest.name}`);
+                  renderContent();
+                } catch (err) {
+                  actions.notify(err instanceof Error ? err.message : 'Font pack install failed.');
+                }
+              },
+            },
+          },
+          icon('plus', 13),
+          `Install Font Pack (${ext.manifest.fonts.length})`,
+        ),
       );
     }
 
@@ -735,9 +761,9 @@ export async function showExtensionsModal(
     iconOnly: true,
     value: activeTab,
     options: [
-      { id: 'integrated', label: 'Integrated', icon: 'extensions', tooltip: TOOLTIP_CATALOG.extIntegrated },
+      { id: 'integrated', label: 'Integrated', icon: 'layers', tooltip: TOOLTIP_CATALOG.extIntegrated },
       { id: 'external', label: 'External Sandbox', icon: 'shield', tooltip: TOOLTIP_CATALOG.extExternal },
-      { id: 'formats', label: 'File Formats', icon: 'file', tooltip: TOOLTIP_CATALOG.extFormats },
+      { id: 'formats', label: 'File Formats', icon: 'file-code', tooltip: TOOLTIP_CATALOG.extFormats },
     ],
     onChange: (tab) => {
       activeTab = tab;

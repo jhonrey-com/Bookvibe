@@ -1,12 +1,12 @@
 import type { AppActions, TypesetSubTab } from '../core/app-context';
 import { COLLABORATOR_ROLE_LABELS } from '../core/collab';
 import {
-  FONT_STACKS,
   TRIM_SPECS,
   applySmartTypography,
   convertSceneProseToParagraphs,
   formatChapterLabel,
 } from '../core/export';
+import { getAllAvailableFontChoices, resolveEffectiveFontCss } from '../core/fonts';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
 import {
   ensureAuthorIdentity,
@@ -71,9 +71,9 @@ export function renderTypesetView(container: HTMLElement, actions: AppActions): 
     iconOnly: true,
     value: state.typesetSubTab,
     options: [
-      { id: 'interior', label: 'Interior Typeset', icon: 'typeset', tooltip: TOOLTIP_CATALOG.typesetInterior },
+      { id: 'interior', label: 'Interior Typeset', icon: 'page-margins', tooltip: TOOLTIP_CATALOG.typesetInterior },
       { id: 'cover', label: 'Book Cover Studio', icon: 'cover', tooltip: TOOLTIP_CATALOG.typesetCover },
-      { id: 'publish', label: 'Publish & Author Key', icon: 'key', tooltip: TOOLTIP_CATALOG.typesetPublish },
+      { id: 'publish', label: 'Publish & Author Key', icon: 'seal', tooltip: TOOLTIP_CATALOG.typesetPublish },
     ],
     onChange: (tab) => actions.setState({ typesetSubTab: tab }, true),
   });
@@ -169,15 +169,30 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
     );
   }
 
+  const fontChoices = getAllAvailableFontChoices();
+  const activeFontVal = typo.customFontFamily?.trim()
+    ? typo.customFontFamily.trim()
+    : `builtin:${typo.fontFamily}`;
+
   const fontSelect = el('select', {
     className: 'bv-input',
     on: {
-      change: () => updateTypography(actions, { fontFamily: fontSelect.value as FontFamilyId }),
+      change: () => {
+        const val = fontSelect.value;
+        if (val.startsWith('builtin:')) {
+          updateTypography(actions, {
+            fontFamily: val.slice('builtin:'.length) as FontFamilyId,
+            customFontFamily: '',
+          });
+        } else {
+          updateTypography(actions, { customFontFamily: val });
+        }
+      },
     },
   });
-  for (const [id, info] of Object.entries(FONT_STACKS)) {
+  for (const choice of fontChoices) {
     fontSelect.appendChild(
-      el('option', { text: info.label, attrs: { value: id, selected: typo.fontFamily === id } }),
+      el('option', { text: choice.label, attrs: { value: choice.id, selected: activeFontVal === choice.id } }),
     );
   }
 
@@ -260,7 +275,18 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
       { className: 'bv-field-group' },
       el('span', { className: 'bv-panel-title', text: 'Book Interior Design' }),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Trim Size' }), trimSelect),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Typeface' }), fontSelect),
+      el(
+        'div',
+        { className: 'bv-field' },
+        el('label', { className: 'bv-label', text: 'Typeface' }),
+        fontSelect,
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Install Custom Fonts…',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openSettingsModal('fonts') },
+        }),
+      ),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Chapter Numerals' }), numeralSelect),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Body Size (${typo.fontSizePt} pt)` }), fontSizeInput),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Line Spacing (${typo.lineHeight})` }), lineHeightInput),
@@ -299,7 +325,7 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
 
   const stage = el('div', { className: 'bv-typeset-preview-stage' });
   const trimSpec = TRIM_SPECS[typo.trimSize];
-  const fontCss = FONT_STACKS[typo.fontFamily].css;
+  const fontCss = resolveEffectiveFontCss(typo.fontFamily, typo.customFontFamily);
   const pageWidthPx = Math.round(trimSpec.widthIn * 92);
 
   if (typo.includeFrontMatter) {

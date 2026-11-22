@@ -1,60 +1,205 @@
 <p align="center">
-  <img src="assets/banners/bookvibe-hero.svg" alt="Bookvibe — Open-source desktop book writing, proofreading, worldbuilding, and typesetting studio" width="100%" />
+  <img src="assets/banners/bookvibe-header.svg" alt="Bookvibe — Open-source book writing, proofreading, worldbuilding, and typesetting studio" width="100%" />
 </p>
+
+Bookvibe is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with traditional proofreading marks, manage story bibles and relationship graphs, install custom fonts, design print covers, and export release-ready books from one local workspace. It runs offline with zero account sign-ins, stores work in plain UTF-8 files you control, and syncs manuscripts directly across computers on your Wi-Fi or Bluetooth connection.
+
+> **Current Stage — Beta Source Release (`v1.3.0-beta`)**  
+> Source code and browser/desktop UI previews are active for community testing. Pre-compiled installers and terminal binary downloads will publish alongside our first tagged release.
 
 <p align="center">
-  <img src="assets/banners/bookvibe-workflow.svg" alt="Bookvibe 5-stage workflow: Draft, Proofread, Bible and Graph, Direct Offline Sync, Typeset and Cover" width="100%" />
+  <img src="assets/banners/bookvibe-workspace.svg" alt="Bookvibe five-stage studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline LAN Sync, Typeset & Full Cover Wrap" width="100%" />
 </p>
 
-Bookvibe is a cross-platform desktop book writing, proofreading, worldbuilding, and print typesetting application. It runs in one click without setup, stores books locally, syncs offline over Wi-Fi or Bluetooth, and opens double-clickable native files directly from your file manager.
+---
 
-<p align="center">
-  <img src="assets/banners/bookvibe-extensions.svg" alt="Official Bookvibe document formats and sandboxed extension permissions" width="100%" />
-</p>
+## Table of Contents
 
-## Key Capabilities
+1. [Why Keep Everything in One Workspace](#1-why-keep-everything-in-one-workspace)
+2. [How to Install and Launch Bookvibe](#2-how-to-install-and-launch-bookvibe)
+3. [Guides by Writing Level (Basic, Intermediate, Commercial)](#3-guides-by-writing-level-basic-intermediate-commercial)
+4. [All Studio Workspaces & Unique Icon Legend](#4-all-studio-workspaces--unique-icon-legend)
+5. [Custom Fonts, Cover Wrap Studio & Migration](#5-custom-fonts-cover-wrap-studio--migration)
+6. [File Formats & Double-Click Support](#6-file-formats--double-click-support)
+7. [Extensions, Permissions & Developer Add-ons](#7-extensions-permissions--developer-add-ons)
+8. [Keyboard Shortcuts](#8-keyboard-shortcuts)
+9. [Contributing & Project Stewardship](#9-contributing--project-stewardship)
 
-- **One-Click Native Execution**: Standalone builds for Windows (`.exe` / `.msi`), macOS (`.dmg` / `.app`), and Linux (`.AppImage` / `.deb`), plus zero-setup launchers (`Start-Bookvibe.bat`, `Start-Bookvibe.command`, `start-bookvibe.sh`).
-- **Interactive Proofreading Studio**: Select words or sentences on the page to apply standard copyediting marks (`₰` Cross-Out, `∧` Caret Insert, `⇄` Substitute, `AQ` Margin Comment, `★` Highlight, `tr` Transpose, `stet`, `¶`, `no ¶`, `⏝`, `#`, `≡`, `lc`, `ital`, `bf`) with automatic Revision Snapshot backups and Clean Preview.
-- **Sandboxed Extensions & Permissions**: Pre-bundled **Integrated** toolkits (Editorial Proofing, Typographic Cleanup, Readability Ledger, Print Trim Presets) plus **External (`.bvext`)** community plugins that enforce explicit permission consent, per-scope revocation, zero network/disk access, and a live Data Access Audit Log.
-- **Multi-Book Library & Author Keys**: Keep multiple books organized with per-book Pen Names, drawn/typed Signatures, and local cryptographic Author Keys sealed into exported editions.
-- **Offline Desktop-to-Desktop Collaboration**: Co-author and proofreader credits, scene annotations, 6-digit PIN same-Wi-Fi LAN sync, and OS Bluetooth / Nearby Share file exchange without internet access.
-- **Story Bible & Interactive Story Graph**: Custom worldbuilding categories and fields alongside a zoomable, draggable relationship graph connecting characters, locations, lore, plot beats, and scenes.
-- **Typeset Engine & Book Cover Studio**: Live paginated trim previews (`5" × 8"`, `5.5" × 8.5"`, `6" × 9"`, `A5`), drag-and-drop front/back wrap cover designer, and one-click export in `.bookvibe`, `.epub`, `.md`, `.html`, `.txt`, `.bvbook`, `.bvbible`, `.bvscene`, or `.bvstyle` via the topbar default export selector.
-- **Human Authorship Only**: Zero AI features, zero telemetry, and full local ownership of every draft.
+---
 
-## Documentation & Icon Guide
+## 1. Why Keep Everything in One Workspace
 
-- **[docs/GUIDE.md](docs/GUIDE.md)** — Reference manual covering every icon, custom hover/click-to-expand tooltips, proofreading symbols, external `.bvext` extension authoring & permission scopes, and default export formats.
-- **[docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-REGISTRATION.md)** — Official IANA RFC 6838 MIME templates, FreeDesktop `shared-mime-info` rules, Windows ProgID registry specs, and JSON Schema (`"magic": "BOOKVIBE_V1"`).
+Many writers split work across five programs: a text editor for Markdown notes, spreadsheets for outlines, whiteboard apps for plot graphs, image editors for covers, and conversion scripts for EPUB files. Bookvibe replaces that chain with integrated tools sharing one local project file:
 
-## Quick Start
+- **Zero setup & zero lock-in**: Open an example or blank project right away. Every `.bookvibe` file is plain UTF-8 JSON with human-readable scenes and a public format schema.
+- **Works cleanly for small notes or multi-volume books**: Treat it as a quiet Markdown scratchpad (`Ctrl+B`, `Ctrl+I`, `.md` export) or manage an entire catalog under separate pen names.
+- **Real proofreading workflow**: Instead of overwriting prose blindly, apply 15 copyediting marks on the page, toggle *Clean Preview*, and accept edits with automatic snapshot backups.
+- **Commercial publishing basics built in**: Configure imprint metadata, ISBN, editorial stage, custom device fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), full jacket cover wraps (front, spine, back, and flaps), and ECDSA Author Key signatures.
 
-### Option A: Double-Click Launcher
-- **Windows**: Double-click `Start-Bookvibe.bat` (or drag any `.bookvibe` / `.bvscene` file onto it).
+---
+
+## 2. How to Install and Launch Bookvibe
+
+### Option A: One-Click Desktop Launchers (Local Repository)
+If you cloned this repository and want to open Bookvibe immediately in development mode:
+- **Windows**: Double-click `Start-Bookvibe.bat` (or drag a `.bookvibe` / `.bvscene` file onto the launcher).
 - **macOS**: Double-click `Start-Bookvibe.command`.
-- **Linux**: Run `./start-bookvibe.sh` (or pass a file path: `./start-bookvibe.sh examples/the-salt-cartographer.bookvibe`).
+- **Linux**: Run `./start-bookvibe.sh` (optionally pass a path such as `./start-bookvibe.sh examples/the-salt-cartographer.bookvibe`).
 
-### Option B: Developer Build
+### Option B: Terminal Installers (Once Binary Releases Publish)
+Terminal scripts and package manifests are prepared in `scripts/` and `packaging/`:
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.ps1 | iex
+```
+*(Or via Winget once submitted: `winget install jhonrey.Bookvibe` using `packaging/winget/jhonrey.Bookvibe.yaml`.)*
+
+**macOS & Linux:**
 ```bash
+curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.sh | sh
+```
+*(Or Homebrew Cask via `packaging/homebrew/bookvibe.rb`.)*
+
+### Option C: Build & Run From Source
+Requirements: Node.js 20+ (and Rust toolchain if building the native Tauri window).
+
+```bash
+git clone https://github.com/jhonrey-com/Bookvibe.git
+cd Bookvibe
 npm install
-npm run typecheck
-npm test
+
+# Start browser UI preview at http://localhost:1420
+npm run dev
+
+# Or run inside the native Tauri desktop shell
 npm run tauri:dev
 ```
 
-Build a standalone native installer/executable:
+Run checks without compiling native installers:
 ```bash
-npm run tauri:build
+npm run typecheck
+npm test
+npm run build
 ```
 
-## Keyboard Shortcuts
+---
 
-- `Ctrl/Cmd + S`: Capture Revision Snapshot in Editor (or export default format elsewhere)
-- `Ctrl/Cmd + O`: Open any Bookvibe document or `.bvext` extension bundle
-- `Ctrl/Cmd + Shift + F`: Toggle Zen Focus mode
-- `Ctrl/Cmd + B` / `Ctrl/Cmd + I`: Bold / Italic Markdown emphasis
-- `?` or `F1` (on focused control): Expand detailed help card for the active button
+## 3. Guides by Writing Level (Basic, Intermediate, Commercial)
+
+### Level 1 — Basic: Quick Notes, Journal Scenes & Markdown Builder
+You do not need chapters, story bibles, or cover art just to take notes or draft essays.
+1. Open Bookvibe. On your first visit, a short splash transition leads into an optional pointer tour you can follow step by step or skip in one click (`Skip All` / `Skip Section`).
+2. Click inside **Manuscript** (`Draft` mode) and type directly on **Obsidian**, **Parchment**, or **Ivory** paper.
+3. Use `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `H2`, blockquote `❝`, or `* * *` buttons to format clean Markdown.
+4. Change the topbar Save format dropdown to **`.md` (Markdown)** or **`.bvscene` (Single Scene)** and click Save (`Ctrl+S` in non-editor views exports directly; in Editor `Ctrl+S` captures a revision snapshot).
+5. Drag any `.md` or `.txt` note onto the window to start a structured project from plain text.
+
+### Level 2 — Intermediate: Series Worldbuilding, Proofing & Live Story Graph
+When stories expand beyond a single draft:
+1. **Parts, Chapters & Scenes**: Manage hierarchy in the left **Binder** drawer, split long scenes at the cursor (`split-scene`), and track word targets per scene and sprint session.
+2. **Corkboard & Outline**: Switch to **Corkboard** to rearrange index cards between chapters or **Outline** to filter scenes by status, POV character, timeline, or reading minutes.
+3. **Story Bible**: Keep structured cards for Characters, Locations, Lore, plus your own custom categories (Magic Rules, Ships, Historical Eras). Drag images into cards and add custom key/value traits.
+4. **Live Story Graph**:
+   - Drag any card and connected lines and labels move live with it.
+   - Hover a card to reveal edge **Port Dots** (`●`), then drag a dot onto another card to wire a link in one gesture.
+   - Switch right inside the graph toolbar between **Compact**, **Standard**, and **Detailed** card density, **Curved / Step / Straight** line routing, **Columns / Radial / Flow** layouts, 24px **Grid Snap**, search highlighting, and clean **SVG export**.
+5. **Proofread Mode**: Select any sentence on the proof sheet to strike out (`₰`), propose insertions (`∧`), replace words (`⇄`), transpose neighbors (`tr`), mark *let stand* (`stet`), or leave author queries (`AQ`). Toggle **Clean Preview** before accepting changes.
+
+### Level 3 — Professional: Multi-Book Catalog, Custom Fonts, Migration & Press Releases
+For independent publishers, co-author teams, and full print production:
+1. **Multi-Book Library & ECDSA Author Keys**: Click **Library** in the topbar to keep multiple manuscripts, switch active projects, set per-book **Pen Names**, draw ink **Signatures**, and sign editions locally with an ECDSA P-256 **Author Key**.
+2. **Migrate From Word & Google Docs**: Open **Settings -> Publishing & Migration** (or drop a file on the window) to import `.docx` (Word), `.html` (Google Docs Web Export), `.rtf`, `.md`, or `.txt` manuscripts cleanly into Bookvibe chapters.
+3. **Co-Authors & Offline LAN / Bluetooth Sync**: Add credited editors, proofreaders, and co-authors in **Collaborate**. Exchange revisions over the same router with a 6-digit PIN LAN session or save/merge signed `.bookvibe` packages over Bluetooth with zero internet connection.
+4. **Editorial Handoff Report**: Export a clean Markdown **Editorial Handoff Sheet** summarizing ISBN, imprint, stage, open proof marks, chapter word counts, and collaborator credits.
+
+---
+
+## 4. All Studio Workspaces & Unique Icon Legend
+
+Every toolbar button and section tab in Bookvibe uses its own dedicated icon so controls never look ambiguous. Press `F1` or click the **Help (`?`)** button at any time inside the app for a searchable directory with live icon previews and shortcuts.
+
+### Top Header Controls
+- **Binder (`panel-left`)**: Toggle left manuscript tree (overlays cleanly on tablet/narrow windows).
+- **Library (`library`)**: Switch books, edit pen names, draw signatures, and manage Author Keys.
+- **Collaborate (`collab`)**: Manage co-authors, proofreaders, LAN PIN sync, and Bluetooth file exchange.
+- **Open (`folder`)**: Open Bookvibe files (`.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, `.bvstyle`) or `.bvext` add-ons.
+- **Save + Extension Selector (`save`)**: Export immediately in the selected file format.
+- **Extensions (`extensions`)**: Enable integrated toolkits, install `.bvext` files with explicit permission review, view audit logs, or register OS shell extensions.
+- **Settings (`settings`)**: Install custom fonts, customize editor spacing/density, set Imprint/ISBN/Stage, import `.docx`/Google Docs, and inspect developer info.
+- **Help (`help`)**: Open built-in Icon Legend, beginner-to-pro guides, and replay first-visit animated tours.
+- **Inspector (`panel-right`)**: Toggle right-hand Scene Inspector across every view without losing cursor position.
+
+### Main View Switcher & Sub-Tabs
+- **Manuscript (`quill`)**: Houses **Draft (`draft-sheet`)**, **Proofread (`proofread`)**, **Split View (`split`)**, and **Revision Diff (`diff`)**.
+- **Corkboard (`corkboard`)** · **Outline (`outline`)** · **Story Bible (`bible`)** · **Story Graph (`graph`)**
+- **Typeset & Cover (`typeset`)**: Houses **Interior Typeset (`page-margins`)**, **Cover Studio (`cover`)**, and **Publish & Author Seal (`seal`)**.
+
+---
+
+## 5. Custom Fonts, Cover Wrap Studio & Migration
+
+### Installing Device & Extension Fonts
+Open **Settings -> Typefaces & Fonts**:
+- Drag-and-drop or browse local **`.ttf`**, **`.otf`**, **`.woff`**, or **`.woff2`** files from your computer (verified by binary magic-byte inspection).
+- Use **Pick Installed OS Font** in supported Chromium/desktop contexts, or install curated font packs via `.bvext` extensions.
+- Apply installed fonts separately to your **Draft paper sheet**, your paginated **Book Interior Typeset** (plus HTML/EPUB exports), and your **Cover typography**.
+
+### Front, Back, Spine & Dust Jacket Cover Studio
+Open **Typeset & Cover -> Cover Studio**:
+- Switch between **Front**, **Back**, **Spine**, **Full Print Wrap**, and **Dust Jacket (with Flaps)**.
+- Drop sanitized **`.svg` artwork** (including Canva/Illustrator exports with scripts stripped automatically) or transparent **`.png` / `.webp`** graphics directly onto any cover face, plus one-click built-in book ornaments.
+- Adjust position by dragging, resize/rotate/fade layers in the Layer Inspector, toggle the back-cover ISBN barcode box, and export **1200×1920 Front Cover PNG** or **Full Print Wrap PNG**.
+
+---
+
+## 6. File Formats & Double-Click Support
+
+Every Bookvibe document wraps readable JSON in `"magic": "BOOKVIBE_V1"` paired with matching MIME types (`packaging/bookvibe-mime.xml`, Windows `.reg` helpers, macOS UTIs in `src-tauri/Info.plist`):
+
+| Extension | Role | Double-Click Action |
+| :--- | :--- | :--- |
+| **`.bookvibe`** | Complete Book Archive | Opens entire manuscript, Story Bible, Graph, cover wrap, marks, snapshots, and public key seal. |
+| **`.bvibe`** | Compact Project Alias | Identical schema to `.bookvibe` with a shorter filename extension. |
+| **`.bvbook`** | Manuscript Package | Opens manuscript parts, chapters, scenes, front matter, credits, and cover without worldbuilding DBs. |
+| **`.bvbible`** | Story Bible Database | Merges Characters, Locations, Lore, and Custom Categories into the open book or starts a series companion. |
+| **`.bvscene`** | Single Scene Draft | Opens or imports one scene along with snapshots and proofreading marks. |
+| **`.bvstyle`** | Typeset & Paper Style | Applies trim size, font stack, drop caps, smart quotes, margins, and paper theme cleanly. |
+
+More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-REGISTRATION.md) and [docs/GUIDE.md](docs/GUIDE.md).
+
+---
+
+## 7. Extensions, Permissions & Developer Add-ons
+
+Bookvibe distinguishes between **Integrated** toolkits shipped with the app and external **`.bvext`** community add-ons:
+- Integrated modules include Editorial Proofing, Typographic Punctuation Cleanup, Readability & Pacing Ledger, Print Trim Presets, and Editorial Font Packs.
+- External `.bvext` add-ons are declarative JSON manifests validated with SHA-256 fingerprints, sandboxed against network calls or filesystem access, and gated behind checkbox consent (`read:active-scene`, `add:proofread-marks`, `apply:prose-transform`, `read:manuscript-stats`, `write:typography-preset`, `add:font-pack`).
+- Every extension invocation is recorded in the local **Data Access Audit Log**.
+
+Developers building new add-ons can read the full specification in **[docs/DEVELOPER-EXTENSIONS.md](docs/DEVELOPER-EXTENSIONS.md)**.
+
+---
+
+## 8. Keyboard Shortcuts
+
+| Keys | Command |
+| :--- | :--- |
+| `Ctrl / Cmd + S` | Save Revision Snapshot in Manuscript view; export default format in other views |
+| `Ctrl / Cmd + O` | Open any `.bookvibe`, `.bv*`, or `.bvext` file |
+| `Ctrl / Cmd + B` / `I` | Bold / Italic Markdown wrapping around selection |
+| `Ctrl / Cmd + Shift + F` | Toggle Zen Focus mode |
+| `F1` | Open the Help manual & Icon Legend |
+| `Esc` | Close modal overlays, exit active walkthrough tour, or exit Zen Focus |
+
+---
+
+## 9. Contributing & Project Stewardship
+
+Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before submitting pull requests:
+- **Fork & branch first**: Keep commits off `main` in forks; work in dedicated topic branches.
+- **Run local checks**: Ensure `npm run typecheck`, `npm test`, and `npm run build` succeed cleanly after your last edit.
+- **Build provenance**: Bookvibe packages and sample documents embed quiet origin verification marks belonging to **`jhonrey.com`** (`bookvibe@jhonrey.com`). Forks retain MIT rights while cleanly preserving upstream attribution.
 
 ## License
 

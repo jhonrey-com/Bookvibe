@@ -17,7 +17,7 @@ import {
   saveBookvibeExtensionFile,
   saveDefaultExportFormat,
 } from './core/bridge';
-import { renderCoverToPngDataUrl } from './core/cover';
+import { renderCoverToPngDataUrl, renderFullWrapToPngDataUrl } from './core/cover';
 import { EXPORT_FORMAT_OPTIONS } from './core/export';
 import {
   applyOpenedExtensionFile,
@@ -26,6 +26,7 @@ import {
   safeJsonParse,
   serializeExtensionFile,
 } from './core/extensions';
+import { loadCustomFonts } from './core/fonts';
 import {
   createInitialLibrary,
   getActiveBookFromLibrary,
@@ -44,18 +45,27 @@ import {
   getProjectWordCount,
   updateSceneInProject,
 } from './core/manuscript';
+import { importAnyExternalDocumentFile } from './core/migrate';
 import { realignMarksAfterEdit } from './core/proofread';
 import { createStarterBookProject } from './core/sample-book';
+import { applySettingsToDocument, loadSettings, saveSettings } from './core/settings';
 import { createSnapshotForScene } from './core/snapshots';
 import type {
   BookLibraryState,
   BookProject,
   BookvibeExtension,
+  BookvibeSettings,
   ExportFormatId,
   StudioViewId,
 } from './core/types';
 import { bookvibeLogo, clearNode, el, icon } from './ui/dom';
 import { LiquidGlassControl } from './ui/liquid-glass';
+import {
+  destroyActiveTour,
+  maybeRunFirstLaunchSplash,
+  maybeStartSectionTour,
+  replayFullWalkthrough,
+} from './ui/onboarding';
 import { TOOLTIP_CATALOG } from './ui/tooltips-catalog';
 import { renderBibleView } from './views/bible';
 import { renderBinder } from './views/binder';
@@ -64,9 +74,11 @@ import { renderCorkboardView } from './views/corkboard';
 import { renderEditorView } from './views/editor';
 import { showExtensionsModal } from './views/extensions-modal';
 import { renderGraphView } from './views/graph';
+import { showHelpModal } from './views/help-modal';
 import { renderInspector } from './views/inspector';
 import { showLibraryModal } from './views/library-modal';
 import { renderOutlineView } from './views/outline';
+import { showSettingsModal } from './views/settings-modal';
 import { renderTypesetView } from './views/typeset';
 
 const starter = createStarterBookProject();
@@ -78,6 +90,7 @@ const isMediumOrLarger = typeof window === 'undefined' || window.innerWidth > 96
 const state: AppState = {
   library: initialLibrary,
   project: starter,
+  settings: loadSettings(),
   activeView: 'editor',
   activeSceneId: getAllScenes(starter)[0]?.scene.id ?? '',
   defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.bookvibe',
@@ -133,7 +146,7 @@ function schedulePersist(): void {
     await Promise.all([persistProject(serializedBook), persistLibrary(serializedLib)]);
     state.saveStatusLabel = 'Saved';
     if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
-  }, 320);
+  }, state.settings.autoSaveDelayMs || 320);
 }
 
 function formatClock(totalSeconds: number): string {
@@ -178,7 +191,7 @@ function updateWordCountersOnly(): void {
 
 function syncResponsiveDrawerClasses(): void {
   const isNarrowDrawerMode = window.innerWidth <= 1180;
-  const inspectorActive = state.showInspector && state.activeView === 'editor';
+  const inspectorActive = state.showInspector;
   workspaceGridEl.classList.toggle('hide-binder', !state.showBinder);
   workspaceGridEl.classList.toggle('hide-inspector', !inspectorActive);
   binderToggleBtn?.classList.toggle('is-active', state.showBinder);
@@ -202,23 +215,20 @@ function renderActiveView(): void {
   headerNavGlass?.setValue(state.activeView);
 
   renderBinder(binderEl, actions);
+  renderInspector(inspectorEl, actions);
 
   if (state.activeView === 'editor') {
     renderEditorView(mainStageEl, actions);
-    renderInspector(inspectorEl, actions);
-  } else {
-    clearNode(inspectorEl);
-    if (state.activeView === 'corkboard') {
-      renderCorkboardView(mainStageEl, actions);
-    } else if (state.activeView === 'outline') {
-      renderOutlineView(mainStageEl, actions);
-    } else if (state.activeView === 'bible') {
-      renderBibleView(mainStageEl, actions);
-    } else if (state.activeView === 'graph') {
-      renderGraphView(mainStageEl, actions);
-    } else if (state.activeView === 'typeset') {
-      renderTypesetView(mainStageEl, actions);
-    }
+  } else if (state.activeView === 'corkboard') {
+    renderCorkboardView(mainStageEl, actions);
+  } else if (state.activeView === 'outline') {
+    renderOutlineView(mainStageEl, actions);
+  } else if (state.activeView === 'bible') {
+    renderBibleView(mainStageEl, actions);
+  } else if (state.activeView === 'graph') {
+    renderGraphView(mainStageEl, actions);
+  } else if (state.activeView === 'typeset') {
+    renderTypesetView(mainStageEl, actions);
   }
 
   updateWordCountersOnly();
@@ -257,9 +267,27 @@ const actions: AppActions = {
   getState: () => state,
 
   setState(patch, rerender = true) {
+    const prevView = state.activeView;
     Object.assign(state, patch);
-    if (rerender) renderActiveView();
-    else syncResponsiveDrawerClasses();
+    if (patch.activeView && patch.activeView !== prevView) {
+      destroyActiveTour();
+    }
+    if (rerender) {
+      renderActiveView();
+    } else {
+      syncResponsiveDrawerClasses();
+      if (patch.showInspector && inspectorEl && inspectorEl.childElementCount === 0) {
+        renderInspector(inspectorEl, actions);
+      }
+    }
+    if (patch.activeView && patch.activeView !== prevView) {
+      requestAnimationFrame(() => maybeStartSectionTour(state.activeView, actions));
+    }
+  },
+
+  updateSettings(patch: Partial<BookvibeSettings>) {
+    state.settings = saveSettings({ ...state.settings, ...patch });
+    applySettingsToDocument(state.settings);
   },
 
   mutateProject(updater: (prev: BookProject) => BookProject, rerender = true) {
@@ -314,6 +342,39 @@ const actions: AppActions = {
 
   openCollabModal() {
     showCollabModal(actions);
+  },
+
+  openSettingsModal(initialTab = 'fonts') {
+    showSettingsModal(actions, initialTab);
+  },
+
+  openHelpModal(initialTab = 'tour') {
+    showHelpModal(actions, initialTab);
+  },
+
+  replayWalkthrough() {
+    replayFullWalkthrough(actions);
+  },
+
+  async importExternalDocument() {
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = '.docx,.html,.htm,.rtf,.md,.markdown,.txt';
+    picker.onchange = async () => {
+      const file = picker.files?.[0];
+      if (!file) return;
+      try {
+        const imported = await importAnyExternalDocumentFile(file);
+        actions.replaceLibrary({
+          activeBookId: imported.id,
+          books: [...state.library.books, imported],
+        });
+        actions.notify(`Imported “${imported.title}”`);
+      } catch (err) {
+        actions.notify(err instanceof Error ? err.message : 'Unable to import external manuscript.');
+      }
+    };
+    picker.click();
   },
 
   switchBook(bookId: string) {
@@ -432,6 +493,17 @@ const actions: AppActions = {
     }
   },
 
+  async exportFullWrapPng() {
+    try {
+      const wrapPng = await renderFullWrapToPngDataUrl(state.project, 960, 1500);
+      if (!wrapPng) throw new Error('Unable to render full cover wrap PNG.');
+      exportCoverPngDownload(wrapPng, `${state.project.title}-full-wrap`);
+      actions.notify('Exported Full Cover Wrap PNG (Back · Spine · Front)');
+    } catch (err) {
+      actions.notify(err instanceof Error ? err.message : 'Full wrap export failed.');
+    }
+  },
+
   printTypeset() {
     if (state.activeView !== 'typeset' || state.typesetSubTab !== 'interior') {
       state.activeView = 'typeset';
@@ -510,7 +582,7 @@ function buildShell(root: HTMLElement): void {
     iconOnly: true,
     value: state.activeView,
     options: [
-      { id: 'editor', label: 'Manuscript', icon: 'edit', tooltip: TOOLTIP_CATALOG.navEditor },
+      { id: 'editor', label: 'Manuscript', icon: 'quill', tooltip: TOOLTIP_CATALOG.navEditor },
       { id: 'corkboard', label: 'Corkboard', icon: 'corkboard', tooltip: TOOLTIP_CATALOG.navCorkboard },
       { id: 'outline', label: 'Outline', icon: 'outline', tooltip: TOOLTIP_CATALOG.navOutline },
       { id: 'bible', label: 'Story Bible', icon: 'bible', tooltip: TOOLTIP_CATALOG.navBible },
@@ -518,8 +590,7 @@ function buildShell(root: HTMLElement): void {
       { id: 'typeset', label: 'Typeset', icon: 'typeset', tooltip: TOOLTIP_CATALOG.navTypeset },
     ],
     onChange: (view) => {
-      state.activeView = view;
-      renderActiveView();
+      actions.setState({ activeView: view }, true);
     },
   });
 
@@ -550,7 +621,7 @@ function buildShell(root: HTMLElement): void {
       tooltip: TOOLTIP_CATALOG.toggleInspector,
       attrs: { type: 'button', 'aria-label': 'Toggle Scene Inspector' },
       on: {
-        click: () => actions.setState({ showInspector: !state.showInspector }, true),
+        click: () => actions.setState({ showInspector: !state.showInspector }, false),
       },
     },
     icon('panel-right', 15),
@@ -562,7 +633,7 @@ function buildShell(root: HTMLElement): void {
     el(
       'div',
       { className: 'bv-brand' },
-      el('div', { className: 'bv-logo-mark' }, bookvibeLogo(19)),
+      el('div', { className: 'bv-logo-mark' }, bookvibeLogo(26)),
       binderToggleBtn,
       el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
     ),
@@ -624,6 +695,26 @@ function buildShell(root: HTMLElement): void {
           on: { click: () => actions.openExtensionsModal() },
         },
         icon('extensions', 15),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.settingsBtn,
+          attrs: { type: 'button', 'aria-label': 'Settings and Custom Fonts' },
+          on: { click: () => actions.openSettingsModal('fonts') },
+        },
+        icon('settings', 15),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.helpBtn,
+          attrs: { type: 'button', 'aria-label': 'Help and Guided Walkthrough' },
+          on: { click: () => actions.openHelpModal('tour') },
+        },
+        icon('help', 15),
       ),
       inspectorToggleBtn,
     ),
@@ -785,8 +876,17 @@ function wireGlobalShortcutsAndDrop(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       actions.setState({ zenMode: !state.zenMode }, true);
+    } else if (e.key === 'F1') {
+      e.preventDefault();
+      actions.openHelpModal('tour');
     } else if (e.key === 'Escape') {
-      const modals = ['bv-extensions-modal', 'bv-library-modal', 'bv-collab-modal'];
+      const modals = [
+        'bv-extensions-modal',
+        'bv-library-modal',
+        'bv-collab-modal',
+        'bv-help-modal',
+        'bv-settings-modal',
+      ];
       let closed = false;
       for (const mId of modals) {
         const m = document.getElementById(mId);
@@ -794,6 +894,9 @@ function wireGlobalShortcutsAndDrop(): void {
           m.remove();
           closed = true;
         }
+      }
+      if (!closed) {
+        destroyActiveTour();
       }
       if (!closed && state.zenMode) {
         actions.setState({ zenMode: false }, true);
@@ -842,10 +945,25 @@ function wireGlobalShortcutsAndDrop(): void {
     hideDrop();
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
-    const isExtPlugin = file.name.toLowerCase().endsWith('.bvext');
+    const lower = file.name.toLowerCase();
+    const isExtPlugin = lower.endsWith('.bvext');
+    const isMigrationFile = /\.(docx|html?|rtf|md|markdown|txt)$/i.test(lower);
     if (!isExtPlugin && !extractExtensionFromFilename(file.name)) {
+      if (isMigrationFile) {
+        try {
+          const imported = await importAnyExternalDocumentFile(file);
+          actions.replaceLibrary({
+            activeBookId: imported.id,
+            books: [...state.library.books, imported],
+          });
+          actions.notify(`Imported “${imported.title}” from ${file.name}`);
+        } catch (err) {
+          actions.notify(err instanceof Error ? err.message : 'Unable to import document.');
+        }
+        return;
+      }
       actions.notify(
-        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, or .bvext file.',
+        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, .bvext, .docx, .html, or .md file.',
       );
       return;
     }
@@ -906,9 +1024,12 @@ async function bootstrap(): Promise<void> {
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
   }
 
+  applySettingsToDocument(state.settings);
+  loadCustomFonts();
   buildShell(root);
   wireGlobalShortcutsAndDrop();
   renderActiveView();
+  maybeRunFirstLaunchSplash(actions);
 }
 
 void bootstrap();

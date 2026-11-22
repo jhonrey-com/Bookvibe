@@ -11,6 +11,7 @@ import {
   mergeBookRevisions,
 } from '../src/core/collab';
 import {
+  FONT_STACKS,
   applySmartTypography,
   buildEpubBlobBytes,
   buildEpubExportPayload,
@@ -19,6 +20,24 @@ import {
   buildPlainTextExport,
   formatChapterLabel,
 } from '../src/core/export';
+import { sanitizeSvgMarkup } from '../src/core/cover';
+import {
+  installFontPackFromExtension,
+  resolveEffectiveFontCss,
+  sanitizeFontFamilyName,
+  validateFontBytes,
+} from '../src/core/fonts';
+import {
+  buildEditorialHandoffReport,
+  extractDocxParagraphsFromXml,
+  importGoogleDocsHtmlToBookProject,
+  importMarkdownToBookProject,
+  importPlainTextToBookProject,
+  importRtfToBookProject,
+} from '../src/core/migrate';
+import { getPublisherProvenance, verifyPublisherProvenance } from '../src/core/provenance';
+import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from '../src/core/settings';
+import { ICON_DIRECTORY } from '../src/ui/icon-directory';
 import {
   applyExtensionPreset,
   computeManifestSha256,
@@ -51,7 +70,10 @@ import {
   addGraphEdge,
   addGraphNode,
   applyAutoLayout,
+  applyRadialLayout,
+  applyTimelineFlowLayout,
   changeGraphNodeKind,
+  exportGraphAsSvgString,
   seedGraphFromProject,
 } from '../src/core/graph';
 import { generateAuthorKeyPair, signManuscript } from '../src/core/identity';
@@ -567,5 +589,146 @@ describe('Sandboxed Integrated & External Extensions (.bvext)', () => {
     expect(presetProj.typography.trimSize).toBe('5x8');
 
     expect(loadExtensionAuditLog().length).toBeGreaterThan(0);
+  });
+});
+
+describe('Bookvibe v1.3 Beta Modules (Provenance, Settings, Fonts, Migration, Cover & Graph)', () => {
+  it('computes and verifies jhonrey.com publisher provenance marks', () => {
+    const prov = getPublisherProvenance('book-sample-1');
+    expect(prov.publisher).toBe('jhonrey.com');
+    expect(prov.mark.length).toBeGreaterThan(8);
+    expect(prov.verified).toBe(true);
+    expect(verifyPublisherProvenance(prov.publisher, prov.mark, 'book-sample-1')).toBe(true);
+    expect(verifyPublisherProvenance(prov.publisher, 'BV-TAMPERED-0000', 'book-sample-1')).toBe(false);
+    expect(verifyPublisherProvenance('other.example', prov.mark, 'book-sample-1')).toBe(false);
+  });
+
+  it('sanitizes out-of-range settings and persists round-trips cleanly', () => {
+    const clamped = sanitizeSettings({
+      editorFontSizePx: 99,
+      uiDensity: 'x' as unknown as 'comfortable',
+      editorLineHeight: 0.2,
+    });
+    expect(clamped.editorFontSizePx).toBe(28);
+    expect(clamped.uiDensity).toBe('comfortable');
+    expect(clamped.editorLineHeight).toBe(1.3);
+
+    const saved = saveSettings({
+      ...DEFAULT_SETTINGS,
+      uiDensity: 'compact',
+      editorFontSizePx: 20,
+      developerMode: true,
+    });
+    const loaded = loadSettings();
+    expect(loaded).toEqual(saved);
+    expect(loaded.uiDensity).toBe('compact');
+    expect(loaded.developerMode).toBe(true);
+  });
+
+  it('validates binary font headers, sanitizes family names, and enforces font-pack permissions', async () => {
+    const pad12 = (bytes: number[]) => {
+      const out = new Uint8Array(12);
+      out.set(bytes);
+      return out;
+    };
+
+    expect(validateFontBytes(pad12([0x00, 0x01, 0x00, 0x00]), 'Serif.ttf')).toBe('ttf');
+    expect(validateFontBytes(pad12([0x4f, 0x54, 0x54, 0x4f]), 'Display.otf')).toBe('otf');
+    expect(validateFontBytes(pad12([0x77, 0x4f, 0x46, 0x46]), 'Body.woff')).toBe('woff');
+    expect(validateFontBytes(pad12([0x77, 0x4f, 0x46, 0x32]), 'Book.woff2')).toBe('woff2');
+    expect(validateFontBytes(pad12([0x12, 0x34, 0x56, 0x78]), 'Bad.ttf')).toBeNull();
+    expect(validateFontBytes(new Uint8Array([0x00, 0x01, 0x00]), 'Short.ttf')).toBeNull();
+
+    const safeName = sanitizeFontFamilyName('My<Font>!.ttf');
+    expect(safeName).not.toContain('<');
+    expect(safeName).not.toContain('>');
+    expect(safeName).not.toContain('.ttf');
+    expect(resolveEffectiveFontCss('garamond')).toBe(FONT_STACKS.garamond.css);
+
+    const extWithoutPerm = {
+      manifest: {
+        magic: 'BOOKVIBE_EXT_V1' as const,
+        id: 'ext.font-test',
+        name: 'Blocked Font Pack',
+        version: '1.0.0',
+        author: 'Test',
+        description: 'Test font pack',
+        kind: 'external' as const,
+        permissions: ['add:font-pack' as const],
+        dataUsageSummary: 'Adds custom font stacks.',
+        fonts: [
+          {
+            id: 'font-editorial-pro',
+            family: 'Editorial Pro',
+            cssStack: '"Editorial Pro", serif',
+            category: 'serif' as const,
+          },
+        ],
+      },
+      source: 'external' as const,
+      enabled: true,
+      grantedPermissions: [],
+      installedAt: new Date().toISOString(),
+      sha256: 'abc123',
+    };
+    await expect(installFontPackFromExtension(extWithoutPerm)).rejects.toThrow(/Permission denied/);
+  });
+
+  it('strips active scripts, event handlers, and javascript URIs from cover SVGs', () => {
+    const dirty =
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>evil()</script><a href="javascript:steal()"><rect width="10" height="10" onclick="xss()"/></a></svg>';
+    const clean = sanitizeSvgMarkup(dirty);
+    expect(clean.toLowerCase()).not.toContain('<script');
+    expect(clean.toLowerCase()).not.toContain('onload=');
+    expect(clean.toLowerCase()).not.toContain('onclick=');
+    expect(clean.toLowerCase()).not.toContain('javascript:');
+  });
+
+  it('supports radial, timeline flow, and vector SVG export on Story Graph', () => {
+    const graph = seedGraphFromProject(createStarterBookProject());
+    const radial = applyRadialLayout(graph);
+    const flow = applyTimelineFlowLayout(graph);
+    expect(radial.nodes).toHaveLength(graph.nodes.length);
+    expect(flow.nodes).toHaveLength(graph.nodes.length);
+    expect(radial.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+    expect(flow.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+
+    const svgOut = exportGraphAsSvgString(radial);
+    expect(svgOut).toContain('<svg');
+    expect(svgOut).toContain(radial.nodes[0].label);
+  });
+
+  it('imports Markdown, Plain Text, HTML, RTF, DOC XML paragraphs, and generates Editorial Handoff', () => {
+    const mdBook = importMarkdownToBookProject(
+      '# Harbor Chronicle\n\n## Chapter 1\nLanterns along the quay.\n\n## Chapter 2\nBells before dawn.\n',
+      'harbor.md',
+    );
+    expect(mdBook.title).toBe('Harbor Chronicle');
+    expect(mdBook.parts[0].chapters.length).toBeGreaterThanOrEqual(2);
+
+    const txtBook = importPlainTextToBookProject('Opening note paragraph.', 'notes.txt');
+    expect(txtBook.parts[0].chapters[0].scenes[0].content).toContain('Opening note paragraph.');
+
+    const htmlBook = importGoogleDocsHtmlToBookProject(
+      '<h1>Doc Title</h1><h2>Part One</h2><p>Clean imported sentence.</p>',
+      'export.html',
+    );
+    const htmlSceneText = htmlBook.parts[0].chapters[0].scenes[0].content;
+    expect(htmlSceneText).toContain('Clean imported sentence.');
+    expect(htmlSceneText).not.toContain('<');
+
+    const rtfBook = importRtfToBookProject('{\\rtf1 Hello \\par World}', 'draft.rtf');
+    expect(rtfBook.parts[0].chapters[0].scenes[0].content).toContain('Hello');
+
+    const docxParas = extractDocxParagraphsFromXml('<w:p><w:r><w:t>Hi</w:t></w:r></w:p>');
+    expect(docxParas.map((p) => p.text)).toContain('Hi');
+
+    const handoff = buildEditorialHandoffReport(createStarterBookProject());
+    expect(handoff).toContain('# Editorial Handoff Sheet');
+  });
+
+  it('keeps every entry in ICON_DIRECTORY assigned to a unique icon', () => {
+    const names = ICON_DIRECTORY.map((entry) => entry.icon);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

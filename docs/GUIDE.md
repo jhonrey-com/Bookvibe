@@ -13,7 +13,7 @@ Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor
 - **Click inside the tooltip card** (or press `?` while a button has keyboard focus) to expand full step-by-step details and notes.
 - Click outside or press `Escape` to close an expanded help card.
 
-### Topbar Icons
+### Topbar Icons (All Unique)
 | Icon | Name | Action |
 | :--- | :--- | :--- |
 | Left sidebar frame | **Manuscript Binder** | Toggles the Parts, Chapters, and Scenes tree (slides in as a drawer on compact screens). |
@@ -22,25 +22,34 @@ Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor
 | Folder | **Open File** | Opens `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, `.bvstyle`, or installs `.bvext` extension bundles. |
 | Disk + Format dropdown | **Save / Export Default** | Saves immediately using the extension selected in the dropdown beside it (persists across restarts). |
 | Interlocking module | **Extensions & Formats** | Manages Integrated toolkits, External `.bvext` plugins with permission consent, Data Audit Log, and OS shell file registration. |
-| Right sidebar frame | **Scene Inspector** | Toggles scene metadata, proofread marks summary, Story Bible mentions, snapshots, and proofreader notes. |
+| Gear cog | **Settings & Fonts** | Installs device/extension `.ttf`/`.otf`/`.woff`/`.woff2` fonts, adjusts editor spacing, manages Imprint/ISBN/Stage, and imports `.docx` or Google Docs `.html`. |
+| Lifebuoy / Question | **Help & Guided Tour** | Opens the built-in manual, unique Icon Directory legend, keyboard reference, and animated section walkthrough replay. |
+| Right sidebar frame | **Scene Inspector** | Toggles active scene metadata, proofread marks summary, Story Bible mentions, snapshots, and proofreader notes across every workspace view. |
 
 ### Main Workspace Switcher Icons
 | Icon | Workspace | Purpose |
 | :--- | :--- | :--- |
-| Pen on line | **Manuscript** | Draft prose, proofread with editorial marks, read Split Reference, or compare Revision Diffs. |
+| Ink quill nib & line | **Manuscript** | Draft prose, proofread with editorial marks, read Split Reference, or compare Revision Diffs. |
 | 2×2 card grid | **Corkboard** | Arrange scene synopsis index cards and drag scenes between chapters. |
 | Bulleted lines | **Outline** | Filterable tabular ledger showing timeline, POV, location, status, word targets, and reading time. |
 | Open codex + ribbon | **Story Bible** | Characters, locations, lore, custom categories, custom fields, and reference images. |
-| Linked nodes | **Story Graph** | Interactive visual relationship map linking characters, plot beats, scenes, locations, and custom nodes. |
-| Serif `T` | **Typeset & Cover** | Live paginated interior preview, Cover Studio, Ready-to-Publish Author Key seal, and eBook/print exports. |
+| Linked nodes | **Story Graph** | Live interactive map linking characters, plot beats, scenes, locations, and custom nodes with Compact / Standard / Detailed views and port drag-to-connect. |
+| Serif `T` | **Typeset & Cover** | Interior page preview with custom fonts, Front/Back/Spine/Flaps Cover Studio with SVG/PNG layers, and EPUB/PDF export. |
 
 ### Editor Mode Icons
 | Icon | Mode | Behavior |
 | :--- | :--- | :--- |
-| Pen on line | **Draft** | Distraction-free prose writing canvas (*Obsidian*, *Parchment*, or *Ivory* sheets). |
+| Document sheet with pencil | **Draft** | Distraction-free prose writing canvas (*Obsidian*, *Parchment*, or *Ivory* sheets). |
 | Marked page + check | **Proofread** | Interactive editorial markup sheet supporting strikeout, caret insert, transpose, stet, comments, and Clean Preview. |
 | Divided window | **Split View** | Side-by-side reference pane for any scene or Story Bible entry. |
 | Split `+` / `−` sheets | **Revision Diff** | Word-level comparison between live text and any saved Revision Snapshot. |
+
+### Publishing & Modal Sub-Tabs
+- **Page Margins (`page-margins`)**: Book interior trim size, typeface, numerals, drop caps, and running headers.
+- **Book Cover (`cover`)**: Front, Back, Spine, Dust Jacket Flaps, and SVG/PNG drag-and-drop layers.
+- **Wax Seal (`seal`)**: Publish checklist, ECDSA Author Key signing, and release exports.
+- **ID Badge (`badge-id`)**, **Wi-Fi Waves (`wifi`)**, **Bluetooth (`bluetooth`)**: Credits, LAN PIN sync, and local file exchange tabs.
+- **Stacked Layers (`layers`)**, **Shield (`shield`)**, **Code File (`file-code`)**: Integrated extensions, `.bvext` sandbox, and official file format specs.
 
 ---
 

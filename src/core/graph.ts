@@ -268,7 +268,7 @@ export function deleteGraphEdge(graph: StoryGraph, edgeId: string): StoryGraph {
 }
 
 /**
- * Arranges nodes cleanly into categorized non-overlapping columns bounded inside the graph viewport.
+ * Arranges nodes into categorized non-overlapping columns with generous gap room for edge labels.
  */
 export function applyAutoLayout(graph: StoryGraph): StoryGraph {
   const order: GraphNodeKind[] = ['character', 'plot', 'scene', 'location', 'lore', 'custom'];
@@ -277,11 +277,11 @@ export function applyAutoLayout(graph: StoryGraph): StoryGraph {
     .filter((g) => g.length > 0);
 
   const maxCols = 4;
-  const colStep = 192;
-  const rowStep = 104;
+  const colStep = 248;
+  const rowStep = 132;
   const nextNodes: StoryGraphNode[] = [];
 
-  let bandY = 36;
+  let bandY = 42;
   for (let start = 0; start < activeGroups.length; start += maxCols) {
     const rowGroups = activeGroups.slice(start, start + maxCols);
     let maxRowsInBand = 1;
@@ -290,16 +290,122 @@ export function applyAutoLayout(graph: StoryGraph): StoryGraph {
       group.forEach((node, rowIdx) => {
         nextNodes.push({
           ...node,
-          x: 36 + colIdx * colStep,
+          x: 42 + colIdx * colStep,
           y: bandY + rowIdx * rowStep,
         });
       });
     });
-    bandY += maxRowsInBand * rowStep + 48;
+    bandY += maxRowsInBand * rowStep + 56;
   }
 
   return {
     ...graph,
     nodes: nextNodes,
   };
+}
+
+/**
+ * Places characters/plot hubs around the inner core and scenes/locations around an outer orbit.
+ */
+export function applyRadialLayout(graph: StoryGraph): StoryGraph {
+  const inner = graph.nodes.filter((n) => n.kind === 'character' || n.kind === 'plot');
+  const outer = graph.nodes.filter((n) => n.kind !== 'character' && n.kind !== 'plot');
+  const cx = 560;
+  const cy = 380;
+  const nextNodes: StoryGraphNode[] = [];
+
+  inner.forEach((node, idx) => {
+    const angle = (idx / Math.max(1, inner.length)) * Math.PI * 2 - Math.PI / 2;
+    const r = inner.length === 1 ? 0 : 185;
+    nextNodes.push({
+      ...node,
+      x: Math.max(24, Math.round(cx + Math.cos(angle) * r - 84)),
+      y: Math.max(24, Math.round(cy + Math.sin(angle) * r - 30)),
+    });
+  });
+
+  outer.forEach((node, idx) => {
+    const angle = (idx / Math.max(1, outer.length)) * Math.PI * 2 - Math.PI / 2;
+    const r = 365;
+    nextNodes.push({
+      ...node,
+      x: Math.max(24, Math.round(cx + Math.cos(angle) * r - 84)),
+      y: Math.max(24, Math.round(cy + Math.sin(angle) * r - 30)),
+    });
+  });
+
+  return { ...graph, nodes: nextNodes };
+}
+
+/**
+ * Places Scenes in left-to-right story order with cast above and locations/lore below.
+ */
+export function applyTimelineFlowLayout(graph: StoryGraph): StoryGraph {
+  const scenes = graph.nodes.filter((n) => n.kind === 'scene');
+  const topBand = graph.nodes.filter((n) => n.kind === 'character' || n.kind === 'plot');
+  const bottomBand = graph.nodes.filter(
+    (n) => n.kind === 'location' || n.kind === 'lore' || n.kind === 'custom',
+  );
+
+  const nextNodes: StoryGraphNode[] = [];
+  topBand.forEach((n, idx) =>
+    nextNodes.push({ ...n, x: 48 + idx * 240, y: 42 }),
+  );
+  scenes.forEach((n, idx) =>
+    nextNodes.push({ ...n, x: 48 + idx * 245, y: 220 }),
+  );
+  bottomBand.forEach((n, idx) =>
+    nextNodes.push({ ...n, x: 48 + idx * 240, y: 400 }),
+  );
+  return { ...graph, nodes: nextNodes };
+}
+
+function escSvg(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export function exportGraphAsSvgString(graph: StoryGraph): string {
+  const maxX = Math.max(960, ...graph.nodes.map((n) => n.x + 240));
+  const maxY = Math.max(640, ...graph.nodes.map((n) => n.y + 140));
+  const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+  const edgeEls: string[] = [];
+
+  for (const edge of graph.edges) {
+    const s = nodeMap.get(edge.sourceId);
+    const d = nodeMap.get(edge.targetId);
+    if (!s || !d) continue;
+    const x1 = s.x + 84;
+    const y1 = s.y + 30;
+    const x2 = d.x + 84;
+    const y2 = d.y + 30;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2 - 8;
+    const dash = edge.style === 'dashed' ? ' stroke-dasharray="5 4"' : '';
+    edgeEls.push(
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${escSvg(edge.color || '#6e7684')}" stroke-width="1.6"${dash}/>`,
+      `<text x="${mx}" y="${my}" fill="#a2a9b5" font-size="11" text-anchor="middle" font-family="Inter, sans-serif">${escSvg(edge.label)}</text>`,
+    );
+  }
+
+  const nodeEls = graph.nodes.map(
+    (n) => `<g transform="translate(${n.x}, ${n.y})">
+  <rect width="168" height="60" rx="7" fill="#101218" stroke="#323642" />
+  <rect width="168" height="3" rx="1.5" fill="${escSvg(n.color)}" />
+  <text x="12" y="21" fill="${escSvg(n.color)}" font-size="10" font-family="monospace">${escSvg(GRAPH_KIND_LABELS[n.kind])}</text>
+  <text x="12" y="39" fill="#eceef2" font-size="12.5" font-weight="600" font-family="Inter, sans-serif">${escSvg(n.label)}</text>
+  <text x="12" y="53" fill="#6e7684" font-size="10.5" font-family="Inter, sans-serif">${escSvg(n.subtitle)}</text>
+</g>`,
+  );
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${maxX} ${maxY}" width="${maxX}" height="${maxY}">
+  <rect width="${maxX}" height="${maxY}" fill="#08080a" />
+  ${edgeEls.join('\n  ')}
+  ${nodeEls.join('\n  ')}
+</svg>
+`;
 }

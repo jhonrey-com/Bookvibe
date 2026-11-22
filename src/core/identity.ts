@@ -1,3 +1,4 @@
+import { getPublisherProvenance } from './provenance';
 import type { AuthorIdentity, BookProject } from './types';
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -139,6 +140,7 @@ export async function signManuscript(project: BookProject): Promise<BookProject>
     ...identity,
     manuscriptDigest: signatureToken,
     lastSignedAt: new Date().toISOString(),
+    provenanceMark: getPublisherProvenance(next.id).mark,
   };
   return next;
 }

@@ -21,6 +21,16 @@ export type CoverTemplateId =
   | 'full-bleed'
   | 'minimal-spine';
 
+export type CoverFaceId = 'front' | 'back' | 'spine' | 'front-flap' | 'back-flap';
+
+export type EditorialStage =
+  | 'acquisition'
+  | 'developmental'
+  | 'line-edit'
+  | 'copyedit'
+  | 'proofread'
+  | 'print-ready';
+
 export type BookvibeExtension =
   | '.bookvibe'
   | '.bvibe'
@@ -68,7 +78,8 @@ export type ExtensionPermission =
   | 'read:bible'
   | 'propose:proofread-marks'
   | 'apply:text-transform'
-  | 'add:export-preset';
+  | 'add:export-preset'
+  | 'add:font-pack';
 
 export interface ExtensionRuleDef {
   id: string;
@@ -94,6 +105,24 @@ export interface ExtensionPresetDef {
   typography?: Partial<TypographyConfig>;
 }
 
+export interface ExtensionFontDef {
+  id: string;
+  family: string;
+  cssStack: string;
+  category: 'serif' | 'sans' | 'mono';
+  dataUrl?: string;
+}
+
+export interface CustomFontEntry {
+  id: string;
+  family: string;
+  format: 'ttf' | 'otf' | 'woff' | 'woff2' | 'system' | 'extension';
+  source: 'device' | 'system' | 'extension';
+  dataUrl?: string;
+  cssStack: string;
+  addedAt: string;
+}
+
 export interface BookvibePluginManifest {
   magic: 'BOOKVIBE_EXT_V1';
   id: string;
@@ -107,6 +136,7 @@ export interface BookvibePluginManifest {
   rules?: ExtensionRuleDef[];
   transforms?: ExtensionTransformDef[];
   presets?: ExtensionPresetDef[];
+  fonts?: ExtensionFontDef[];
   metricsReport?: 'readability';
 }
 
@@ -127,6 +157,19 @@ export interface ExtensionAuditEntry {
   permissionsUsed: ExtensionPermission[];
   dataAccessed: string;
   timestamp: string;
+}
+
+export interface BookvibeSettings {
+  uiDensity: 'comfortable' | 'compact';
+  editorFontFamily: string;
+  editorFontSizePx: number;
+  editorLineHeight: number;
+  editorSheetMaxWidthPx: number;
+  autoSaveDelayMs: number;
+  reducedMotionOverride: 'system' | 'reduce';
+  developerMode: boolean;
+  defaultImprint: string;
+  showOnboardingHints: boolean;
 }
 
 export interface SceneSnapshot {
@@ -245,6 +288,7 @@ export interface StoryBible {
 export interface TypographyConfig {
   trimSize: TrimSize;
   fontFamily: FontFamilyId;
+  customFontFamily?: string;
   fontSizePt: number;
   lineHeight: number;
   marginInches: number;
@@ -264,6 +308,7 @@ export interface AuthorIdentity {
   privateKeyJwk?: string;
   lastSignedAt: string;
   manuscriptDigest: string;
+  provenanceMark?: string;
 }
 
 export interface Collaborator {
@@ -311,14 +356,37 @@ export interface CoverElementPlacement {
   visible: boolean;
 }
 
+export interface CoverGraphicLayer {
+  id: string;
+  face: CoverFaceId;
+  name: string;
+  dataUrl: string;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  rotationDeg: number;
+  opacity: number;
+  kind: 'svg' | 'image';
+}
+
 export interface BookCoverConfig {
   template: CoverTemplateId;
   backgroundColor: string;
+  backBackgroundColor?: string;
+  spineBackgroundColor?: string;
   accentColor: string;
   textColor: string;
   backgroundImageDataUrl: string;
   imageOverlayOpacity: number;
+  backHeadline?: string;
   backBlurb: string;
+  authorBio?: string;
+  spineTitle?: string;
+  showBarcodeBox?: boolean;
+  frontFlapText?: string;
+  backFlapText?: string;
+  customFontFamily?: string;
+  graphicLayers?: CoverGraphicLayer[];
   editionLabel: string;
   elements: {
     title: CoverElementPlacement;
@@ -327,6 +395,13 @@ export interface BookCoverConfig {
     edition: CoverElementPlacement;
     signature: CoverElementPlacement;
   };
+}
+
+export interface BookPublishingMeta {
+  imprintName: string;
+  isbn: string;
+  editionNumber: string;
+  editorialStage: EditorialStage;
 }
 
 export interface BookProject {
@@ -347,6 +422,7 @@ export interface BookProject {
   activeAuthorLabel?: string;
   storyGraph?: StoryGraph;
   cover?: BookCoverConfig;
+  publishing?: BookPublishingMeta;
 }
 
 export interface BookLibraryState {
@@ -370,6 +446,7 @@ export interface BookvibeEnvelope<T = unknown> {
   mimeType: string;
   uti: string;
   exportedAt: string;
+  provenanceMark?: string;
   payload: T;
 }
 
@@ -385,6 +462,7 @@ export interface BookvibeManuscriptPayload {
   authorIdentity?: AuthorIdentity;
   collaborators?: Collaborator[];
   cover?: BookCoverConfig;
+  publishing?: BookPublishingMeta;
 }
 
 export interface BookvibeBiblePayload {

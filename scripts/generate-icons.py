@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate minimalist monochrome obsidian-and-ivory icons and multi-size ICO assets for Bookvibe."""
+"""Generate crisp full-bleed monochrome obsidian-and-ivory icons and multi-size ICO assets for Bookvibe."""
 import math
 import os
 import struct
@@ -43,44 +43,43 @@ def blend(dst: tuple[float, float, float], src: tuple[float, float, float], alph
 
 def sample_logo_pixel(nx: float, ny: float, px_scale: float) -> tuple[float, float, float, float]:
     """Sample single sub-pixel in normalized [-0.5, 0.5] coordinates."""
-    squircle_dist = sd_rounded_box(nx, ny, 0.46, 0.46, 0.14)
+    # Large full-bleed squircle matching Google/GitHub desktop icon fill proportions
+    squircle_dist = sd_rounded_box(nx, ny, 0.47, 0.47, 0.145)
     outer_alpha = max(0.0, min(1.0, 0.5 - squircle_dist * px_scale))
     if outer_alpha <= 0.0:
         return (0.0, 0.0, 0.0, 0.0)
 
-    # Obsidian architectural base (#0d0e12) with subtle radial depth
     depth = max(0.0, 1.0 - (nx * nx + ny * ny) * 2.0) * 5.0
     col = (13.0 + depth, 14.0 + depth, 18.0 + depth)
 
-    # Hairline inner frame (#2a2e39)
-    border_band = abs(squircle_dist + 0.015) - 0.010
+    border_band = abs(squircle_dist + 0.014) - 0.009
     border_a = max(0.0, min(1.0, 0.5 - border_band * px_scale))
     if border_a > 0.0:
-        col = blend(col, (42.0, 46.0, 57.0), border_a)
+        col = blend(col, (46.0, 50.0, 62.0), border_a)
 
-    # Minimalist open-book geometric strokes (#f2efe8) matching bookvibe-logo.svg
+    # Bold open-book spread filling center canvas (matching assets/bookvibe-logo.svg)
     d_book = min(
-        seg_dist(nx, ny, -0.265, -0.187, 0.0, -0.117),
-        seg_dist(nx, ny, 0.265, -0.187, 0.0, -0.117),
-        seg_dist(nx, ny, -0.265, 0.156, 0.0, 0.226),
-        seg_dist(nx, ny, 0.265, 0.156, 0.0, 0.226),
-        seg_dist(nx, ny, -0.265, -0.187, -0.265, 0.156),
-        seg_dist(nx, ny, 0.265, -0.187, 0.265, 0.156),
-        seg_dist(nx, ny, 0.0, -0.117, 0.0, 0.226),
+        seg_dist(nx, ny, -0.328, -0.234, 0.0, -0.140),
+        seg_dist(nx, ny, 0.328, -0.234, 0.0, -0.140),
+        seg_dist(nx, ny, -0.328, 0.172, 0.0, 0.266),
+        seg_dist(nx, ny, 0.328, 0.172, 0.0, 0.266),
+        seg_dist(nx, ny, -0.328, -0.234, -0.328, 0.172),
+        seg_dist(nx, ny, 0.328, -0.234, 0.328, 0.172),
+        seg_dist(nx, ny, 0.0, -0.140, 0.0, 0.266),
     )
-    book_stroke = max(0.019, 1.05 / px_scale)
+    book_stroke = max(0.026, 1.15 / px_scale)
     book_a = max(0.0, min(1.0, 0.5 - (d_book - book_stroke) * px_scale))
     if book_a > 0.0:
         col = blend(col, (242.0, 239.0, 232.0), book_a)
 
-    # Secondary ruled folio lines in muted stone (#8c929f)
+    # Ruled page lines
     d_rules = min(
-        seg_dist(nx, ny, -0.18, -0.062, -0.07, -0.034),
-        seg_dist(nx, ny, -0.18, 0.031, -0.07, 0.059),
-        seg_dist(nx, ny, 0.07, -0.034, 0.18, -0.062),
-        seg_dist(nx, ny, 0.07, 0.059, 0.18, 0.031),
+        seg_dist(nx, ny, -0.226, -0.078, -0.090, -0.039),
+        seg_dist(nx, ny, -0.226, 0.039, -0.090, 0.078),
+        seg_dist(nx, ny, 0.090, -0.039, 0.226, -0.078),
+        seg_dist(nx, ny, 0.090, 0.078, 0.226, 0.039),
     )
-    rule_stroke = max(0.014, 0.85 / px_scale)
+    rule_stroke = max(0.018, 0.9 / px_scale)
     rule_a = max(0.0, min(1.0, 0.5 - (d_rules - rule_stroke) * px_scale))
     if rule_a > 0.0:
         col = blend(col, (140.0, 146.0, 159.0), rule_a)
@@ -133,7 +132,6 @@ def encode_png(size: int, rgba: bytes) -> bytes:
 
 
 def encode_multi_ico(images: list[tuple[int, bytes]]) -> bytes:
-    # Multi-size PNG-embedded ICO container (16, 32, 48, 256)
     count = len(images)
     header = struct.pack("<HHH", 0, 1, count)
     offset = 6 + 16 * count
@@ -173,7 +171,7 @@ def main() -> None:
         for name, data in files:
             with open(os.path.join(target_dir, name), "wb") as fh:
                 fh.write(data)
-    print(f"Generated Bookvibe minimalist icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
+    print(f"Generated enlarged Bookvibe minimalist icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
 
 
 if __name__ == "__main__":

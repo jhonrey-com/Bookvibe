@@ -2,35 +2,39 @@ import { attachTooltip, type TooltipSpec } from './tooltip';
 
 export type IconName =
   | 'book'
-  | 'edit'
+  | 'quill'
+  | 'draft-sheet'
   | 'proofread'
+  | 'split'
   | 'diff'
   | 'corkboard'
   | 'outline'
   | 'bible'
   | 'graph'
   | 'typeset'
+  | 'page-margins'
+  | 'cover'
+  | 'seal'
   | 'library'
   | 'collab'
+  | 'badge-id'
   | 'folder'
   | 'save'
   | 'extensions'
+  | 'layers'
+  | 'shield'
+  | 'file-code'
+  | 'settings'
+  | 'help'
   | 'panel-left'
   | 'panel-right'
-  | 'cover'
   | 'typewriter'
   | 'split-scene'
-  | 'shield'
-  | 'info'
-  | 'strikethrough'
-  | 'comment'
+  | 'zen'
+  | 'camera'
+  | 'clock'
   | 'plus'
   | 'trash'
-  | 'camera'
-  | 'split'
-  | 'clock'
-  | 'zen'
-  | 'file'
   | 'check'
   | 'chevron-right'
   | 'chevron-down'
@@ -39,7 +43,8 @@ export type IconName =
   | 'image'
   | 'key'
   | 'wifi'
-  | 'bluetooth';
+  | 'bluetooth'
+  | 'file';
 
 type ChildInput = Node | string | number | null | undefined | false;
 
@@ -129,9 +134,9 @@ export function clearNode(node: Element): void {
 }
 
 /**
- * Minimalist obsidian-and-ivory open-book emblem matching assets/bookvibe-logo.svg.
+ * Enlarged full-bleed obsidian-and-ivory emblem matching assets/bookvibe-logo.svg.
  */
-export function bookvibeLogo(size = 20): SVGSVGElement {
+export function bookvibeLogo(size = 24): SVGSVGElement {
   const svg = svgEl('svg', {
     width: size,
     height: size,
@@ -141,23 +146,23 @@ export function bookvibeLogo(size = 20): SVGSVGElement {
   });
   svg.append(
     svgEl('path', {
-      d: 'M12 18L32 23.5V48L12 42.5V18Z',
+      d: 'M9 15.5L32 22V50.5L9 44V15.5Z',
       stroke: '#f2efe8',
-      'stroke-width': '3.4',
+      'stroke-width': '3.8',
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
     }),
     svgEl('path', {
-      d: 'M52 18L32 23.5V48L52 42.5V18Z',
+      d: 'M55 15.5L32 22V50.5L55 44V15.5Z',
       stroke: '#f2efe8',
-      'stroke-width': '3.4',
+      'stroke-width': '3.8',
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
     }),
     svgEl('path', {
-      d: 'M18.5 27.5L26.5 29.8M18.5 34.5L26.5 36.8M37.5 29.8L45.5 27.5M37.5 36.8L45.5 34.5',
+      d: 'M16.5 26.5L25.5 29.2M16.5 34.5L25.5 37.2M38.5 29.2L47.5 26.5M38.5 37.2L47.5 34.5',
       stroke: '#8c929f',
-      'stroke-width': '2.4',
+      'stroke-width': '2.6',
       'stroke-linecap': 'round',
     }),
   );
@@ -168,15 +173,24 @@ const ICON_PATHS: Record<IconName, string[]> = {
   book: [
     'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a2.5 2.5 0 0 1 0-5H20',
   ],
-  edit: [
+  quill: [
+    'M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z',
+    'M16 8L2 22',
+    'M17.5 15H9',
+  ],
+  'draft-sheet': [
     'M12 20h9',
-    'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z',
+    'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z',
   ],
   proofread: [
     'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
     'M14 2v6h6',
-    'M8 14h8',
+    'M8 13h8',
     'M9 17.5l2 2 4-4',
+  ],
+  split: [
+    'M12 3v18',
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
   ],
   diff: [
     'M4 5h6',
@@ -215,16 +229,32 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M9 20h6',
     'M12 4v16',
   ],
+  'page-margins': [
+    'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+    'M8 7h8v10H8z',
+  ],
+  cover: [
+    'M4 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4V4z',
+    'M8 4v16',
+    'M11.5 9h5',
+    'M11.5 13h3.5',
+  ],
+  seal: [
+    'M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
+    'M8.21 13.89L7 23l5-3 5 3-1.21-9.12',
+  ],
   library: [
     'M4 19.5V4.5A1.5 1.5 0 0 1 5.5 3h2A1.5 1.5 0 0 1 9 4.5v15',
     'M9 19.5V6.5A1.5 1.5 0 0 1 10.5 5h2A1.5 1.5 0 0 1 14 6.5v13',
     'M14 19.5l4.2-13.6a1.4 1.4 0 0 1 1.7-.9l1.4.4a1.4 1.4 0 0 1 .9 1.7L18 20.5',
     'M3 20h18',
   ],
-  collab: [
-    'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2',
-    'M23 21v-2a4 4 0 0 0-3-3.87',
-    'M16 3.13a4 4 0 0 1 0 7.75',
+  collab: [],
+  'badge-id': [
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
+    'M7 9h10',
+    'M7 13h6',
+    'M7 17h4',
   ],
   folder: [
     'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
@@ -237,6 +267,30 @@ const ICON_PATHS: Record<IconName, string[]> = {
   extensions: [
     'M19 10h-2V7a2 2 0 0 0-2-2h-2.17a2.5 2.5 0 1 0-4.66 0H5a2 2 0 0 0-2 2v3h2.17a2.5 2.5 0 1 1 0 5H3v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h2a2.5 2.5 0 0 0 0-5z',
   ],
+  layers: [
+    'M12 2L2 7l10 5 10-5-10-5z',
+    'M2 12l10 5 10-5',
+    'M2 17l10 5 10-5',
+  ],
+  shield: [
+    'M12 3l7 3v6c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6l7-3z',
+    'M9.5 12.2l1.8 1.8 3.5-3.6',
+  ],
+  'file-code': [
+    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
+    'M14 2v6h6',
+    'M10 13l-2 2 2 2',
+    'M14 13l2 2-2 2',
+  ],
+  settings: [
+    'M4 6h16',
+    'M4 12h16',
+    'M4 18h16',
+  ],
+  help: [
+    'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3',
+    'M12 17h.01',
+  ],
   'panel-left': [
     'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
     'M9 3v18',
@@ -244,12 +298,6 @@ const ICON_PATHS: Record<IconName, string[]> = {
   'panel-right': [
     'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
     'M15 3v18',
-  ],
-  cover: [
-    'M4 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4V4z',
-    'M8 4v16',
-    'M11.5 9h5',
-    'M11.5 13h3.5',
   ],
   typewriter: [
     'M4 12h16',
@@ -263,46 +311,20 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M6 6h12',
     'M6 18h12',
   ],
-  shield: [
-    'M12 3l7 3v6c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6l7-3z',
-    'M9.5 12.2l1.8 1.8 3.5-3.6',
-  ],
-  info: [
-    'M12 16v-4',
-    'M12 8h.01',
-  ],
-  strikethrough: [
-    'M4 12h16',
-    'M16 6.5C15.5 5 14 4 12 4s-4 1-4 3c0 1.4.9 2.2 2.5 2.8',
-    'M8 17.5C8.5 19 10 20 12 20s4-1 4-3c0-1.1-.5-1.9-1.5-2.5',
-  ],
-  comment: [
-    'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
-  ],
-  plus: ['M12 5v14', 'M5 12h14'],
-  trash: [
-    'M3 6h18',
-    'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
-  ],
-  camera: [
-    'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z',
-  ],
-  split: [
-    'M12 3v18',
-    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
-  ],
-  clock: [
-    'M12 6v6l4 2',
-  ],
   zen: [
     'M15 3h6v6',
     'M9 21H3v-6',
     'M21 3l-7 7',
     'M3 21l7-7',
   ],
-  file: [
-    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
-    'M14 2v6h6',
+  camera: [
+    'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z',
+  ],
+  clock: ['M12 6v6l4 2'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  trash: [
+    'M3 6h18',
+    'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
   ],
   check: ['M20 6L9 17l-5-5'],
   'chevron-right': ['M9 18l6-6-6-6'],
@@ -329,8 +351,10 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M8.53 16.11a6 6 0 0 1 6.95 0',
     'M12 20h.01',
   ],
-  bluetooth: [
-    'M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11',
+  bluetooth: ['M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11'],
+  file: [
+    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
+    'M14 2v6h6',
   ],
 };
 
@@ -368,8 +392,20 @@ export function icon(name: IconName, size = 15): SVGSVGElement {
     return svg;
   }
 
-  if (name === 'clock' || name === 'info') {
-    svg.appendChild(svgEl('circle', { cx: 12, cy: 12, r: 9 }));
+  if (name === 'settings') {
+    svg.append(
+      svgEl('path', { d: 'M4 6h16' }),
+      svgEl('path', { d: 'M4 12h16' }),
+      svgEl('path', { d: 'M4 18h16' }),
+      svgEl('circle', { cx: 8, cy: 6, r: 2, fill: '#0b0c10' }),
+      svgEl('circle', { cx: 16, cy: 12, r: 2, fill: '#0b0c10' }),
+      svgEl('circle', { cx: 10, cy: 18, r: 2, fill: '#0b0c10' }),
+    );
+    return svg;
+  }
+
+  if (name === 'clock' || name === 'help') {
+    svg.append(svgEl('circle', { cx: 12, cy: 12, r: 9 }));
     for (const d of ICON_PATHS[name]) {
       svg.appendChild(svgEl('path', { d }));
     }

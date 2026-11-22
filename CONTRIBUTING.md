@@ -1,16 +1,44 @@
 # Contributing to Bookvibe
 
-Thank you for contributing to Bookvibe.
+Thank you for helping improve Bookvibe. Bookvibe is maintained in the open under `jhonrey-com/Bookvibe` so authors keep a dependable, offline-first studio without broken releases or surprise changes.
 
-## Engineering Principles
+## Repository Branching & Protection Model
 
-1. **Pure Human Writing Focus**: Bookvibe is strictly a human writing, structural editing, worldbuilding, and typesetting studio. Do not submit LLM/AI integrations or external tracking telemetry.
-2. **Zero XSS Sinks**: All DOM construction uses native `document.createElement` / `createElementNS` helpers in `src/ui/dom.ts`. Never introduce `innerHTML`, `outerHTML`, `document.write`, `eval`, or `new Function`.
-3. **Deterministic File Formats**: Changes to any `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, or `.bvstyle` payload must preserve the `"magic": "BOOKVIBE_V1"` header and validate against `schemas/bookvibe-extensions.schema.json`.
-4. **Verification Gate**: Before submitting a pull request, ensure the full suite passes:
+The `main` branch reflects the tested source baseline. To keep the primary codebase clean and prevent accidental breakage:
+
+1. **Fork the repository** into your own GitHub account (`https://github.com/jhonrey-com/Bookvibe`).
+2. **Create a focused feature or fix branch** from `main` (never commit directly to `main`):
    ```bash
-   npm run typecheck
-   npm test
-   npm run build
-   cd src-tauri && cargo test
+   git checkout -b fix/story-graph-edge-snapping
    ```
+3. **Keep changes modular and local to the issue.** Avoid bundling unrelated style rewrites, unsolicited dependencies, or config alterations into the same pull request.
+4. **Preserve author privacy and build provenance.** Do not insert personal real names, credentials, API keys, or remote telemetry calls anywhere in source, documentation, or manifests.
+
+## Required Checks Before Opening a Pull Request
+
+Run every workspace verification step locally after your final edit:
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+When changing desktop Rust commands (`src-tauri/src/`), also run:
+
+```bash
+cd src-tauri && cargo check
+```
+
+## Coding Conventions
+
+- Keep all user-facing strings, documentation, tooltips, and comments direct and factual.
+- Avoid DOM string injection APIs (`innerHTML`, `outerHTML`) and dynamic code evaluation (`eval`, `new Function`). Build DOM nodes with `el()` / `svgEl()` from `src/ui/dom.ts`.
+- Keep every tool icon unique per switcher or toolbar button, and add matching documentation to `src/ui/icon-directory.ts`.
+- Respect `prefers-reduced-motion: reduce` and responsive layouts down to `768×700`.
+
+## Submitting Your Pull Request
+
+- Summarize what changed and why in 2–4 plain sentences.
+- List the commands you ran (`typecheck`, `test`, `build`) and confirm visual checks in Chrome DevTools / Tauri.
+- Wait for maintainer review before merging.

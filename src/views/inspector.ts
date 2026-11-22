@@ -23,19 +23,32 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
     'div',
     { className: 'bv-panel-head' },
     el('span', { className: 'bv-panel-title', text: 'Scene Inspector' }),
-    ctx
-      ? el(
-          'button',
-          {
+    el(
+      'div',
+      { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
+      state.activeView !== 'editor' && ctx
+        ? el('button', {
             className: 'bv-mini-btn',
-            tooltip: { title: 'Export .bvscene', short: 'Save this scene alone as a double-clickable .bvscene file.' },
+            text: 'Edit',
+            tooltip: { title: 'Jump to Scene', short: 'Switch main canvas to this scene in Manuscript Draft mode.' },
             attrs: { type: 'button' },
-            on: { click: () => void actions.exportAsExtension('.bvscene', { sceneId: ctx.scene.id }) },
-          },
-          icon('file', 11),
-          '.bvscene',
-        )
-      : null,
+            on: { click: () => actions.selectScene(ctx.scene.id, true) },
+          })
+        : null,
+      ctx
+        ? el(
+            'button',
+            {
+              className: 'bv-mini-btn',
+              tooltip: { title: 'Export .bvscene', short: 'Save this scene alone as a double-clickable .bvscene file.' },
+              attrs: { type: 'button' },
+              on: { click: () => void actions.exportAsExtension('.bvscene', { sceneId: ctx.scene.id }) },
+            },
+            icon('file', 11),
+            '.bvscene',
+          )
+        : null,
+    ),
   );
 
   const scroll = el('div', { className: 'bv-inspector-scroll' });

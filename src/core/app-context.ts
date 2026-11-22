@@ -2,6 +2,7 @@ import type {
   BookLibraryState,
   BookProject,
   BookvibeExtension,
+  BookvibeSettings,
   ExportFormatId,
   StudioViewId,
 } from './types';
@@ -14,6 +15,7 @@ export type ExtensionsModalTab = 'integrated' | 'external' | 'formats';
 export interface AppState {
   library: BookLibraryState;
   project: BookProject;
+  settings: BookvibeSettings;
   activeView: StudioViewId;
   activeSceneId: string;
   defaultExportFormat: ExportFormatId;
@@ -41,6 +43,7 @@ export interface AppState {
 export interface AppActions {
   getState(): AppState;
   setState(patch: Partial<AppState>, rerender?: boolean): void;
+  updateSettings(patch: Partial<BookvibeSettings>): void;
   mutateProject(updater: (prev: BookProject) => BookProject, rerender?: boolean): void;
   updateActiveSceneTextQuietly(field: 'title' | 'content', value: string): void;
   selectScene(sceneId: string, switchToEditor?: boolean): void;
@@ -48,6 +51,10 @@ export interface AppActions {
   openExtensionsModal(initialTab?: ExtensionsModalTab): void;
   openLibraryModal(): void;
   openCollabModal(): void;
+  openSettingsModal(initialTab?: 'fonts' | 'editor' | 'publishing' | 'developer'): void;
+  openHelpModal(initialTab?: 'tour' | 'icons' | 'guides' | 'reference'): void;
+  replayWalkthrough(): void;
+  importExternalDocument(): Promise<void>;
   switchBook(bookId: string): void;
   replaceLibrary(library: BookLibraryState): void;
   setDefaultExportFormat(fmt: ExportFormatId): void;
@@ -59,6 +66,7 @@ export interface AppActions {
   exportHtml(): Promise<void>;
   exportPlainText(): Promise<void>;
   exportCoverPng(): Promise<void>;
+  exportFullWrapPng(): Promise<void>;
   printTypeset(): void;
   createSnapshot(label?: string): void;
   notify(message: string): void;

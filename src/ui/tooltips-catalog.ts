@@ -76,16 +76,26 @@ export const TOOLTIP_CATALOG = {
   extensionsManager: {
     title: 'Extensions & Formats',
     short: 'Manage integrated toolkits, external plugins, and file formats.',
-    details: 'Enable or run built-in proofing/cleanup extensions, inspect permissions before installing external .bvext files, view the data audit log, or register Bookvibe extensions with your OS.',
+    details: 'Enable or run built-in proofing/cleanup/font extensions, inspect permissions before installing external .bvext files, view the data audit log, or register Bookvibe extensions with your OS.',
     tips: [
       'External plugins require explicit permission review before install.',
       'Extensions cannot access the internet, filesystem, or private author keys.',
     ],
   },
+  settingsBtn: {
+    title: 'Preferences & Migration',
+    short: 'Custom fonts, editor spacing, Word/Google Docs import, and dev tools.',
+    details: 'Upload device fonts (.ttf/.otf/.woff/.woff2), import .docx/.html/.md/.rtf manuscripts, configure imprint metadata, and toggle developer diagnostics.',
+  },
+  helpBtn: {
+    title: 'Help, Icon Directory & Guided Tour',
+    short: 'View icon meanings, step-by-step guides, and replay interactive tours.',
+    shortcut: 'F1',
+  },
   toggleInspector: {
     title: 'Scene Inspector',
-    short: 'Show or hide scene metadata, snapshots, and proof notes.',
-    details: 'Displays POV, location, synopsis, detected Story Bible mentions, snapshots, and proofreader annotations.',
+    short: 'Show or hide scene metadata, snapshots, and proof notes across any workspace view.',
+    details: 'Displays POV, location, synopsis, detected Story Bible mentions, snapshots, and proofreader notes.',
   },
   modeDraft: {
     title: 'Draft Mode',

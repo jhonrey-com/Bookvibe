@@ -1,0 +1,23 @@
+PackageIdentifier: jhonrey.Bookvibe
+PackageVersion: 1.3.0
+PackageLocale: en-US
+Publisher: jhonrey.com
+PublisherUrl: https://github.com/jhonrey-com/Bookvibe
+PackageName: Bookvibe
+PackageUrl: https://github.com/jhonrey-com/Bookvibe
+License: MIT
+ShortDescription: Desktop book writing, proofreading, worldbuilding, and typesetting studio.
+Moniker: bookvibe
+Tags:
+  - book-writing
+  - markdown
+  - epub
+  - proofreading
+  - typesetting
+Installers:
+  - Architecture: x64
+    InstallerType: wix
+    InstallerUrl: https://github.com/jhonrey-com/Bookvibe/releases/download/v1.3.0/Bookvibe_1.3.0_x64_en-US.msi
+    InstallerSha256: REPLACE_ON_RELEASE
+ManifestType: singleton
+ManifestVersion: 1.6.0

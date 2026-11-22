@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" fill="none">
+  <rect width="1200" height="360" rx="8" fill="#0b0c10" />
+  <rect x="0.5" y="0.5" width="1199" height="359" rx="7.5" stroke="#1b1e27" />
+
+  <!-- Topbar rule -->
+  <line x1="0" y1="44" x2="1200" y2="44" stroke="#1b1e27" />
+  <rect x="20" y="14" width="16" height="16" rx="4" stroke="#2c313d" fill="#0d0e12" />
+  <rect x="46" y="17" width="108" height="10" rx="2" fill="#181b24" />
+  <rect x="456" y="10" width="288" height="24" rx="12" fill="#101218" stroke="#222633" />
+  <rect x="464" y="14" width="42" height="16" rx="8" fill="#1b1e28" stroke="#2f3545" />
+  <rect x="1028" y="13" width="152" height="18" rx="4" fill="#11131a" stroke="#202430" />
+
+  <!-- Three-pane architectural schematic -->
+  <line x1="230" y1="44" x2="230" y2="332" stroke="#1b1e27" />
+  <line x1="946" y1="44" x2="946" y2="332" stroke="#1b1e27" />
+
+  <!-- Binder -->
+  <text x="20" y="72" fill="#6f7785" font-family="Inter, sans-serif" font-size="11" letter-spacing="1.2">MANUSCRIPT</text>
+  <rect x="20" y="88" width="170" height="8" rx="2" fill="#1f232e" />
+  <rect x="30" y="108" width="150" height="8" rx="2" fill="#191c25" />
+  <rect x="42" y="128" width="166" height="20" rx="4" fill="#171a23" stroke="#2f3545" />
+  <rect x="42" y="158" width="136" height="8" rx="2" fill="#161922" />
+  <rect x="30" y="182" width="150" height="8" rx="2" fill="#191c25" />
+  <rect x="42" y="202" width="128" height="8" rx="2" fill="#161922" />
+
+  <!-- Center Sheet -->
+  <rect x="280" y="68" width="616" height="246" rx="4" fill="#0d0e12" stroke="#1f232d" />
+  <text x="320" y="102" fill="#6f7785" font-family="ui-monospace, monospace" font-size="10" letter-spacing="1">PART I  ·  CHAPTER I</text>
+  <text x="320" y="140" fill="#f2efe8" font-family="Georgia, serif" font-size="24">The Paper Sheet &amp; Proofread Desk</text>
+  <line x1="320" y1="162" x2="856" y2="162" stroke="#1a1d26" />
+  <rect x="320" y="182" width="490" height="7" rx="2" fill="#232834" />
+  <rect x="320" y="200" width="450" height="7" rx="2" fill="#232834" />
+  <rect x="320" y="218" width="136" height="7" rx="2" fill="#232834" />
+  <rect x="464" y="218" width="96" height="7" rx="2" fill="#5b2d2d" />
+  <rect x="568" y="218" width="110" height="7" rx="2" fill="#2e5a44" />
+  <rect x="320" y="236" width="510" height="7" rx="2" fill="#232834" />
+  <rect x="320" y="254" width="380" height="7" rx="2" fill="#232834" />
+
+  <!-- Right Inspector -->
+  <text x="968" y="72" fill="#6f7785" font-family="Inter, sans-serif" font-size="11" letter-spacing="1.2">INSPECTOR</text>
+  <rect x="968" y="88" width="210" height="44" rx="5" fill="#101218" stroke="#1f232d" />
+  <rect x="968" y="144" width="210" height="62" rx="5" fill="#101218" stroke="#1f232d" />
+  <rect x="968" y="218" width="210" height="48" rx="5" fill="#101218" stroke="#1f232d" />
+
+  <!-- Bottom ledger -->
+  <line x1="0" y1="332" x2="1200" y2="332" stroke="#1b1e27" />
+  <text x="20" y="350" fill="#6f7785" font-family="ui-monospace, monospace" font-size="10.5">
+    Scene  ·  Chapter  ·  Book Target  ·  Sprint Timer  ·  Local Auto-Save
+  </text>
+</svg>

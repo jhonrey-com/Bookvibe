@@ -24,7 +24,7 @@ Use the templates below to submit official global registration requests to the I
 - **Required parameters**: None
 - **Optional parameters**: None
 - **Encoding considerations**: Binary (UTF-8 encoded JSON as per RFC 8259)
-- **Security considerations**: Files are strictly declarative JSON data parsed without code execution, macros, or external script evaluation. Parsers must guard against oversized payloads and prototype-pollution keys (`__proto__`, `constructor`).
+- **Security considerations**: Files store declarative UTF-8 JSON data parsed without code execution, macros, or script evaluation. Parsers validate payload sizes and strip prototype-pollution keys (`__proto__`, `constructor`).
 - **Interoperability considerations**: UTF-8 JSON conforming to `schemas/bookvibe-extensions.schema.json` with `"magic": "BOOKVIBE_V1"`.
 - **Published specification**: `https://github.com/jhonrey-com/Bookvibe/blob/main/schemas/bookvibe-extensions.schema.json`
 - **Applications that use this media type**: Bookvibe Desktop Studio

@@ -24,6 +24,7 @@ export const ALLOWED_EXTENSION_PERMISSIONS: readonly ExtensionPermission[] = [
   'propose:proofread-marks',
   'apply:text-transform',
   'add:export-preset',
+  'add:font-pack',
 ] as const;
 
 export const EXTENSION_PERMISSION_INFO: Record<
@@ -59,6 +60,11 @@ export const EXTENSION_PERMISSION_INFO: Record<
     title: 'Apply Typeset Style Presets',
     dataAccessed: 'Updates trim size, typeface, line spacing, margins, and paper theme in the active book.',
     riskLabel: 'Low · Layout settings only',
+  },
+  'add:font-pack': {
+    title: 'Register Editorial Font Stacks',
+    dataAccessed: 'Adds named font families into your Fonts & Preferences selector without accessing documents.',
+    riskLabel: 'Low · Typography list only',
   },
 };
 
@@ -193,6 +199,37 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
         label: 'A5 Literary Press (Palatino 11pt)',
         paperTheme: 'ivory',
         typography: { trimSize: 'a5', fontFamily: 'palatino', fontSizePt: 11, lineHeight: 1.6, dropCaps: true },
+      },
+    ],
+  },
+  {
+    magic: 'BOOKVIBE_EXT_V1',
+    id: 'core.editorial-fonts',
+    name: 'Editorial Typeface Pack',
+    version: '1.3.0',
+    author: 'Bookvibe Integrated',
+    description: 'Registers classic editorial serif, monospace typewriter, and archival display font stacks offline.',
+    kind: 'integrated',
+    permissions: ['add:font-pack'],
+    dataUsageSummary: 'Adds curated offline CSS font stacks to Bookvibe Settings and Cover Studio. Reads zero manuscript text.',
+    fonts: [
+      {
+        id: 'f-caslon',
+        family: 'Archival Caslon',
+        cssStack: '"Libre Caslon Text", "Adobe Caslon Pro", Georgia, serif',
+        category: 'serif',
+      },
+      {
+        id: 'f-typewriter',
+        family: 'Courier Manuscript',
+        cssStack: '"Courier Prime", "Courier New", Consolas, monospace',
+        category: 'mono',
+      },
+      {
+        id: 'f-didot',
+        family: 'Editorial Display Didone',
+        cssStack: 'Didot, "Bodoni MT", "Times New Roman", serif',
+        category: 'serif',
       },
     ],
   },
@@ -467,6 +504,29 @@ export function validateExternalExtensionManifest(rawJson: string): BookvibePlug
 
   if (obj.metricsReport === 'readability') {
     manifest.metricsReport = 'readability';
+  }
+
+  if (obj.fonts !== undefined) {
+    if (!Array.isArray(obj.fonts) || obj.fonts.length > 16) {
+      throw new Error('Extension "fonts" must be an array with at most 16 font definitions.');
+    }
+    manifest.fonts = obj.fonts.map((f, idx) => {
+      if (typeof f !== 'object' || f === null) throw new Error(`Invalid font at index ${idx}.`);
+      const fo = f as Record<string, unknown>;
+      const cat = fo.category === 'sans' || fo.category === 'mono' ? fo.category : 'serif';
+      const dataUrl =
+        typeof fo.dataUrl === 'string' &&
+        /^data:font\/(ttf|otf|woff|woff2);base64,[A-Za-z0-9+/=]+$/.test(fo.dataUrl)
+          ? fo.dataUrl
+          : undefined;
+      return {
+        id: assertCleanString(fo.id, `fonts[${idx}].id`, 48),
+        family: assertCleanString(fo.family, `fonts[${idx}].family`, 64),
+        cssStack: assertCleanString(fo.cssStack, `fonts[${idx}].cssStack`, 160),
+        category: cat,
+        dataUrl,
+      };
+    });
   }
 
   return manifest;

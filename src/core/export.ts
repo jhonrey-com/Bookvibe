@@ -1,4 +1,5 @@
 import { COLLABORATOR_ROLE_LABELS } from './collab';
+import { resolveEffectiveFontCss } from './fonts';
 import { ensureAuthorIdentity } from './identity';
 import { getProjectWordCount } from './manuscript';
 import type {
@@ -255,7 +256,10 @@ export function buildMarkdownExport(project: BookProject): string {
 export function buildHtmlExport(project: BookProject): string {
   const identity = ensureAuthorIdentity(project);
   const penName = identity.penName || project.author;
-  const font = FONT_STACKS[project.typography.fontFamily].css;
+  const font = resolveEffectiveFontCss(
+    project.typography.fontFamily,
+    project.typography.customFontFamily,
+  );
   const partsHtml: string[] = [];
 
   let chapNum = 0;
@@ -410,7 +414,10 @@ export function buildEpubExportPayload(
 ): EpubExportPayload {
   const identity = ensureAuthorIdentity(project);
   const penName = identity.penName || project.author;
-  const font = FONT_STACKS[project.typography.fontFamily].css;
+  const font = resolveEffectiveFontCss(
+    project.typography.fontFamily,
+    project.typography.customFontFamily,
+  );
   const stylesheet = [
     `body { font-family: ${font}; font-size: ${project.typography.fontSizePt}pt; line-height: ${project.typography.lineHeight}; margin: 0 auto; max-width: 38em; padding: 1.5em; color: #141414; }`,
     '.cover-wrap { text-align: center; padding: 0; margin: 0; }',

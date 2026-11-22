@@ -423,7 +423,7 @@ export function showCollabModal(actions: AppActions): void {
     iconOnly: true,
     value: activeTab,
     options: [
-      { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'collab', tooltip: TOOLTIP_CATALOG.collabCredits },
+      { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'badge-id', tooltip: TOOLTIP_CATALOG.collabCredits },
       { id: 'wifi', label: 'Same-Wi-Fi LAN Sync', icon: 'wifi', tooltip: TOOLTIP_CATALOG.collabWifi },
       { id: 'bluetooth', label: 'Bluetooth & Nearby Sync', icon: 'bluetooth', tooltip: TOOLTIP_CATALOG.collabBluetooth },
     ],

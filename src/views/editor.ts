@@ -215,7 +215,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     iconOnly: true,
     value: state.editorSubMode,
     options: [
-      { id: 'draft', label: 'Draft', icon: 'edit', tooltip: TOOLTIP_CATALOG.modeDraft },
+      { id: 'draft', label: 'Draft', icon: 'draft-sheet', tooltip: TOOLTIP_CATALOG.modeDraft },
       { id: 'proofread', label: 'Proofread', icon: 'proofread', tooltip: TOOLTIP_CATALOG.modeProofread },
       { id: 'split', label: 'Split View', icon: 'split', tooltip: TOOLTIP_CATALOG.modeSplit },
       { id: 'diff', label: 'Revision Diff', icon: 'diff', tooltip: TOOLTIP_CATALOG.modeDiff },

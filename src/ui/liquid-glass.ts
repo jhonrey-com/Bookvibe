@@ -28,6 +28,10 @@ interface ButtonRecord<T extends string> {
   top: number;
   width: number;
   height: number;
+  contentLeft: number;
+  contentTop: number;
+  contentWidth: number;
+  contentHeight: number;
 }
 
 interface OdeState {
@@ -45,9 +49,7 @@ interface RgbaSample {
 
 const OMEGA = 28.0;
 const SCALE_OMEGA = 32.0;
-const JELLY_OMEGA = 26.0;
-const JELLY_ZETA = 0.4;
-const BASE_PILL_RADIUS = 13;
+const BASE_PILL_RADIUS = 11;
 
 let filterCounter = 0;
 let sharedDisplacementDataUrl: string | null = null;
@@ -158,19 +160,6 @@ function stepCriticallyDamped(state: OdeState, omega: number, dt: number): boole
   const newV = (state.velocity - temp * omega * dt) * exp;
   state.value = state.target + newX;
   state.velocity = newV;
-  return true;
-}
-
-function stepUnderdamped(state: OdeState, omega: number, zeta: number, dt: number): boolean {
-  const x0 = state.value - state.target;
-  if (Math.abs(x0) < 0.001 && Math.abs(state.velocity) < 0.001) {
-    state.value = state.target;
-    state.velocity = 0;
-    return false;
-  }
-  const accel = -2 * zeta * omega * state.velocity - omega * omega * x0;
-  state.velocity += accel * dt;
-  state.value += state.velocity * dt;
   return true;
 }
 
@@ -313,7 +302,6 @@ export class LiquidGlassControl<T extends string = string> {
   private readonly xOde: OdeState = { value: 0, velocity: 0, target: 0 };
   private readonly wOde: OdeState = { value: 64, velocity: 0, target: 64 };
   private readonly scaleOde: OdeState = { value: 1, velocity: 0, target: 1 };
-  private readonly jellyOde: OdeState = { value: 0, velocity: 0, target: 0 };
 
   private readonly sampleCanvas: HTMLCanvasElement;
   private readonly sampleCtx: CanvasRenderingContext2D | null;
@@ -411,6 +399,10 @@ export class LiquidGlassControl<T extends string = string> {
         top: 0,
         width: 0,
         height: 0,
+        contentLeft: 0,
+        contentTop: 0,
+        contentWidth: 0,
+        contentHeight: 0,
       });
     }
 
@@ -483,7 +475,7 @@ export class LiquidGlassControl<T extends string = string> {
     const feDisp = svgEl('feDisplacementMap', {
       in: 'SourceGraphic',
       in2: 'refractMap',
-      scale: '0.065',
+      scale: '0.032',
       xChannelSelector: 'R',
       yChannelSelector: 'G',
     });
@@ -700,8 +692,6 @@ export class LiquidGlassControl<T extends string = string> {
       this.wOde.velocity = 0;
       this.scaleOde.value = 1;
       this.scaleOde.velocity = 0;
-      this.jellyOde.value = 0;
-      this.jellyOde.velocity = 0;
       this.applyGeometry();
     } else {
       this.startLoop();
@@ -715,16 +705,25 @@ export class LiquidGlassControl<T extends string = string> {
 
     for (const rec of this.records) {
       const btnRect = rec.button.getBoundingClientRect();
+      const contentRect = rec.baseContent.getBoundingClientRect();
       if (barRect.width > 0 && btnRect.width > 0) {
         rec.left = btnRect.left - barRect.left - this.bar.clientLeft;
         rec.top = btnRect.top - barRect.top - this.bar.clientTop;
         rec.width = btnRect.width;
         rec.height = btnRect.height;
+        rec.contentLeft = contentRect.left - barRect.left - this.bar.clientLeft;
+        rec.contentTop = contentRect.top - barRect.top - this.bar.clientTop;
+        rec.contentWidth = contentRect.width;
+        rec.contentHeight = contentRect.height;
       } else {
         rec.left = rec.button.offsetLeft + this.baseLayer.offsetLeft;
         rec.top = rec.button.offsetTop + this.baseLayer.offsetTop;
         rec.width = rec.button.offsetWidth;
         rec.height = rec.button.offsetHeight;
+        rec.contentLeft = rec.left;
+        rec.contentTop = rec.top;
+        rec.contentWidth = rec.width;
+        rec.contentHeight = rec.height;
       }
 
       // Keep Layer 2 pixel-locked to Layer 1 button coordinates inside .lg-bar
@@ -770,8 +769,6 @@ export class LiquidGlassControl<T extends string = string> {
       this.wOde.velocity = 0;
       this.scaleOde.value = 1;
       this.scaleOde.velocity = 0;
-      this.jellyOde.value = 0;
-      this.jellyOde.velocity = 0;
       this.applyGeometry();
       return;
     }
@@ -780,24 +777,19 @@ export class LiquidGlassControl<T extends string = string> {
     const movingW = stepCriticallyDamped(this.wOde, OMEGA, dt);
     const movingS = stepCriticallyDamped(this.scaleOde, SCALE_OMEGA, dt);
 
-    // Velocity-gated damped jelly/skew impulse during active fast glide
-    this.jellyOde.target = clamp(this.xOde.velocity / 1400, -0.08, 0.08);
-    const movingJ = stepUnderdamped(this.jellyOde, JELLY_OMEGA, JELLY_ZETA, dt);
-
     this.applyGeometry();
 
     if (now - this.lastSampleTime >= 28) {
       this.sampleBackdrop(false);
     }
 
-    if (movingX || movingW || movingS || movingJ) {
+    if (movingX || movingW || movingS) {
       this.rafId = requestAnimationFrame(this.tick);
     }
   };
 
   /**
-   * Pillar A: Dual-Layer Stacked X-Ray Cookie-Cutter Mask + Live Scaled Pill Geometry.
-   * Negative inset offsets are deliberately used when expanded scale crosses bar bounds.
+   * Pillar A: Dual-Layer Stacked X-Ray Cookie-Cutter Mask aligned cleanly to inner content bounds.
    */
   private applyGeometry(): void {
     if (this.barWidth <= 0 || this.barHeight <= 0) return;
@@ -807,48 +799,53 @@ export class LiquidGlassControl<T extends string = string> {
     const baseH = active && active.height > 0 ? active.height : Math.max(24, this.barHeight - 6);
 
     const scale = this.scaleOde.value;
-    const stretch = 1 + Math.abs(this.jellyOde.value) * 0.45;
-    const scaleX = scale * stretch;
-    const scaleY = scale / Math.sqrt(stretch);
-
     const pillW = Math.max(12, this.wOde.value);
     const pillH = Math.max(16, baseH);
     const centerX = this.xOde.value + pillW / 2;
     const centerY = baseTop + pillH / 2;
 
-    const scaledW = pillW * scaleX;
-    const scaledH = pillH * scaleY;
+    const scaledW = pillW * scale;
+    const scaledH = pillH * scale;
     const scaledLeft = centerX - scaledW / 2;
     const scaledTop = centerY - scaledH / 2;
     const scaledRight = scaledLeft + scaledW;
     const scaledBottom = scaledTop + scaledH;
 
-    const rx = BASE_PILL_RADIUS * scaleX;
-    const ry = BASE_PILL_RADIUS * scaleY;
+    const radius = Math.min(BASE_PILL_RADIUS * scale, scaledW / 2, scaledH / 2);
 
-    // Position the optical Liquid Glass pill cleanly around its center
     this.pill.style.left = `${this.xOde.value.toFixed(2)}px`;
     this.pill.style.top = `${baseTop.toFixed(2)}px`;
     this.pill.style.width = `${pillW.toFixed(2)}px`;
     this.pill.style.height = `${pillH.toFixed(2)}px`;
-    this.pill.style.transform = `scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
+    this.pill.style.transform = scale === 1 ? 'none' : `scale(${scale.toFixed(4)})`;
 
-    // Clip Layer 2 strictly inside the pill's scaled curved boundary
+    // Clip Layer 2 strictly inside the pill boundary
     const insetTop = scaledTop;
     const insetRight = this.barWidth - scaledRight;
     const insetBottom = this.barHeight - scaledBottom;
     const insetLeft = scaledLeft;
-    this.revealLayer.style.clipPath = `inset(${insetTop.toFixed(2)}px ${insetRight.toFixed(2)}px ${insetBottom.toFixed(2)}px ${insetLeft.toFixed(2)}px round ${rx.toFixed(2)}px / ${ry.toFixed(2)}px)`;
+    this.revealLayer.style.clipPath = `inset(${insetTop.toFixed(2)}px ${insetRight.toFixed(2)}px ${insetBottom.toFixed(2)}px ${insetLeft.toFixed(2)}px round ${radius.toFixed(2)}px)`;
 
-    // Punch the exact complementary curved rounded-rect hole out of each Layer 1 button
+    // Clip Layer 1 relative to actual baseContent pixels so zero faint outline appears above/around selected icons
     for (const rec of this.records) {
-      if (rec.width <= 0 || rec.height <= 0) continue;
-      const localPillX = scaledLeft - rec.left;
-      const localPillY = scaledTop - rec.top;
+      if (rec.contentWidth <= 0 || rec.contentHeight <= 0) continue;
+      const fullyCovered =
+        scaledLeft <= rec.contentLeft - 0.5 &&
+        scaledRight >= rec.contentLeft + rec.contentWidth + 0.5 &&
+        scaledTop <= rec.contentTop - 0.5 &&
+        scaledBottom >= rec.contentTop + rec.contentHeight + 0.5;
+
+      if (fullyCovered) {
+        rec.baseContent.style.clipPath = 'inset(50%)';
+        continue;
+      }
+
+      const localPillX = scaledLeft - rec.contentLeft;
+      const localPillY = scaledTop - rec.contentTop;
       const intersects =
-        localPillX < rec.width &&
+        localPillX < rec.contentWidth &&
         localPillX + scaledW > 0 &&
-        localPillY < rec.height &&
+        localPillY < rec.contentHeight &&
         localPillY + scaledH > 0;
 
       if (!intersects) {
@@ -856,8 +853,8 @@ export class LiquidGlassControl<T extends string = string> {
         continue;
       }
 
-      const outer = `M -12 -12 H ${(rec.width + 12).toFixed(2)} V ${(rec.height + 12).toFixed(2)} H -12 Z`;
-      const hole = buildRoundedRectSubpath(localPillX, localPillY, scaledW, scaledH, rx, ry);
+      const outer = `M -12 -12 H ${(rec.contentWidth + 12).toFixed(2)} V ${(rec.contentHeight + 12).toFixed(2)} H -12 Z`;
+      const hole = buildRoundedRectSubpath(localPillX, localPillY, scaledW, scaledH, radius, radius);
       rec.baseContent.style.clipPath = `path(evenodd, "${outer} ${hole}")`;
     }
   }

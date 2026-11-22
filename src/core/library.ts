@@ -51,6 +51,14 @@ export function normalizeProjectDefaults(raw: BookProject): BookProject {
   if (!next.cover) {
     next.cover = defaultBookCover(next);
   }
+  if (!next.publishing) {
+    next.publishing = {
+      imprintName: 'Independent',
+      isbn: '',
+      editionNumber: '1st Edition',
+      editorialStage: 'developmental',
+    };
+  }
   return next;
 }
 
