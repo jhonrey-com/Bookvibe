@@ -1,0 +1,89 @@
+Windows Registry Editor Version 5.00
+
+; Bookvibe Official Per-User File Extension Registrations
+; Replace C:\\Program Files\\Bookvibe\\bookvibe.exe with your Bookvibe executable path if installing manually.
+; Bookvibe also writes these keys automatically under HKEY_CURRENT_USER on launch (no Administrator required).
+
+[HKEY_CURRENT_USER\Software\Classes\.bookvibe]
+@="Bookvibe.Project.1"
+"Content Type"="application/vnd.bookvibe.project+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Project.1]
+@="Bookvibe Master Project"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Project.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Project.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.bvibe]
+@="Bookvibe.CompactProject.1"
+"Content Type"="application/vnd.bookvibe.project+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.CompactProject.1]
+@="Bookvibe Compact Project"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.CompactProject.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.CompactProject.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.bvbook]
+@="Bookvibe.Manuscript.1"
+"Content Type"="application/vnd.bookvibe.manuscript+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Manuscript.1]
+@="Bookvibe Manuscript Package"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Manuscript.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Manuscript.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.bvbible]
+@="Bookvibe.Bible.1"
+"Content Type"="application/vnd.bookvibe.bible+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Bible.1]
+@="Bookvibe Story Bible Database"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Bible.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Bible.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.bvscene]
+@="Bookvibe.Scene.1"
+"Content Type"="application/vnd.bookvibe.scene+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Scene.1]
+@="Bookvibe Standalone Scene Draft"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Scene.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Scene.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.bvstyle]
+@="Bookvibe.Style.1"
+"Content Type"="application/vnd.bookvibe.style+json"
+"PerceivedType"="document"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Style.1]
+@="Bookvibe Typeset and Print Preset"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Style.1\DefaultIcon]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\Bookvibe.Style.1\shell\open\command]
+@="\"C:\\Program Files\\Bookvibe\\bookvibe.exe\" \"%1\""

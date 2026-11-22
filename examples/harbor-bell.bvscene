@@ -1,0 +1,26 @@
+{
+  "magic": "BOOKVIBE_V1",
+  "formatVersion": "1.0.0",
+  "extension": ".bvscene",
+  "mimeType": "application/vnd.bookvibe.scene+json",
+  "uti": "org.bookvibe.scene",
+  "exportedAt": "2026-11-22T15:00:00.000Z",
+  "payload": {
+    "bookTitle": "The Salt Cartographer",
+    "chapterTitle": "Interlude",
+    "scene": {
+      "id": "scene-harbor-bell-interlude",
+      "title": "Lantern Signal from the Breakwater",
+      "synopsis": "An unscheduled lamp flash cuts through the squall at midnight.",
+      "status": "draft",
+      "pov": "Clara Holm",
+      "location": "Skerry Reach Lighthouse",
+      "timeline": "Day 2 · 23:45",
+      "wordTarget": 900,
+      "content": "Three short shutters, a pause of four heartbeats, then one long amber flare.\n\nClara counted the sequence twice against the frosted pane before reaching for her oilskin. No mail steamer kept watch past eleven in November, and the harbor master's cutter was hauled up on skids at Brinehaven.\n\n* * *\n\nDown on the wet cobblestones of the pier, someone had already moored a cedar dory without lighting a riding lantern.",
+      "notes": "Standalone scene draft ready to double-click directly into Bookvibe.",
+      "snapshots": [],
+      "updatedAt": "2026-11-22T15:00:00.000Z"
+    }
+  }
+}

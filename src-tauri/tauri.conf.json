@@ -1,0 +1,81 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bookvibe",
+  "version": "1.0.0",
+  "identifier": "org.bookvibe.studio",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Bookvibe",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 920,
+        "minHeight": 620,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["bookvibe"],
+        "name": "Bookvibe Master Project",
+        "description": "Complete Bookvibe book manuscript, story bible, snapshots, and typography settings",
+        "mimeType": "application/vnd.bookvibe.project+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bvibe"],
+        "name": "Bookvibe Compact Project",
+        "description": "Compact alias for a Bookvibe master project bundle",
+        "mimeType": "application/vnd.bookvibe.project+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bvbook"],
+        "name": "Bookvibe Manuscript Package",
+        "description": "Standalone Bookvibe manuscript hierarchy containing parts, chapters, and scenes",
+        "mimeType": "application/vnd.bookvibe.manuscript+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bvbible"],
+        "name": "Bookvibe Story Bible Database",
+        "description": "Portable worldbuilding database of characters, locations, and lore",
+        "mimeType": "application/vnd.bookvibe.bible+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bvscene"],
+        "name": "Bookvibe Standalone Scene Draft",
+        "description": "Individual scene draft and revision snapshots for Bookvibe",
+        "mimeType": "application/vnd.bookvibe.scene+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bvstyle"],
+        "name": "Bookvibe Typeset Preset",
+        "description": "Shareable Bookvibe print and eBook typography specification",
+        "mimeType": "application/vnd.bookvibe.style+json",
+        "role": "Editor"
+      }
+    ]
+  }
+}

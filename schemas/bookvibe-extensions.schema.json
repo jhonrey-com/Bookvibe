@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bookvibe.org/schemas/bookvibe-extensions-v1.schema.json",
+  "title": "Bookvibe Official File Extension Suite (v1.0.0)",
+  "description": "Formal JSON Schema validating all six official Bookvibe file formats (.bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle).",
+  "type": "object",
+  "required": ["magic", "formatVersion", "extension", "mimeType", "uti", "exportedAt", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "magic": {
+      "type": "string",
+      "const": "BOOKVIBE_V1"
+    },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "extension": {
+      "type": "string",
+      "enum": [".bookvibe", ".bvibe", ".bvbook", ".bvbible", ".bvscene", ".bvstyle"]
+    },
+    "mimeType": {
+      "type": "string",
+      "enum": [
+        "application/vnd.bookvibe.project+json",
+        "application/vnd.bookvibe.manuscript+json",
+        "application/vnd.bookvibe.bible+json",
+        "application/vnd.bookvibe.scene+json",
+        "application/vnd.bookvibe.style+json"
+      ]
+    },
+    "uti": {
+      "type": "string",
+      "enum": [
+        "org.bookvibe.project",
+        "org.bookvibe.compact-project",
+        "org.bookvibe.manuscript",
+        "org.bookvibe.bible",
+        "org.bookvibe.scene",
+        "org.bookvibe.style"
+      ]
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "SceneSnapshot": {
+      "type": "object",
+      "required": ["id", "createdAt", "label", "content", "wordCount"],
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "label": { "type": "string" },
+        "content": { "type": "string" },
+        "wordCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SceneNode": {
+      "type": "object",
+      "required": ["id", "title", "synopsis", "status", "pov", "location", "timeline", "wordTarget", "content", "notes", "snapshots", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "synopsis": { "type": "string" },
+        "status": { "type": "string", "enum": ["outline", "draft", "revision", "final"] },
+        "pov": { "type": "string" },
+        "location": { "type": "string" },
+        "timeline": { "type": "string" },
+        "wordTarget": { "type": "integer", "minimum": 0 },
+        "content": { "type": "string" },
+        "notes": { "type": "string" },
+        "snapshots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SceneSnapshot" }
+        },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "ChapterNode": {
+      "type": "object",
+      "required": ["id", "title", "subtitle", "collapsed", "scenes"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "collapsed": { "type": "boolean" },
+        "scenes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SceneNode" }
+        }
+      }
+    },
+    "PartNode": {
+      "type": "object",
+      "required": ["id", "title", "collapsed", "chapters"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "collapsed": { "type": "boolean" },
+        "chapters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ChapterNode" }
+        }
+      }
+    },
+    "TypographyConfig": {
+      "type": "object",
+      "required": ["trimSize", "fontFamily", "fontSizePt", "lineHeight", "marginInches", "dropCaps", "smartTypography", "chapterNumeralStyle", "runningHeader", "includeFrontMatter"],
+      "properties": {
+        "trimSize": { "type": "string", "enum": ["5x8", "5.5x8.5", "6x9", "a5"] },
+        "fontFamily": { "type": "string", "enum": ["garamond", "baskerville", "palatino", "inter"] },
+        "fontSizePt": { "type": "number", "minimum": 8, "maximum": 18 },
+        "lineHeight": { "type": "number", "minimum": 1.1, "maximum": 2.2 },
+        "marginInches": { "type": "number", "minimum": 0.4, "maximum": 1.5 },
+        "dropCaps": { "type": "boolean" },
+        "smartTypography": { "type": "boolean" },
+        "chapterNumeralStyle": { "type": "string", "enum": ["roman", "word", "numeric"] },
+        "runningHeader": { "type": "boolean" },
+        "includeFrontMatter": { "type": "boolean" }
+      }
+    }
+  }
+}

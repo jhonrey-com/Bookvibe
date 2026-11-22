@@ -1,0 +1,756 @@
+import './styles/main.css';
+
+import type { AppActions, AppState } from './core/app-context';
+import {
+  exportBookAsEpub,
+  exportBookAsMarkdown,
+  exportCoverPngDownload,
+  getStartupOpenedFile,
+  loadPersistedLibrary,
+  loadPersistedProject,
+  openBookvibeFile,
+  persistLibrary,
+  persistProject,
+  saveBookvibeExtensionFile,
+} from './core/bridge';
+import { renderCoverToPngDataUrl } from './core/cover';
+import {
+  applyOpenedExtensionFile,
+  extractExtensionFromFilename,
+  parseExtensionFile,
+  safeJsonParse,
+  serializeExtensionFile,
+} from './core/extensions';
+import {
+  createInitialLibrary,
+  getActiveBookFromLibrary,
+  normalizeProjectDefaults,
+  switchActiveBook,
+  upsertBookInLibrary,
+} from './core/library';
+import {
+  countCharacters,
+  countWords,
+  estimateReadingMinutes,
+  estimateStandardPages,
+  findSceneContext,
+  getAllScenes,
+  getChapterWordCount,
+  getProjectWordCount,
+  updateSceneInProject,
+} from './core/manuscript';
+import { createStarterBookProject } from './core/sample-book';
+import { createSnapshotForScene } from './core/snapshots';
+import type {
+  BookLibraryState,
+  BookProject,
+  BookvibeExtension,
+  StudioViewId,
+} from './core/types';
+import { clearNode, el, icon } from './ui/dom';
+import { LiquidGlassControl } from './ui/liquid-glass';
+import { renderBibleView } from './views/bible';
+import { renderBinder } from './views/binder';
+import { showCollabModal } from './views/collab-modal';
+import { renderCorkboardView } from './views/corkboard';
+import { renderEditorView } from './views/editor';
+import { showExtensionsModal } from './views/extensions-modal';
+import { renderGraphView } from './views/graph';
+import { renderInspector } from './views/inspector';
+import { showLibraryModal } from './views/library-modal';
+import { renderOutlineView } from './views/outline';
+import { renderTypesetView } from './views/typeset';
+
+const starter = createStarterBookProject();
+const initialLibrary = createInitialLibrary(starter);
+
+const state: AppState = {
+  library: initialLibrary,
+  project: starter,
+  activeView: 'editor',
+  activeSceneId: getAllScenes(starter)[0]?.scene.id ?? '',
+  editorSubMode: 'draft',
+  splitTargetKind: 'character',
+  splitTargetId: starter.bible.characters[0]?.id ?? '',
+  diffSnapshotId: '',
+  typewriterMode: false,
+  zenMode: false,
+  showInspector: true,
+  bibleCategory: 'characters',
+  activeBibleId: starter.bible.characters[0]?.id ?? '',
+  activeGraphNodeId: starter.storyGraph?.nodes[0]?.id ?? '',
+  typesetSubTab: 'interior',
+  sprintRunning: false,
+  sprintDurationMin: 25,
+  sprintRemainingSec: 25 * 60,
+  sprintStartWords: getProjectWordCount(starter),
+  saveStatusLabel: 'Saved',
+};
+
+let persistTimer: number | null = null;
+let sprintInterval: number | null = null;
+let toastTimer: number | null = null;
+
+let headerNavGlass: LiquidGlassControl<StudioViewId> | null = null;
+let shellEl: HTMLDivElement;
+let binderEl: HTMLElement;
+let mainStageEl: HTMLElement;
+let inspectorEl: HTMLElement;
+let workspaceGridEl: HTMLElement;
+let bookTitleInputEl: HTMLInputElement;
+let saveStatusEl: HTMLSpanElement;
+let wordStatsEl: HTMLSpanElement;
+let sprintStatusEl: HTMLSpanElement;
+let sprintToggleBtnEl: HTMLButtonElement;
+
+function schedulePersist(): void {
+  state.library = upsertBookInLibrary(state.library, state.project);
+  state.saveStatusLabel = 'Saving…';
+  if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
+  if (persistTimer !== null) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(async () => {
+    const serializedBook = serializeExtensionFile('.bookvibe', state.project);
+    const serializedLib = JSON.stringify(state.library);
+    await Promise.all([persistProject(serializedBook), persistLibrary(serializedLib)]);
+    state.saveStatusLabel = 'Saved';
+    if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
+  }, 320);
+}
+
+function formatClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updateSprintDisplay(): void {
+  if (!sprintStatusEl || !sprintToggleBtnEl) return;
+  const currentTotal = getProjectWordCount(state.project);
+  const delta = currentTotal - state.sprintStartWords;
+  const deltaText = delta >= 0 ? `+${delta}w` : `${delta}w`;
+  sprintStatusEl.textContent = `Sprint ${formatClock(state.sprintRemainingSec)} · ${deltaText}`;
+  sprintToggleBtnEl.textContent = state.sprintRunning ? 'Pause' : 'Start';
+}
+
+function updateWordCountersOnly(): void {
+  const totalWords = getProjectWordCount(state.project);
+  const ctx = findSceneContext(state.project, state.activeSceneId);
+  const sceneWords = ctx ? countWords(ctx.scene.content) : 0;
+  const sceneChars = ctx ? countCharacters(ctx.scene.content) : 0;
+  const chapWords = ctx ? getChapterWordCount(ctx.chapter) : 0;
+  const pages = estimateStandardPages(totalWords);
+  const mins = estimateReadingMinutes(totalWords);
+
+  if (wordStatsEl) {
+    wordStatsEl.textContent = `Scene ${sceneWords}w (${sceneChars}c)  ·  Chapter ${chapWords}w  ·  Book ${totalWords.toLocaleString()} / ${state.project.wordTarget.toLocaleString()}w  ·  ~${pages}p (${mins}m read)`;
+  }
+
+  if (ctx) {
+    const binderCount = document.querySelector(`[data-binder-scene="${ctx.scene.id}"]`);
+    if (binderCount) binderCount.textContent = String(sceneWords);
+    const binderTitle = document.querySelector(`[data-binder-title="${ctx.scene.id}"]`);
+    if (binderTitle) binderTitle.textContent = ctx.scene.title || 'Untitled Scene';
+    const chapCount = document.querySelector(`[data-binder-chap="${ctx.chapter.id}"]`);
+    if (chapCount) chapCount.textContent = String(chapWords);
+  }
+
+  updateSprintDisplay();
+}
+
+function renderActiveView(): void {
+  shellEl.classList.toggle('is-zen', state.zenMode);
+  workspaceGridEl.classList.toggle(
+    'hide-inspector',
+    !state.showInspector || state.activeView !== 'editor',
+  );
+  if (bookTitleInputEl && bookTitleInputEl.value !== state.project.title) {
+    bookTitleInputEl.value = state.project.title;
+  }
+  headerNavGlass?.setValue(state.activeView);
+
+  renderBinder(binderEl, actions);
+
+  if (state.activeView === 'editor') {
+    renderEditorView(mainStageEl, actions);
+    renderInspector(inspectorEl, actions);
+  } else {
+    clearNode(inspectorEl);
+    if (state.activeView === 'corkboard') {
+      renderCorkboardView(mainStageEl, actions);
+    } else if (state.activeView === 'outline') {
+      renderOutlineView(mainStageEl, actions);
+    } else if (state.activeView === 'bible') {
+      renderBibleView(mainStageEl, actions);
+    } else if (state.activeView === 'graph') {
+      renderGraphView(mainStageEl, actions);
+    } else if (state.activeView === 'typeset') {
+      renderTypesetView(mainStageEl, actions);
+    }
+  }
+
+  updateWordCountersOnly();
+}
+
+function handleOpenedContent(rawJson: string, filename: string): void {
+  try {
+    const parsed = parseExtensionFile(rawJson, filename);
+    const applied = applyOpenedExtensionFile(parsed, state.project);
+    state.project = applied.project;
+    state.library = upsertBookInLibrary(state.library, state.project);
+    state.activeView = applied.focusView;
+    if (applied.focusSceneId) {
+      state.activeSceneId = applied.focusSceneId;
+    } else if (!findSceneContext(state.project, state.activeSceneId)) {
+      state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+    }
+    schedulePersist();
+    renderActiveView();
+    actions.notify(applied.summaryMessage);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unable to open Bookvibe file.';
+    actions.notify(`Open failed: ${message}`);
+  }
+}
+
+const actions: AppActions = {
+  getState: () => state,
+
+  setState(patch, rerender = true) {
+    Object.assign(state, patch);
+    if (rerender) renderActiveView();
+  },
+
+  mutateProject(updater: (prev: BookProject) => BookProject, rerender = true) {
+    state.project = normalizeProjectDefaults(updater(state.project));
+    schedulePersist();
+    if (rerender) renderActiveView();
+    else updateWordCountersOnly();
+  },
+
+  updateActiveSceneTextQuietly(field, value) {
+    state.project = updateSceneInProject(state.project, state.activeSceneId, { [field]: value });
+    schedulePersist();
+    updateWordCountersOnly();
+  },
+
+  selectScene(sceneId, switchToEditor = true) {
+    state.activeSceneId = sceneId;
+    if (switchToEditor) {
+      state.activeView = 'editor';
+    }
+    renderActiveView();
+  },
+
+  openBibleEntry(category, entryId) {
+    state.activeView = 'bible';
+    state.bibleCategory = category;
+    state.activeBibleId = entryId;
+    renderActiveView();
+  },
+
+  openExtensionsModal() {
+    void showExtensionsModal(actions);
+  },
+
+  openLibraryModal() {
+    showLibraryModal(actions);
+  },
+
+  openCollabModal() {
+    showCollabModal(actions);
+  },
+
+  switchBook(bookId: string) {
+    const updatedLib = switchActiveBook(
+      upsertBookInLibrary(state.library, state.project),
+      bookId,
+    );
+    state.library = updatedLib;
+    state.project = getActiveBookFromLibrary(updatedLib);
+    state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+    state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
+    state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
+    state.sprintStartWords = getProjectWordCount(state.project);
+    schedulePersist();
+    renderActiveView();
+    actions.notify(`Switched to “${state.project.title}”`);
+  },
+
+  replaceLibrary(library: BookLibraryState) {
+    state.library = library;
+    state.project = getActiveBookFromLibrary(library);
+    state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+    state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
+    state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
+    state.sprintStartWords = getProjectWordCount(state.project);
+    schedulePersist();
+    renderActiveView();
+  },
+
+  async openAnyBookvibeFile() {
+    const opened = await openBookvibeFile();
+    if (!opened) return;
+    handleOpenedContent(opened.content, opened.filename);
+  },
+
+  async exportAsExtension(ext: BookvibeExtension, options?: { sceneId?: string }) {
+    try {
+      const payload = serializeExtensionFile(ext, state.project, {
+        sceneId: options?.sceneId ?? state.activeSceneId,
+      });
+      const saved = await saveBookvibeExtensionFile(ext, payload, state.project.title);
+      if (saved) {
+        actions.notify(`Saved ${ext} file`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportEpub() {
+    try {
+      const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
+      const out = await exportBookAsEpub(state.project, coverPng);
+      if (out) actions.notify('Exported EPUB 3 eBook with Cover & Credits');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'EPUB export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportMarkdown() {
+    try {
+      const out = await exportBookAsMarkdown(state.project);
+      if (out) actions.notify('Exported Markdown manuscript');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Markdown export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportCoverPng() {
+    try {
+      const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
+      if (!coverPng) throw new Error('Unable to render cover PNG.');
+      exportCoverPngDownload(coverPng, state.project.title);
+      actions.notify('Exported Cover PNG (1200×1920)');
+    } catch (err) {
+      actions.notify(err instanceof Error ? err.message : 'Cover export failed.');
+    }
+  },
+
+  printTypeset() {
+    if (state.activeView !== 'typeset' || state.typesetSubTab !== 'interior') {
+      state.activeView = 'typeset';
+      state.typesetSubTab = 'interior';
+      renderActiveView();
+    }
+    requestAnimationFrame(() => window.print());
+  },
+
+  createSnapshot(label?: string) {
+    const res = createSnapshotForScene(state.project, state.activeSceneId, label);
+    if (!res.snapshot) return;
+    state.project = res.project;
+    state.diffSnapshotId = res.snapshot.id;
+    schedulePersist();
+    renderActiveView();
+    actions.notify(`Snapshot saved (${res.snapshot.wordCount}w)`);
+  },
+
+  notify(message: string) {
+    const prev = document.getElementById('bv-toast');
+    if (prev) prev.remove();
+    if (toastTimer !== null) window.clearTimeout(toastTimer);
+
+    const toast = el('div', {
+      className: 'bv-toast',
+      id: 'bv-toast',
+      text: message,
+      attrs: { role: 'status', 'aria-live': 'polite' },
+    });
+    document.body.appendChild(toast);
+    toastTimer = window.setTimeout(() => toast.remove(), 3400);
+  },
+
+  refreshWordCounters: updateWordCountersOnly,
+};
+
+function buildShell(root: HTMLElement): void {
+  clearNode(root);
+
+  bookTitleInputEl = el('input', {
+    className: 'bv-book-title-input',
+    attrs: { type: 'text', value: state.project.title, 'aria-label': 'Book title' },
+    on: {
+      change: () => {
+        const nextTitle = bookTitleInputEl.value.trim() || 'Untitled Book';
+        bookTitleInputEl.value = nextTitle;
+        actions.mutateProject((p) => ({ ...p, title: nextTitle }), false);
+      },
+    },
+  });
+
+  saveStatusEl = el('span', {
+    className: 'bv-save-indicator',
+    text: state.saveStatusLabel,
+  });
+
+  headerNavGlass = new LiquidGlassControl<StudioViewId>({
+    ariaLabel: 'Studio workspace',
+    surface: 'solid',
+    value: state.activeView,
+    options: [
+      { id: 'editor', label: 'Manuscript', icon: 'edit' },
+      { id: 'corkboard', label: 'Corkboard', icon: 'corkboard' },
+      { id: 'outline', label: 'Outline', icon: 'outline' },
+      { id: 'bible', label: 'Story Bible', icon: 'bible' },
+      { id: 'graph', label: 'Graph', icon: 'graph' },
+      { id: 'typeset', label: 'Typeset', icon: 'typeset' },
+    ],
+    onChange: (view) => {
+      state.activeView = view;
+      renderActiveView();
+    },
+  });
+
+  const topbar = el(
+    'header',
+    { className: 'bv-topbar' },
+    el(
+      'div',
+      { className: 'bv-brand' },
+      el('div', { className: 'bv-logo-mark' }, icon('book', 15)),
+      el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
+    ),
+    el('div', { className: 'bv-topbar-center' }, headerNavGlass.element),
+    el(
+      'div',
+      { className: 'bv-topbar-actions' },
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button', title: 'Manage multiple books, pen name, signature, and author key' },
+          on: { click: () => actions.openLibraryModal() },
+        },
+        icon('library', 14),
+        'Library',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button', title: 'Co-authors, proofreaders, and offline Wi-Fi / Bluetooth sync' },
+          on: { click: () => actions.openCollabModal() },
+        },
+        icon('collab', 14),
+        'Collaborate',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button', title: 'Open .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle (Ctrl+O)' },
+          on: { click: () => void actions.openAnyBookvibeFile() },
+        },
+        icon('folder', 14),
+        'Open',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button', title: 'Save .bookvibe project file' },
+          on: { click: () => void actions.exportAsExtension('.bookvibe') },
+        },
+        icon('save', 14),
+        'Save',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button', title: 'Official Bookvibe File Extensions & OS Registration' },
+          on: { click: () => actions.openExtensionsModal() },
+        },
+        icon('file', 14),
+        'Extensions',
+      ),
+      el(
+        'button',
+        {
+          className: `bv-btn bv-btn-icon${state.showInspector ? ' is-active' : ''}`,
+          attrs: { type: 'button', title: 'Toggle Scene Inspector' },
+          on: {
+            click: () => actions.setState({ showInspector: !state.showInspector }, true),
+          },
+        },
+        icon('split', 14),
+      ),
+    ),
+  );
+
+  binderEl = el('aside', { className: 'bv-binder', attrs: { 'aria-label': 'Manuscript Binder' } });
+  mainStageEl = el('main', { className: 'bv-main-stage' });
+  inspectorEl = el('aside', { className: 'bv-inspector', attrs: { 'aria-label': 'Scene Inspector' } });
+
+  workspaceGridEl = el(
+    'div',
+    { className: 'bv-workspace-grid' },
+    binderEl,
+    mainStageEl,
+    inspectorEl,
+  );
+
+  wordStatsEl = el('span', { text: '' });
+  sprintStatusEl = el('span', { text: '' });
+
+  const sprintDurationSelect = el(
+    'select',
+    {
+      className: 'bv-select',
+      style: { height: '22px', fontSize: '11px' },
+      attrs: { 'aria-label': 'Sprint duration' },
+      on: {
+        change: () => {
+          const mins = Number(sprintDurationSelect.value) || 25;
+          state.sprintRunning = false;
+          if (sprintInterval !== null) {
+            clearInterval(sprintInterval);
+            sprintInterval = null;
+          }
+          state.sprintDurationMin = mins;
+          state.sprintRemainingSec = mins * 60;
+          state.sprintStartWords = getProjectWordCount(state.project);
+          updateSprintDisplay();
+        },
+      },
+    },
+    el('option', { text: '15m', attrs: { value: '15', selected: state.sprintDurationMin === 15 } }),
+    el('option', { text: '25m', attrs: { value: '25', selected: state.sprintDurationMin === 25 } }),
+    el('option', { text: '45m', attrs: { value: '45', selected: state.sprintDurationMin === 45 } }),
+  );
+
+  sprintToggleBtnEl = el('button', {
+    className: 'bv-mini-btn',
+    text: 'Start',
+    attrs: { type: 'button' },
+    on: {
+      click: () => {
+        if (state.sprintRunning) {
+          state.sprintRunning = false;
+          if (sprintInterval !== null) {
+            clearInterval(sprintInterval);
+            sprintInterval = null;
+          }
+        } else {
+          if (state.sprintRemainingSec <= 0) {
+            state.sprintRemainingSec = state.sprintDurationMin * 60;
+            state.sprintStartWords = getProjectWordCount(state.project);
+          }
+          if (state.sprintRemainingSec === state.sprintDurationMin * 60) {
+            state.sprintStartWords = getProjectWordCount(state.project);
+          }
+          state.sprintRunning = true;
+          sprintInterval = window.setInterval(() => {
+            if (state.sprintRemainingSec > 0) {
+              state.sprintRemainingSec -= 1;
+              updateSprintDisplay();
+            }
+            if (state.sprintRemainingSec <= 0) {
+              state.sprintRunning = false;
+              if (sprintInterval !== null) {
+                clearInterval(sprintInterval);
+                sprintInterval = null;
+              }
+              updateSprintDisplay();
+              const gained = getProjectWordCount(state.project) - state.sprintStartWords;
+              actions.notify(`Writing sprint complete (${gained >= 0 ? '+' : ''}${gained} words)`);
+            }
+          }, 1000);
+        }
+        updateSprintDisplay();
+      },
+    },
+  });
+
+  const sprintResetBtn = el('button', {
+    className: 'bv-mini-btn',
+    text: 'Reset',
+    attrs: { type: 'button' },
+    on: {
+      click: () => {
+        state.sprintRunning = false;
+        if (sprintInterval !== null) {
+          clearInterval(sprintInterval);
+          sprintInterval = null;
+        }
+        state.sprintRemainingSec = state.sprintDurationMin * 60;
+        state.sprintStartWords = getProjectWordCount(state.project);
+        updateSprintDisplay();
+      },
+    },
+  });
+
+  const statusbar = el(
+    'footer',
+    { className: 'bv-statusbar' },
+    el('div', { className: 'bv-status-left' }, wordStatsEl),
+    el(
+      'div',
+      { className: 'bv-status-right' },
+      icon('clock', 12),
+      sprintStatusEl,
+      sprintDurationSelect,
+      sprintToggleBtnEl,
+      sprintResetBtn,
+    ),
+  );
+
+  shellEl = el('div', { className: 'bv-shell' }, topbar, workspaceGridEl, statusbar);
+  root.appendChild(shellEl);
+}
+
+function wireGlobalShortcutsAndDrop(): void {
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (state.activeView === 'editor') {
+        actions.createSnapshot();
+      } else {
+        void actions.exportAsExtension('.bookvibe');
+      }
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      void actions.openAnyBookvibeFile();
+    } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      actions.setState({ zenMode: !state.zenMode }, true);
+    } else if (e.key === 'Escape') {
+      const modals = ['bv-extensions-modal', 'bv-library-modal', 'bv-collab-modal'];
+      let closed = false;
+      for (const mId of modals) {
+        const m = document.getElementById(mId);
+        if (m) {
+          m.remove();
+          closed = true;
+        }
+      }
+      if (!closed && state.zenMode) {
+        actions.setState({ zenMode: false }, true);
+      }
+    }
+  });
+
+  let dropOverlay: HTMLElement | null = null;
+  let dragDepth = 0;
+
+  const hideDrop = () => {
+    dragDepth = 0;
+    dropOverlay?.remove();
+    dropOverlay = null;
+  };
+
+  window.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer?.types.includes('Files')) return;
+    dragDepth++;
+    if (!dropOverlay) {
+      dropOverlay = el('div', {
+        className: 'bv-drop-overlay',
+        text: 'Drop .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle file to open',
+      });
+      document.body.appendChild(dropOverlay);
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types.includes('Files')) {
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) hideDrop();
+  });
+
+  window.addEventListener('drop', async (e) => {
+    if (e.defaultPrevented) {
+      hideDrop();
+      return;
+    }
+    e.preventDefault();
+    hideDrop();
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!extractExtensionFromFilename(file.name)) {
+      actions.notify(
+        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle file.',
+      );
+      return;
+    }
+    const text = await file.text();
+    handleOpenedContent(text, file.name);
+  });
+}
+
+async function bootstrap(): Promise<void> {
+  const root = document.getElementById('app');
+  if (!root) return;
+
+  const savedLibJson = await loadPersistedLibrary();
+  if (savedLibJson) {
+    try {
+      const parsedLib = safeJsonParse<BookLibraryState>(savedLibJson);
+      if (Array.isArray(parsedLib.books) && parsedLib.books.length > 0) {
+        state.library = {
+          activeBookId: parsedLib.activeBookId,
+          books: parsedLib.books.map(normalizeProjectDefaults),
+        };
+        state.project = getActiveBookFromLibrary(state.library);
+      }
+    } catch {
+      // Fallback cleanly to single project load
+    }
+  } else {
+    const saved = await loadPersistedProject();
+    if (saved) {
+      try {
+        const parsed = parseExtensionFile(saved, 'saved.bookvibe');
+        const applied = applyOpenedExtensionFile(parsed, state.project);
+        state.project = applied.project;
+        state.library = upsertBookInLibrary(state.library, state.project);
+      } catch {
+        // Fallback to starter
+      }
+    }
+  }
+
+  const startupFile = await getStartupOpenedFile();
+  if (startupFile) {
+    try {
+      const parsed = parseExtensionFile(startupFile.content, startupFile.filename);
+      const applied = applyOpenedExtensionFile(parsed, state.project);
+      state.project = applied.project;
+      state.library = upsertBookInLibrary(state.library, state.project);
+      state.activeView = applied.focusView;
+      if (applied.focusSceneId) state.activeSceneId = applied.focusSceneId;
+      state.saveStatusLabel = 'Saved';
+    } catch {
+      // Continue cleanly if startup file was malformed
+    }
+  }
+
+  state.sprintStartWords = getProjectWordCount(state.project);
+  if (!findSceneContext(state.project, state.activeSceneId)) {
+    state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+  }
+
+  buildShell(root);
+  wireGlobalShortcutsAndDrop();
+  renderActiveView();
+}
+
+void bootstrap();

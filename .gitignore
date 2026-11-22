@@ -1,0 +1,28 @@
+# Dependencies & build artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Rust / Tauri build outputs
+src-tauri/target/
+src-tauri/gen/
+
+# Secrets & environment overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+
+# OS & Editor junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+.idea/
