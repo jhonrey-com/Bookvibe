@@ -1,6 +1,10 @@
+import { attachTooltip, type TooltipSpec } from './tooltip';
+
 export type IconName =
   | 'book'
   | 'edit'
+  | 'proofread'
+  | 'diff'
   | 'corkboard'
   | 'outline'
   | 'bible'
@@ -10,6 +14,16 @@ export type IconName =
   | 'collab'
   | 'folder'
   | 'save'
+  | 'extensions'
+  | 'panel-left'
+  | 'panel-right'
+  | 'cover'
+  | 'typewriter'
+  | 'split-scene'
+  | 'shield'
+  | 'info'
+  | 'strikethrough'
+  | 'comment'
   | 'plus'
   | 'trash'
   | 'camera'
@@ -33,6 +47,7 @@ export interface ElementOptions {
   className?: string;
   id?: string;
   text?: string;
+  tooltip?: TooltipSpec;
   attrs?: Record<string, string | number | boolean | undefined>;
   dataset?: Record<string, string | undefined>;
   style?: Partial<CSSStyleDeclaration>;
@@ -77,6 +92,10 @@ export function el<K extends keyof HTMLElementTagNameMap>(
     }
   }
 
+  if (options.tooltip) {
+    attachTooltip(node, options.tooltip);
+  }
+
   for (const child of children) {
     if (child === null || child === undefined || child === false) continue;
     if (child instanceof Node) {
@@ -109,6 +128,42 @@ export function clearNode(node: Element): void {
   node.replaceChildren();
 }
 
+/**
+ * Minimalist obsidian-and-ivory open-book emblem matching assets/bookvibe-logo.svg.
+ */
+export function bookvibeLogo(size = 20): SVGSVGElement {
+  const svg = svgEl('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 64 64',
+    fill: 'none',
+    'aria-hidden': 'true',
+  });
+  svg.append(
+    svgEl('path', {
+      d: 'M12 18L32 23.5V48L12 42.5V18Z',
+      stroke: '#f2efe8',
+      'stroke-width': '3.4',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+    }),
+    svgEl('path', {
+      d: 'M52 18L32 23.5V48L52 42.5V18Z',
+      stroke: '#f2efe8',
+      'stroke-width': '3.4',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+    }),
+    svgEl('path', {
+      d: 'M18.5 27.5L26.5 29.8M18.5 34.5L26.5 36.8M37.5 29.8L45.5 27.5M37.5 36.8L45.5 34.5',
+      stroke: '#8c929f',
+      'stroke-width': '2.4',
+      'stroke-linecap': 'round',
+    }),
+  );
+  return svg;
+}
+
 const ICON_PATHS: Record<IconName, string[]> = {
   book: [
     'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a2.5 2.5 0 0 1 0-5H20',
@@ -116,6 +171,19 @@ const ICON_PATHS: Record<IconName, string[]> = {
   edit: [
     'M12 20h9',
     'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z',
+  ],
+  proofread: [
+    'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
+    'M14 2v6h6',
+    'M8 14h8',
+    'M9 17.5l2 2 4-4',
+  ],
+  diff: [
+    'M4 5h6',
+    'M7 2v6',
+    'M14 5h6',
+    'M4 13h7v6H4z',
+    'M13 13h7v6h-7z',
   ],
   corkboard: [
     'M3 3h7v7H3z',
@@ -132,7 +200,11 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M3 18h.01',
   ],
   bible: [
-    'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2',
+    'M2 5.5A2.5 2.5 0 0 1 4.5 3H12v17H4.5A2.5 2.5 0 0 1 2 17.5v-12z',
+    'M22 5.5A2.5 2.5 0 0 0 19.5 3H12v17h7.5a2.5 2.5 0 0 0 2.5-2.5v-12z',
+    'M15.5 3v6l1.75-1.4L19 9V3',
+    'M5.5 8.5H9',
+    'M5.5 12H9',
   ],
   graph: [
     'M8 6l8 6',
@@ -161,6 +233,51 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z',
     'M17 21v-8H7v8',
     'M7 3v5h8',
+  ],
+  extensions: [
+    'M19 10h-2V7a2 2 0 0 0-2-2h-2.17a2.5 2.5 0 1 0-4.66 0H5a2 2 0 0 0-2 2v3h2.17a2.5 2.5 0 1 1 0 5H3v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h2a2.5 2.5 0 0 0 0-5z',
+  ],
+  'panel-left': [
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
+    'M9 3v18',
+  ],
+  'panel-right': [
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
+    'M15 3v18',
+  ],
+  cover: [
+    'M4 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4V4z',
+    'M8 4v16',
+    'M11.5 9h5',
+    'M11.5 13h3.5',
+  ],
+  typewriter: [
+    'M4 12h16',
+    'M7 6h10',
+    'M7 18h10',
+    'M12 3v3',
+    'M12 18v3',
+  ],
+  'split-scene': [
+    'M3 12h18',
+    'M6 6h12',
+    'M6 18h12',
+  ],
+  shield: [
+    'M12 3l7 3v6c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9V6l7-3z',
+    'M9.5 12.2l1.8 1.8 3.5-3.6',
+  ],
+  info: [
+    'M12 16v-4',
+    'M12 8h.01',
+  ],
+  strikethrough: [
+    'M4 12h16',
+    'M16 6.5C15.5 5 14 4 12 4s-4 1-4 3c0 1.4.9 2.2 2.5 2.8',
+    'M8 17.5C8.5 19 10 20 12 20s4-1 4-3c0-1.1-.5-1.9-1.5-2.5',
+  ],
+  comment: [
+    'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   ],
   plus: ['M12 5v14', 'M5 12h14'],
   trash: [
@@ -230,7 +347,7 @@ export function icon(name: IconName, size = 15): SVGSVGElement {
     'aria-hidden': 'true',
   });
 
-  if (name === 'bible' || name === 'collab') {
+  if (name === 'collab') {
     svg.append(
       svgEl('path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }),
       svgEl('circle', { cx: 9, cy: 7, r: 4 }),
@@ -251,11 +368,11 @@ export function icon(name: IconName, size = 15): SVGSVGElement {
     return svg;
   }
 
-  if (name === 'clock') {
-    svg.append(
-      svgEl('circle', { cx: 12, cy: 12, r: 9 }),
-      svgEl('path', { d: 'M12 7v5l3.5 2' }),
-    );
+  if (name === 'clock' || name === 'info') {
+    svg.appendChild(svgEl('circle', { cx: 12, cy: 12, r: 9 }));
+    for (const d of ICON_PATHS[name]) {
+      svg.appendChild(svgEl('path', { d }));
+    }
     return svg;
   }
 

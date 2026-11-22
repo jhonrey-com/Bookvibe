@@ -29,6 +29,106 @@ export type BookvibeExtension =
   | '.bvscene'
   | '.bvstyle';
 
+export type ExportFormatId = BookvibeExtension | '.epub' | '.md' | '.html' | '.txt';
+
+export type ProofreadMarkKind =
+  | 'delete'
+  | 'insert'
+  | 'substitute'
+  | 'comment'
+  | 'highlight'
+  | 'transpose'
+  | 'stet'
+  | 'paragraph'
+  | 'run-in'
+  | 'closeup'
+  | 'space'
+  | 'capitalize'
+  | 'lowercase'
+  | 'italic'
+  | 'bold';
+
+export interface ProofreadMark {
+  id: string;
+  kind: ProofreadMarkKind;
+  start: number;
+  end: number;
+  originalText: string;
+  replacement: string;
+  note: string;
+  authorName: string;
+  role: CollaboratorRole;
+  status: 'open' | 'accepted' | 'rejected' | 'stet';
+  createdAt: string;
+}
+
+export type ExtensionPermission =
+  | 'read:active-scene'
+  | 'read:manuscript'
+  | 'read:bible'
+  | 'propose:proofread-marks'
+  | 'apply:text-transform'
+  | 'add:export-preset';
+
+export interface ExtensionRuleDef {
+  id: string;
+  label: string;
+  pattern: string;
+  flags?: string;
+  markKind: ProofreadMarkKind;
+  replacement?: string;
+  note: string;
+}
+
+export interface ExtensionTransformDef {
+  id: string;
+  label: string;
+  description: string;
+  kind: 'smart-typography' | 'collapse-double-spaces' | 'trim-trailing-spaces' | 'strip-straight-quotes';
+}
+
+export interface ExtensionPresetDef {
+  id: string;
+  label: string;
+  paperTheme?: PaperTheme;
+  typography?: Partial<TypographyConfig>;
+}
+
+export interface BookvibePluginManifest {
+  magic: 'BOOKVIBE_EXT_V1';
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  kind: 'integrated' | 'external';
+  permissions: ExtensionPermission[];
+  dataUsageSummary: string;
+  rules?: ExtensionRuleDef[];
+  transforms?: ExtensionTransformDef[];
+  presets?: ExtensionPresetDef[];
+  metricsReport?: 'readability';
+}
+
+export interface InstalledExtension {
+  manifest: BookvibePluginManifest;
+  source: 'integrated' | 'external';
+  enabled: boolean;
+  grantedPermissions: ExtensionPermission[];
+  installedAt: string;
+  sha256: string;
+}
+
+export interface ExtensionAuditEntry {
+  id: string;
+  extensionId: string;
+  extensionName: string;
+  action: string;
+  permissionsUsed: ExtensionPermission[];
+  dataAccessed: string;
+  timestamp: string;
+}
+
 export interface SceneSnapshot {
   id: string;
   createdAt: string;
@@ -61,6 +161,7 @@ export interface SceneNode {
   notes: string;
   snapshots: SceneSnapshot[];
   annotations?: SceneAnnotation[];
+  proofreadMarks?: ProofreadMark[];
   updatedAt: string;
 }
 

@@ -120,7 +120,8 @@ export function renderCorkboardView(container: HTMLElement, actions: AppActions)
               {
                 className: 'bv-fmt-btn',
                 text: scene.title || 'Untitled Scene',
-                attrs: { type: 'button', title: 'Open in Editor' },
+                tooltip: { title: 'Open Scene in Editor', short: 'Jump directly to drafting or proofreading this scene.' },
+                attrs: { type: 'button' },
                 style: { paddingLeft: '0', fontWeight: '600', color: 'var(--text-primary)' },
                 on: { click: () => actions.selectScene(scene.id, true) },
               },

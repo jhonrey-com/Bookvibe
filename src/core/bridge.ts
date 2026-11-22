@@ -1,15 +1,54 @@
 import { BOOKVIBE_EXTENSIONS, getExtensionDefinition } from './extensions';
-import { buildEpubBlobBytes, buildEpubExportPayload, buildMarkdownExport } from './export';
+import {
+  buildEpubBlobBytes,
+  buildEpubExportPayload,
+  buildHtmlExport,
+  buildMarkdownExport,
+  buildPlainTextExport,
+} from './export';
 import type {
   AssociationReport,
   BookProject,
   BookvibeExtension,
+  ExportFormatId,
   LanSessionInfo,
   OpenedFileResult,
 } from './types';
 
 const LOCAL_STORAGE_KEY = 'bookvibe.activeProject.v1';
 const LIBRARY_STORAGE_KEY = 'bookvibe.library.v1';
+const DEFAULT_EXPORT_KEY = 'bookvibe.defaultExport.v1';
+
+const VALID_EXPORT_FORMATS = new Set<string>([
+  '.bookvibe',
+  '.bvibe',
+  '.bvbook',
+  '.bvbible',
+  '.bvscene',
+  '.bvstyle',
+  '.epub',
+  '.md',
+  '.html',
+  '.txt',
+]);
+
+export function loadDefaultExportFormat(): ExportFormatId {
+  try {
+    const val = window.localStorage.getItem(DEFAULT_EXPORT_KEY);
+    if (val && VALID_EXPORT_FORMATS.has(val)) return val as ExportFormatId;
+  } catch {
+    // Fallback cleanly
+  }
+  return '.bookvibe';
+}
+
+export function saveDefaultExportFormat(fmt: ExportFormatId): void {
+  try {
+    window.localStorage.setItem(DEFAULT_EXPORT_KEY, fmt);
+  } catch {
+    // Ignore quota issues
+  }
+}
 
 export function isTauriRuntime(): boolean {
   return (
@@ -201,6 +240,20 @@ export async function exportBookAsMarkdown(project: BookProject): Promise<string
 
   triggerBrowserDownload(`${base}.md`, md, 'text/markdown;charset=utf-8');
   return `${base}.md`;
+}
+
+export async function exportBookAsHtml(project: BookProject): Promise<string | null> {
+  const base = sanitizeSlug(project.title);
+  const html = buildHtmlExport(project);
+  triggerBrowserDownload(`${base}.html`, html, 'text/html;charset=utf-8');
+  return `${base}.html`;
+}
+
+export async function exportBookAsPlainText(project: BookProject): Promise<string | null> {
+  const base = sanitizeSlug(project.title);
+  const txt = buildPlainTextExport(project);
+  triggerBrowserDownload(`${base}.txt`, txt, 'text/plain;charset=utf-8');
+  return `${base}.txt`;
 }
 
 export function exportCoverPngDownload(pngDataUrl: string, bookTitle: string): void {

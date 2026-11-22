@@ -29,7 +29,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         'button',
         {
           className: 'bv-mini-btn',
-          attrs: { type: 'button', title: 'Add Part' },
+          tooltip: { title: 'Add Part', short: 'Append a new Part division to this book.' },
+          attrs: { type: 'button' },
           on: {
             click: () => {
               const res = addPartToProject(actions.getState().project);
@@ -46,7 +47,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         'button',
         {
           className: 'bv-mini-btn',
-          attrs: { type: 'button', title: 'Add Chapter to first/active Part' },
+          tooltip: { title: 'Add Chapter', short: 'Add a new Chapter with starter scene.' },
+          attrs: { type: 'button' },
           on: {
             click: () => {
               const partId = project.parts[0]?.id ?? '';
@@ -96,7 +98,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           'button',
           {
             className: 'bv-icon-tiny',
-            attrs: { type: 'button', title: 'Add Chapter to this Part' },
+            tooltip: { title: 'Add Chapter to Part', short: 'Create a chapter inside this Part.' },
+            attrs: { type: 'button' },
             on: {
               click: (e) => {
                 e.stopPropagation();
@@ -174,7 +177,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               'button',
               {
                 className: 'bv-icon-tiny',
-                attrs: { type: 'button', title: 'Add Scene' },
+                tooltip: { title: 'Add Scene', short: 'Append a new scene to this chapter.' },
+                attrs: { type: 'button' },
                 on: {
                   click: (e) => {
                     e.stopPropagation();
@@ -190,7 +194,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               'button',
               {
                 className: 'bv-icon-tiny',
-                attrs: { type: 'button', title: 'Delete Chapter' },
+                tooltip: { title: 'Delete Chapter', short: 'Remove this chapter and its scenes.' },
+                attrs: { type: 'button' },
                 on: {
                   click: (e) => {
                     e.stopPropagation();
@@ -265,7 +270,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                   'button',
                   {
                     className: 'bv-icon-tiny',
-                    attrs: { type: 'button', title: 'Export scene as .bvscene' },
+                    tooltip: { title: 'Export .bvscene', short: 'Save scene as standalone .bvscene file.' },
+                    attrs: { type: 'button' },
                     on: {
                       click: (e) => {
                         e.stopPropagation();
@@ -279,7 +285,8 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                   'button',
                   {
                     className: 'bv-icon-tiny',
-                    attrs: { type: 'button', title: 'Delete Scene' },
+                    tooltip: { title: 'Delete Scene', short: 'Remove scene from this chapter.' },
+                    attrs: { type: 'button' },
                     on: {
                       click: (e) => {
                         e.stopPropagation();

@@ -215,6 +215,7 @@ export function mergeBookRevisions(
         const annMerge = mergeAnnotations(localScene.annotations, incScene.annotations);
         localScene.annotations = annMerge.merged;
         mergedAnnotations += annMerge.addedCount;
+        localScene.proofreadMarks = mergeById(localScene.proofreadMarks, incScene.proofreadMarks);
         localScene.snapshots = mergeById(localScene.snapshots, incScene.snapshots);
 
         if (localScene.content !== incScene.content) {

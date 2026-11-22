@@ -1,10 +1,12 @@
 import { el, icon, svgEl, type IconName } from './dom';
+import type { TooltipSpec } from './tooltip';
 
 export interface LiquidGlassOption<T extends string = string> {
   id: T;
   label: string;
   icon?: IconName;
   title?: string;
+  tooltip?: TooltipSpec;
 }
 
 export interface LiquidGlassConfig<T extends string = string> {
@@ -13,6 +15,7 @@ export interface LiquidGlassConfig<T extends string = string> {
   ariaLabel: string;
   surface?: 'solid' | 'clear';
   compact?: boolean;
+  iconOnly?: boolean;
   onChange: (value: T) => void;
 }
 
@@ -332,7 +335,7 @@ export class LiquidGlassControl<T extends string = string> {
     this.sampleCtx = this.sampleCanvas.getContext('2d', { willReadFrequently: true });
 
     this.element = el('div', {
-      className: `lg-host${config.compact ? ' lg-compact' : ''} lg-surface-${this.surface} tone-dark`,
+      className: `lg-host${config.compact ? ' lg-compact' : ''}${config.iconOnly ? ' lg-icon-only' : ''} lg-surface-${this.surface} tone-dark`,
     });
 
     this.svgFilterEl = this.createRefractionFilterSvg();
@@ -358,23 +361,31 @@ export class LiquidGlassControl<T extends string = string> {
       attrs: { 'aria-hidden': 'true' },
     });
 
+    const iconSize = config.iconOnly ? (config.compact ? 14 : 16) : 14;
     for (const opt of this.options) {
+      const showLabel = !(config.iconOnly && opt.icon);
       const baseContent = el(
         'span',
         { className: 'lg-btn-content' },
-        opt.icon ? icon(opt.icon, 14) : null,
-        el('span', { className: 'lg-btn-label', text: opt.label }),
+        opt.icon ? icon(opt.icon, iconSize) : null,
+        showLabel ? el('span', { className: 'lg-btn-label', text: opt.label }) : null,
       );
+
+      const tooltipSpec: TooltipSpec = opt.tooltip ?? {
+        title: opt.label,
+        short: opt.title ?? opt.label,
+      };
 
       const button = el(
         'button',
         {
           className: `lg-btn${opt.id === this.currentValue ? ' is-selected' : ''}`,
+          tooltip: tooltipSpec,
           attrs: {
             type: 'button',
             role: 'tab',
             'aria-selected': String(opt.id === this.currentValue),
-            title: opt.title ?? opt.label,
+            'aria-label': opt.label,
             tabindex: opt.id === this.currentValue ? 0 : -1,
           },
           dataset: { lgId: opt.id },
@@ -385,8 +396,8 @@ export class LiquidGlassControl<T extends string = string> {
       const revealItem = el(
         'div',
         { className: 'lg-reveal-item' },
-        opt.icon ? icon(opt.icon, 14) : null,
-        el('span', { className: 'lg-btn-label', text: opt.label }),
+        opt.icon ? icon(opt.icon, iconSize) : null,
+        showLabel ? el('span', { className: 'lg-btn-label', text: opt.label }) : null,
       );
 
       this.baseLayer.appendChild(button);

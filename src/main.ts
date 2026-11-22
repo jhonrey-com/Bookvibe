@@ -1,19 +1,24 @@
 import './styles/main.css';
 
-import type { AppActions, AppState } from './core/app-context';
+import type { AppActions, AppState, ExtensionsModalTab } from './core/app-context';
 import {
   exportBookAsEpub,
+  exportBookAsHtml,
   exportBookAsMarkdown,
+  exportBookAsPlainText,
   exportCoverPngDownload,
   getStartupOpenedFile,
+  loadDefaultExportFormat,
   loadPersistedLibrary,
   loadPersistedProject,
   openBookvibeFile,
   persistLibrary,
   persistProject,
   saveBookvibeExtensionFile,
+  saveDefaultExportFormat,
 } from './core/bridge';
 import { renderCoverToPngDataUrl } from './core/cover';
+import { EXPORT_FORMAT_OPTIONS } from './core/export';
 import {
   applyOpenedExtensionFile,
   extractExtensionFromFilename,
@@ -39,16 +44,19 @@ import {
   getProjectWordCount,
   updateSceneInProject,
 } from './core/manuscript';
+import { realignMarksAfterEdit } from './core/proofread';
 import { createStarterBookProject } from './core/sample-book';
 import { createSnapshotForScene } from './core/snapshots';
 import type {
   BookLibraryState,
   BookProject,
   BookvibeExtension,
+  ExportFormatId,
   StudioViewId,
 } from './core/types';
-import { clearNode, el, icon } from './ui/dom';
+import { bookvibeLogo, clearNode, el, icon } from './ui/dom';
 import { LiquidGlassControl } from './ui/liquid-glass';
+import { TOOLTIP_CATALOG } from './ui/tooltips-catalog';
 import { renderBibleView } from './views/bible';
 import { renderBinder } from './views/binder';
 import { showCollabModal } from './views/collab-modal';
@@ -64,18 +72,25 @@ import { renderTypesetView } from './views/typeset';
 const starter = createStarterBookProject();
 const initialLibrary = createInitialLibrary(starter);
 
+const isWideDesktop = typeof window === 'undefined' || window.innerWidth > 1180;
+const isMediumOrLarger = typeof window === 'undefined' || window.innerWidth > 960;
+
 const state: AppState = {
   library: initialLibrary,
   project: starter,
   activeView: 'editor',
   activeSceneId: getAllScenes(starter)[0]?.scene.id ?? '',
+  defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.bookvibe',
   editorSubMode: 'draft',
   splitTargetKind: 'character',
   splitTargetId: starter.bible.characters[0]?.id ?? '',
   diffSnapshotId: '',
   typewriterMode: false,
   zenMode: false,
-  showInspector: true,
+  showBinder: isMediumOrLarger,
+  showInspector: isWideDesktop,
+  proofreadPreviewClean: false,
+  activeProofreadMarkId: '',
   bibleCategory: 'characters',
   activeBibleId: starter.bible.characters[0]?.id ?? '',
   activeGraphNodeId: starter.storyGraph?.nodes[0]?.id ?? '',
@@ -97,6 +112,10 @@ let binderEl: HTMLElement;
 let mainStageEl: HTMLElement;
 let inspectorEl: HTMLElement;
 let workspaceGridEl: HTMLElement;
+let drawerBackdropEl: HTMLDivElement;
+let binderToggleBtn: HTMLButtonElement;
+let inspectorToggleBtn: HTMLButtonElement;
+let exportFormatSelectEl: HTMLSelectElement;
 let bookTitleInputEl: HTMLInputElement;
 let saveStatusEl: HTMLSpanElement;
 let wordStatsEl: HTMLSpanElement;
@@ -142,7 +161,7 @@ function updateWordCountersOnly(): void {
   const mins = estimateReadingMinutes(totalWords);
 
   if (wordStatsEl) {
-    wordStatsEl.textContent = `Scene ${sceneWords}w (${sceneChars}c)  ·  Chapter ${chapWords}w  ·  Book ${totalWords.toLocaleString()} / ${state.project.wordTarget.toLocaleString()}w  ·  ~${pages}p (${mins}m read)`;
+    wordStatsEl.textContent = `Scene ${sceneWords}w (${sceneChars}c) · Ch ${chapWords}w · Book ${totalWords.toLocaleString()} / ${state.project.wordTarget.toLocaleString()}w · ~${pages}p (${mins}m)`;
   }
 
   if (ctx) {
@@ -157,14 +176,28 @@ function updateWordCountersOnly(): void {
   updateSprintDisplay();
 }
 
+function syncResponsiveDrawerClasses(): void {
+  const isNarrowDrawerMode = window.innerWidth <= 1180;
+  const inspectorActive = state.showInspector && state.activeView === 'editor';
+  workspaceGridEl.classList.toggle('hide-binder', !state.showBinder);
+  workspaceGridEl.classList.toggle('hide-inspector', !inspectorActive);
+  binderToggleBtn?.classList.toggle('is-active', state.showBinder);
+  inspectorToggleBtn?.classList.toggle('is-active', inspectorActive);
+
+  const hasOverlayOpen =
+    (isNarrowDrawerMode && inspectorActive) ||
+    (window.innerWidth <= 960 && state.showBinder);
+  drawerBackdropEl?.classList.toggle('is-visible', hasOverlayOpen);
+}
+
 function renderActiveView(): void {
   shellEl.classList.toggle('is-zen', state.zenMode);
-  workspaceGridEl.classList.toggle(
-    'hide-inspector',
-    !state.showInspector || state.activeView !== 'editor',
-  );
+  syncResponsiveDrawerClasses();
   if (bookTitleInputEl && bookTitleInputEl.value !== state.project.title) {
     bookTitleInputEl.value = state.project.title;
+  }
+  if (exportFormatSelectEl && exportFormatSelectEl.value !== state.defaultExportFormat) {
+    exportFormatSelectEl.value = state.defaultExportFormat;
   }
   headerNavGlass?.setValue(state.activeView);
 
@@ -192,6 +225,14 @@ function renderActiveView(): void {
 }
 
 function handleOpenedContent(rawJson: string, filename: string): void {
+  if (filename.toLowerCase().endsWith('.bvext')) {
+    void showExtensionsModal(actions, {
+      initialTab: 'external',
+      pendingExternalRawJson: rawJson,
+    });
+    return;
+  }
+
   try {
     const parsed = parseExtensionFile(rawJson, filename);
     const applied = applyOpenedExtensionFile(parsed, state.project);
@@ -218,6 +259,7 @@ const actions: AppActions = {
   setState(patch, rerender = true) {
     Object.assign(state, patch);
     if (rerender) renderActiveView();
+    else syncResponsiveDrawerClasses();
   },
 
   mutateProject(updater: (prev: BookProject) => BookProject, rerender = true) {
@@ -228,7 +270,18 @@ const actions: AppActions = {
   },
 
   updateActiveSceneTextQuietly(field, value) {
-    state.project = updateSceneInProject(state.project, state.activeSceneId, { [field]: value });
+    if (field === 'content') {
+      const ctx = findSceneContext(state.project, state.activeSceneId);
+      const prevMarks = ctx?.scene.proofreadMarks;
+      const prevContent = ctx?.scene.content ?? '';
+      const aligned = realignMarksAfterEdit(prevMarks, prevContent, value);
+      state.project = updateSceneInProject(state.project, state.activeSceneId, {
+        content: value,
+        proofreadMarks: aligned,
+      });
+    } else {
+      state.project = updateSceneInProject(state.project, state.activeSceneId, { title: value });
+    }
     schedulePersist();
     updateWordCountersOnly();
   },
@@ -237,6 +290,9 @@ const actions: AppActions = {
     state.activeSceneId = sceneId;
     if (switchToEditor) {
       state.activeView = 'editor';
+    }
+    if (window.innerWidth <= 960) {
+      state.showBinder = false;
     }
     renderActiveView();
   },
@@ -248,8 +304,8 @@ const actions: AppActions = {
     renderActiveView();
   },
 
-  openExtensionsModal() {
-    void showExtensionsModal(actions);
+  openExtensionsModal(initialTab?: ExtensionsModalTab) {
+    void showExtensionsModal(actions, { initialTab });
   },
 
   openLibraryModal() {
@@ -285,6 +341,22 @@ const actions: AppActions = {
     state.sprintStartWords = getProjectWordCount(state.project);
     schedulePersist();
     renderActiveView();
+  },
+
+  setDefaultExportFormat(fmt: ExportFormatId) {
+    state.defaultExportFormat = fmt;
+    saveDefaultExportFormat(fmt);
+    if (exportFormatSelectEl) exportFormatSelectEl.value = fmt;
+    actions.notify(`Default export format set to ${fmt}`);
+  },
+
+  async exportDefaultFormat() {
+    const fmt = state.defaultExportFormat;
+    if (fmt === '.epub') return actions.exportEpub();
+    if (fmt === '.md') return actions.exportMarkdown();
+    if (fmt === '.html') return actions.exportHtml();
+    if (fmt === '.txt') return actions.exportPlainText();
+    return actions.exportAsExtension(fmt);
   },
 
   async openAnyBookvibeFile() {
@@ -325,6 +397,26 @@ const actions: AppActions = {
       if (out) actions.notify('Exported Markdown manuscript');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Markdown export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportHtml() {
+    try {
+      const out = await exportBookAsHtml(state.project);
+      if (out) actions.notify('Exported HTML web book');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'HTML export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportPlainText() {
+    try {
+      const out = await exportBookAsPlainText(state.project);
+      if (out) actions.notify('Exported plain text manuscript');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Plain text export failed.';
       actions.notify(msg);
     }
   },
@@ -382,6 +474,7 @@ function buildShell(root: HTMLElement): void {
 
   bookTitleInputEl = el('input', {
     className: 'bv-book-title-input',
+    tooltip: TOOLTIP_CATALOG.bookTitle,
     attrs: { type: 'text', value: state.project.title, 'aria-label': 'Book title' },
     on: {
       change: () => {
@@ -395,19 +488,34 @@ function buildShell(root: HTMLElement): void {
   saveStatusEl = el('span', {
     className: 'bv-save-indicator',
     text: state.saveStatusLabel,
+    tooltip: TOOLTIP_CATALOG.saveStatus,
   });
+
+  binderToggleBtn = el(
+    'button',
+    {
+      className: `bv-btn bv-btn-icon${state.showBinder ? ' is-active' : ''}`,
+      tooltip: TOOLTIP_CATALOG.toggleBinder,
+      attrs: { type: 'button', 'aria-label': 'Toggle Manuscript Binder' },
+      on: {
+        click: () => actions.setState({ showBinder: !state.showBinder }, false),
+      },
+    },
+    icon('panel-left', 15),
+  );
 
   headerNavGlass = new LiquidGlassControl<StudioViewId>({
     ariaLabel: 'Studio workspace',
     surface: 'solid',
+    iconOnly: true,
     value: state.activeView,
     options: [
-      { id: 'editor', label: 'Manuscript', icon: 'edit' },
-      { id: 'corkboard', label: 'Corkboard', icon: 'corkboard' },
-      { id: 'outline', label: 'Outline', icon: 'outline' },
-      { id: 'bible', label: 'Story Bible', icon: 'bible' },
-      { id: 'graph', label: 'Graph', icon: 'graph' },
-      { id: 'typeset', label: 'Typeset', icon: 'typeset' },
+      { id: 'editor', label: 'Manuscript', icon: 'edit', tooltip: TOOLTIP_CATALOG.navEditor },
+      { id: 'corkboard', label: 'Corkboard', icon: 'corkboard', tooltip: TOOLTIP_CATALOG.navCorkboard },
+      { id: 'outline', label: 'Outline', icon: 'outline', tooltip: TOOLTIP_CATALOG.navOutline },
+      { id: 'bible', label: 'Story Bible', icon: 'bible', tooltip: TOOLTIP_CATALOG.navBible },
+      { id: 'graph', label: 'Graph', icon: 'graph', tooltip: TOOLTIP_CATALOG.navGraph },
+      { id: 'typeset', label: 'Typeset', icon: 'typeset', tooltip: TOOLTIP_CATALOG.navTypeset },
     ],
     onChange: (view) => {
       state.activeView = view;
@@ -415,13 +523,47 @@ function buildShell(root: HTMLElement): void {
     },
   });
 
+  exportFormatSelectEl = el(
+    'select',
+    {
+      className: 'bv-export-format-select',
+      tooltip: TOOLTIP_CATALOG.defaultFormatSelect,
+      attrs: { 'aria-label': 'Default export file extension' },
+      on: {
+        change: () => {
+          actions.setDefaultExportFormat(exportFormatSelectEl.value as ExportFormatId);
+        },
+      },
+    },
+    ...EXPORT_FORMAT_OPTIONS.map((opt) =>
+      el('option', {
+        text: opt.shortLabel,
+        attrs: { value: opt.id, selected: state.defaultExportFormat === opt.id },
+      }),
+    ),
+  );
+
+  inspectorToggleBtn = el(
+    'button',
+    {
+      className: `bv-btn bv-btn-icon${state.showInspector ? ' is-active' : ''}`,
+      tooltip: TOOLTIP_CATALOG.toggleInspector,
+      attrs: { type: 'button', 'aria-label': 'Toggle Scene Inspector' },
+      on: {
+        click: () => actions.setState({ showInspector: !state.showInspector }, true),
+      },
+    },
+    icon('panel-right', 15),
+  );
+
   const topbar = el(
     'header',
     { className: 'bv-topbar' },
     el(
       'div',
       { className: 'bv-brand' },
-      el('div', { className: 'bv-logo-mark' }, icon('book', 15)),
+      el('div', { className: 'bv-logo-mark' }, bookvibeLogo(19)),
+      binderToggleBtn,
       el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
     ),
     el('div', { className: 'bv-topbar-center' }, headerNavGlass.element),
@@ -431,64 +573,59 @@ function buildShell(root: HTMLElement): void {
       el(
         'button',
         {
-          className: 'bv-btn',
-          attrs: { type: 'button', title: 'Manage multiple books, pen name, signature, and author key' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.library,
+          attrs: { type: 'button', 'aria-label': 'Book Library and Author Key' },
           on: { click: () => actions.openLibraryModal() },
         },
-        icon('library', 14),
-        'Library',
+        icon('library', 15),
       ),
       el(
         'button',
         {
-          className: 'bv-btn',
-          attrs: { type: 'button', title: 'Co-authors, proofreaders, and offline Wi-Fi / Bluetooth sync' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.collaborate,
+          attrs: { type: 'button', 'aria-label': 'Collaborate Offline' },
           on: { click: () => actions.openCollabModal() },
         },
-        icon('collab', 14),
-        'Collaborate',
+        icon('collab', 15),
       ),
       el(
         'button',
         {
-          className: 'bv-btn',
-          attrs: { type: 'button', title: 'Open .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle (Ctrl+O)' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.openFile,
+          attrs: { type: 'button', 'aria-label': 'Open Bookvibe File' },
           on: { click: () => void actions.openAnyBookvibeFile() },
         },
-        icon('folder', 14),
-        'Open',
+        icon('folder', 15),
+      ),
+      el(
+        'div',
+        { className: 'bv-save-split' },
+        el(
+          'button',
+          {
+            className: 'bv-btn bv-btn-icon bv-save-split-btn',
+            tooltip: TOOLTIP_CATALOG.saveDefault,
+            attrs: { type: 'button', 'aria-label': 'Save or Export Default Format' },
+            on: { click: () => void actions.exportDefaultFormat() },
+          },
+          icon('save', 15),
+        ),
+        exportFormatSelectEl,
       ),
       el(
         'button',
         {
-          className: 'bv-btn',
-          attrs: { type: 'button', title: 'Save .bookvibe project file' },
-          on: { click: () => void actions.exportAsExtension('.bookvibe') },
-        },
-        icon('save', 14),
-        'Save',
-      ),
-      el(
-        'button',
-        {
-          className: 'bv-btn',
-          attrs: { type: 'button', title: 'Official Bookvibe File Extensions & OS Registration' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: TOOLTIP_CATALOG.extensionsManager,
+          attrs: { type: 'button', 'aria-label': 'Extensions and Formats' },
           on: { click: () => actions.openExtensionsModal() },
         },
-        icon('file', 14),
-        'Extensions',
+        icon('extensions', 15),
       ),
-      el(
-        'button',
-        {
-          className: `bv-btn bv-btn-icon${state.showInspector ? ' is-active' : ''}`,
-          attrs: { type: 'button', title: 'Toggle Scene Inspector' },
-          on: {
-            click: () => actions.setState({ showInspector: !state.showInspector }, true),
-          },
-        },
-        icon('split', 14),
-      ),
+      inspectorToggleBtn,
     ),
   );
 
@@ -496,15 +633,28 @@ function buildShell(root: HTMLElement): void {
   mainStageEl = el('main', { className: 'bv-main-stage' });
   inspectorEl = el('aside', { className: 'bv-inspector', attrs: { 'aria-label': 'Scene Inspector' } });
 
+  drawerBackdropEl = el('div', {
+    className: 'bv-drawer-backdrop',
+    on: {
+      click: () => {
+        const patch: Partial<AppState> = {};
+        if (window.innerWidth <= 960) patch.showBinder = false;
+        if (window.innerWidth <= 1180) patch.showInspector = false;
+        actions.setState(patch, false);
+      },
+    },
+  });
+
   workspaceGridEl = el(
     'div',
     { className: 'bv-workspace-grid' },
     binderEl,
     mainStageEl,
     inspectorEl,
+    drawerBackdropEl,
   );
 
-  wordStatsEl = el('span', { text: '' });
+  wordStatsEl = el('span', { className: 'bv-status-words', text: '' });
   sprintStatusEl = el('span', { text: '' });
 
   const sprintDurationSelect = el(
@@ -611,6 +761,13 @@ function buildShell(root: HTMLElement): void {
 
   shellEl = el('div', { className: 'bv-shell' }, topbar, workspaceGridEl, statusbar);
   root.appendChild(shellEl);
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth <= 960 && state.showBinder && state.showInspector) {
+      state.showInspector = false;
+    }
+    syncResponsiveDrawerClasses();
+  });
 }
 
 function wireGlobalShortcutsAndDrop(): void {
@@ -620,7 +777,7 @@ function wireGlobalShortcutsAndDrop(): void {
       if (state.activeView === 'editor') {
         actions.createSnapshot();
       } else {
-        void actions.exportAsExtension('.bookvibe');
+        void actions.exportDefaultFormat();
       }
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
@@ -659,7 +816,7 @@ function wireGlobalShortcutsAndDrop(): void {
     if (!dropOverlay) {
       dropOverlay = el('div', {
         className: 'bv-drop-overlay',
-        text: 'Drop .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle file to open',
+        text: 'Drop .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, or .bvext file',
       });
       document.body.appendChild(dropOverlay);
     }
@@ -685,9 +842,10 @@ function wireGlobalShortcutsAndDrop(): void {
     hideDrop();
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
-    if (!extractExtensionFromFilename(file.name)) {
+    const isExtPlugin = file.name.toLowerCase().endsWith('.bvext');
+    if (!isExtPlugin && !extractExtensionFromFilename(file.name)) {
       actions.notify(
-        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle file.',
+        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, or .bvext file.',
       );
       return;
     }

@@ -20,6 +20,7 @@ import { normalizeProjectDefaults } from '../core/library';
 import type { CollaboratorRole, LanSessionInfo } from '../core/types';
 import { el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
+import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
 type CollabTab = 'credits' | 'wifi' | 'bluetooth';
 
@@ -104,7 +105,8 @@ export function showCollabModal(actions: AppActions): void {
                 'button',
                 {
                   className: 'bv-mini-btn',
-                  attrs: { type: 'button', title: 'Remove collaborator' },
+                  tooltip: { title: 'Remove Collaborator', short: 'Remove credit and collaborator record.' },
+                  attrs: { type: 'button' },
                   on: {
                     click: () => {
                       actions.mutateProject((prev) => removeCollaborator(prev, c.id));
@@ -418,11 +420,12 @@ export function showCollabModal(actions: AppActions): void {
     ariaLabel: 'Collaboration method',
     surface: 'solid',
     compact: true,
+    iconOnly: true,
     value: activeTab,
     options: [
-      { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'collab' },
-      { id: 'wifi', label: 'Same-Wi-Fi LAN Sync', icon: 'wifi' },
-      { id: 'bluetooth', label: 'Bluetooth & Nearby Sync', icon: 'bluetooth' },
+      { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'collab', tooltip: TOOLTIP_CATALOG.collabCredits },
+      { id: 'wifi', label: 'Same-Wi-Fi LAN Sync', icon: 'wifi', tooltip: TOOLTIP_CATALOG.collabWifi },
+      { id: 'bluetooth', label: 'Bluetooth & Nearby Sync', icon: 'bluetooth', tooltip: TOOLTIP_CATALOG.collabBluetooth },
     ],
     onChange: (tab) => {
       activeTab = tab;

@@ -94,7 +94,8 @@ export function renderBibleView(container: HTMLElement, actions: AppActions): vo
         'button',
         {
           className: 'bv-mini-btn',
-          attrs: { type: 'button', title: 'Add custom Story Bible category' },
+          tooltip: { title: 'New Custom Category', short: 'Add your own tab such as Magic Systems, Factions, or Vessels.' },
+          attrs: { type: 'button' },
           on: {
             click: () => {
               const name = newCatInput.value.trim();
@@ -123,7 +124,8 @@ export function renderBibleView(container: HTMLElement, actions: AppActions): vo
         'button',
         {
           className: 'bv-btn',
-          attrs: { type: 'button', title: 'Import entries from a .bvbible file' },
+          tooltip: { title: 'Import .bvbible', short: 'Merge characters, locations, and lore from a .bvbible file.' },
+          attrs: { type: 'button' },
           on: { click: () => void actions.openAnyBookvibeFile() },
         },
         icon('folder', 14),
@@ -133,7 +135,8 @@ export function renderBibleView(container: HTMLElement, actions: AppActions): vo
         'button',
         {
           className: 'bv-btn',
-          attrs: { type: 'button', title: 'Export Story Bible as portable .bvbible database' },
+          tooltip: { title: 'Export .bvbible', short: 'Save this Story Bible database for reuse across series books.' },
+          attrs: { type: 'button' },
           on: { click: () => void actions.exportAsExtension('.bvbible') },
         },
         icon('download', 14),

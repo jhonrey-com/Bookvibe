@@ -40,6 +40,7 @@ export function normalizeProjectDefaults(raw: BookProject): BookProject {
     for (const ch of part.chapters) {
       for (const sc of ch.scenes) {
         sc.annotations = Array.isArray(sc.annotations) ? sc.annotations : [];
+        sc.proofreadMarks = Array.isArray(sc.proofreadMarks) ? sc.proofreadMarks : [];
       }
     }
   }

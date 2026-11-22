@@ -23,6 +23,7 @@ import type {
 } from '../core/types';
 import { clearNode, el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
+import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 import { renderCoverStudio } from './cover';
 
 let activeTypesetGlass: LiquidGlassControl<TypesetSubTab> | null = null;
@@ -67,11 +68,12 @@ export function renderTypesetView(container: HTMLElement, actions: AppActions): 
     ariaLabel: 'Publishing mode',
     surface: 'solid',
     compact: true,
+    iconOnly: true,
     value: state.typesetSubTab,
     options: [
-      { id: 'interior', label: 'Interior Typeset', icon: 'typeset' },
-      { id: 'cover', label: 'Book Cover Studio', icon: 'image' },
-      { id: 'publish', label: 'Publish & Author Key', icon: 'key' },
+      { id: 'interior', label: 'Interior Typeset', icon: 'typeset', tooltip: TOOLTIP_CATALOG.typesetInterior },
+      { id: 'cover', label: 'Book Cover Studio', icon: 'cover', tooltip: TOOLTIP_CATALOG.typesetCover },
+      { id: 'publish', label: 'Publish & Author Key', icon: 'key', tooltip: TOOLTIP_CATALOG.typesetPublish },
     ],
     onChange: (tab) => actions.setState({ typesetSubTab: tab }, true),
   });
@@ -107,7 +109,9 @@ export function renderTypesetView(container: HTMLElement, actions: AppActions): 
     ),
   );
 
-  const bodyContainer = el('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } });
+  const bodyContainer = el('div', {
+    style: { flex: '1', minHeight: '0', minWidth: '0', maxWidth: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+  });
   container.append(subbar, bodyContainer);
 
   if (state.typesetSubTab === 'cover') {
@@ -233,7 +237,8 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
         {
           className: 'bv-mini-btn',
           style: { justifyContent: 'center', padding: '6px' },
-          attrs: { type: 'button', title: item.purpose },
+          tooltip: { title: `${item.name} (${item.extension})`, short: item.purpose },
+          attrs: { type: 'button' },
           on: { click: () => void actions.exportAsExtension(item.extension) },
         },
         item.extension,
@@ -310,7 +315,7 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
       {
         className: 'bv-book-page',
         style: {
-          maxWidth: `${pageWidthPx}px`,
+          maxWidth: `min(100%, ${pageWidthPx}px)`,
           fontFamily: fontCss,
           textAlign: 'center',
           minHeight: `${Math.round(trimSpec.heightIn * 78)}px`,
@@ -372,11 +377,11 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
       const page = el('article', {
         className: 'bv-book-page',
         style: {
-          maxWidth: `${pageWidthPx}px`,
+          maxWidth: `min(100%, ${pageWidthPx}px)`,
           fontFamily: fontCss,
           fontSize: `${typo.fontSizePt}pt`,
           lineHeight: String(typo.lineHeight),
-          padding: `${Math.round(typo.marginInches * 54)}px`,
+          padding: `${Math.round(typo.marginInches * 42)}px clamp(18px, 4vw, ${Math.round(typo.marginInches * 54)}px)`,
         },
       });
 
@@ -474,6 +479,10 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
     (acc, item) => acc + (item.scene.annotations ?? []).filter((a) => a.status === 'open').length,
     0,
   );
+  const openMarksCount = scenes.reduce(
+    (acc, item) => acc + (item.scene.proofreadMarks ?? []).filter((m) => m.status === 'open').length,
+    0,
+  );
   const wordCount = getProjectWordCount(project);
 
   const checks = [
@@ -497,12 +506,12 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         : 'Generate & sign to lock edition digest',
     },
     {
-      label: 'Proofreader Notes Resolved',
-      ok: openAnnotationsCount === 0,
+      label: 'Proofread Marks & Notes Resolved',
+      ok: openAnnotationsCount + openMarksCount === 0,
       detail:
-        openAnnotationsCount === 0
-          ? '0 open proofreader notes'
-          : `${openAnnotationsCount} open annotation(s) waiting in Scenes`,
+        openAnnotationsCount + openMarksCount === 0
+          ? '0 open marks or notes'
+          : `${openMarksCount} open proofread mark(s) · ${openAnnotationsCount} open note(s)`,
     },
     {
       label: 'Manuscript Content',

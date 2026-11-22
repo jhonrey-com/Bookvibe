@@ -96,7 +96,8 @@ export function showLibraryModal(actions: AppActions): void {
             library.books.length > 1
               ? el('button', {
                   className: 'bv-mini-btn',
-                  attrs: { type: 'button', title: 'Delete Book' },
+                  tooltip: { title: 'Delete Book', short: 'Remove this manuscript from the library shelf.' },
+                  attrs: { type: 'button' },
                   on: {
                     click: () => {
                       const nextLib = deleteBookFromLibrary(actions.getState().library, book.id);

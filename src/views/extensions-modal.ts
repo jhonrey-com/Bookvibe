@@ -1,35 +1,645 @@
-import type { AppActions } from '../core/app-context';
+import type { AppActions, ExtensionsModalTab } from '../core/app-context';
 import { getOsExtensionStatus, registerOsExtensions } from '../core/bridge';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
-import type { AssociationReport } from '../core/types';
+import {
+  EXTENSION_PERMISSION_INFO,
+  SANDBOX_BLOCKED_CAPABILITIES,
+  SAMPLE_EXTERNAL_EXTENSION_JSON,
+  applyExtensionPreset,
+  clearExtensionAuditLog,
+  computeManifestSha256,
+  loadExtensionAuditLog,
+  loadInstalledExtensions,
+  runExtensionReadabilityReport,
+  runExtensionRulesOnScene,
+  runExtensionTransformOnScene,
+  saveInstalledExtensions,
+  validateExternalExtensionManifest,
+} from '../core/plugins';
+import type {
+  AssociationReport,
+  BookvibePluginManifest,
+  ExtensionPermission,
+  InstalledExtension,
+} from '../core/types';
 import { el, icon } from '../ui/dom';
+import { LiquidGlassControl } from '../ui/liquid-glass';
+import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
-export async function showExtensionsModal(actions: AppActions): Promise<void> {
+export interface ShowExtensionsOptions {
+  initialTab?: ExtensionsModalTab;
+  pendingExternalRawJson?: string;
+}
+
+export async function showExtensionsModal(
+  actions: AppActions,
+  options: ShowExtensionsOptions = {},
+): Promise<void> {
   const existing = document.getElementById('bv-extensions-modal');
   if (existing) existing.remove();
 
-  let report: AssociationReport = await getOsExtensionStatus();
+  let activeTab: ExtensionsModalTab = options.pendingExternalRawJson
+    ? 'external'
+    : (options.initialTab ?? 'integrated');
+  let osReport: AssociationReport = await getOsExtensionStatus();
+  let lastReadabilitySummary = '';
+  let pendingConsent: {
+    manifest: BookvibePluginManifest;
+    sha256: string;
+    selectedPerms: Set<ExtensionPermission>;
+  } | null = null;
 
-  const statusBanner = el('div', {
-    className: 'bv-list-card',
-    style: { background: 'var(--bg-bar)' },
-  });
+  if (options.pendingExternalRawJson) {
+    try {
+      const manifest = validateExternalExtensionManifest(options.pendingExternalRawJson);
+      const sha256 = await computeManifestSha256(options.pendingExternalRawJson);
+      pendingConsent = {
+        manifest,
+        sha256,
+        selectedPerms: new Set(manifest.permissions),
+      };
+    } catch (err) {
+      actions.notify(err instanceof Error ? err.message : 'Invalid external extension package.');
+    }
+  }
 
-  const tableBody = el('tbody');
+  let tabGlass: LiquidGlassControl<ExtensionsModalTab> | null = null;
+  const contentArea = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
 
-  const refreshView = (nextReport: AssociationReport) => {
-    report = nextReport;
-    statusBanner.replaceChildren(
+  const renderPermissionBadges = (ext: InstalledExtension, onTogglePerm?: (p: ExtensionPermission, granted: boolean) => void) => {
+    const wrap = el('div', { className: 'bv-perm-grid' });
+    for (const perm of ext.manifest.permissions) {
+      const info = EXTENSION_PERMISSION_INFO[perm];
+      const isGranted = ext.grantedPermissions.includes(perm);
+      if (onTogglePerm) {
+        const chk = el('input', {
+          attrs: { type: 'checkbox', checked: isGranted },
+          on: { change: () => onTogglePerm(perm, chk.checked) },
+        });
+        wrap.appendChild(
+          el(
+            'label',
+            {
+              className: `bv-perm-pill${isGranted ? ' is-granted' : ''}`,
+              tooltip: { title: info.title, short: info.dataAccessed, details: info.riskLabel },
+            },
+            chk,
+            el('span', { text: info.title }),
+          ),
+        );
+      } else {
+        wrap.appendChild(
+          el('span', {
+            className: `bv-perm-pill${isGranted ? ' is-granted' : ''}`,
+            text: `${isGranted ? '✓' : '○'} ${info.title}`,
+            tooltip: { title: info.title, short: info.dataAccessed, details: info.riskLabel },
+          }),
+        );
+      }
+    }
+    return wrap;
+  };
+
+  const renderExtensionActions = (ext: InstalledExtension): HTMLElement => {
+    const row = el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } });
+    const sceneId = actions.getState().activeSceneId;
+
+    if (ext.manifest.rules && ext.manifest.rules.length > 0) {
+      row.appendChild(
+        el(
+          'button',
+          {
+            className: 'bv-btn bv-btn-primary',
+            attrs: { type: 'button', disabled: !ext.enabled },
+            on: {
+              click: () => {
+                try {
+                  const res = runExtensionRulesOnScene(ext, actions.getState().project, sceneId);
+                  actions.mutateProject(() => res.project, false);
+                  actions.setState({ activeView: 'editor', editorSubMode: 'proofread' }, true);
+                  actions.notify(
+                    res.addedMarks > 0
+                      ? `${ext.manifest.name}: added ${res.addedMarks} proofreading mark(s)`
+                      : `${ext.manifest.name}: no issues found in active scene`,
+                  );
+                  closeModal();
+                } catch (err) {
+                  actions.notify(err instanceof Error ? err.message : 'Run failed.');
+                }
+              },
+            },
+          },
+          icon('proofread', 14),
+          'Scan Active Scene',
+        ),
+      );
+    }
+
+    for (const tr of ext.manifest.transforms ?? []) {
+      row.appendChild(
+        el('button', {
+          className: 'bv-btn',
+          text: tr.label,
+          tooltip: { title: tr.label, short: tr.description },
+          attrs: { type: 'button', disabled: !ext.enabled },
+          on: {
+            click: () => {
+              try {
+                const res = runExtensionTransformOnScene(
+                  ext,
+                  tr.id,
+                  actions.getState().project,
+                  sceneId,
+                );
+                actions.mutateProject(() => res.project);
+                actions.notify(
+                  res.changed
+                    ? `${tr.label}: applied cleanly (snapshot saved)`
+                    : `${tr.label}: prose already normalized`,
+                );
+                renderContent();
+              } catch (err) {
+                actions.notify(err instanceof Error ? err.message : 'Transform failed.');
+              }
+            },
+          },
+        }),
+      );
+    }
+
+    if (ext.manifest.metricsReport === 'readability') {
+      row.appendChild(
+        el('button', {
+          className: 'bv-btn bv-btn-primary',
+          text: 'Analyze Active Scene',
+          attrs: { type: 'button', disabled: !ext.enabled },
+          on: {
+            click: () => {
+              try {
+                const r = runExtensionReadabilityReport(ext, actions.getState().project, sceneId);
+                lastReadabilitySummary = `${r.words} words · ${r.sentences} sentences · Avg ${r.avgWordsPerSentence} w/sent · ${r.dialogueRatioPct}% dialogue · Flesch-Kincaid Grade ${r.fleschKincaidGrade}`;
+                actions.notify('Readability metrics updated');
+                renderContent();
+              } catch (err) {
+                actions.notify(err instanceof Error ? err.message : 'Analysis failed.');
+              }
+            },
+          },
+        }),
+      );
+    }
+
+    for (const preset of ext.manifest.presets ?? []) {
+      row.appendChild(
+        el('button', {
+          className: 'bv-btn',
+          text: preset.label,
+          attrs: { type: 'button', disabled: !ext.enabled },
+          on: {
+            click: () => {
+              try {
+                const nextProj = applyExtensionPreset(ext, preset.id, actions.getState().project);
+                actions.mutateProject(() => nextProj);
+                actions.notify(`Applied ${preset.label}`);
+                renderContent();
+              } catch (err) {
+                actions.notify(err instanceof Error ? err.message : 'Preset failed.');
+              }
+            },
+          },
+        }),
+      );
+    }
+
+    return row;
+  };
+
+  const renderConsentDialog = (): HTMLElement | null => {
+    if (!pendingConsent) return null;
+    const c = pendingConsent;
+    const permCheckboxes = el('div', { className: 'bv-snap-list' });
+    for (const perm of c.manifest.permissions) {
+      const info = EXTENSION_PERMISSION_INFO[perm];
+      const chk = el('input', {
+        attrs: { type: 'checkbox', checked: c.selectedPerms.has(perm) },
+        on: {
+          change: () => {
+            if (chk.checked) c.selectedPerms.add(perm);
+            else c.selectedPerms.delete(perm);
+          },
+        },
+      });
+      permCheckboxes.appendChild(
+        el(
+          'label',
+          { className: 'bv-list-card', style: { cursor: 'pointer', alignItems: 'flex-start' } },
+          el(
+            'div',
+            { style: { display: 'flex', gap: '10px', alignItems: 'flex-start' } },
+            chk,
+            el(
+              'div',
+              {},
+              el('div', { text: info.title, style: { fontWeight: '600', fontSize: '12.5px' } }),
+              el('div', { className: 'bv-label', text: info.dataAccessed }),
+            ),
+          ),
+          el('span', { className: 'bv-mono-tag', text: info.riskLabel }),
+        ),
+      );
+    }
+
+    return el(
+      'section',
+      { className: 'bv-consent-box' },
+      el(
+        'div',
+        { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        el('span', {
+          className: 'bv-panel-title',
+          text: 'Permission Consent Required Before Installation',
+          style: { color: 'var(--accent-amber)' },
+        }),
+        el('span', { className: 'bv-mono-tag', text: `SHA-256: ${c.sha256}` }),
+      ),
+      el('div', {
+        text: `${c.manifest.name} v${c.manifest.version} · Author: ${c.manifest.author}`,
+        style: { fontWeight: '600', fontSize: '14px' },
+      }),
+      el('p', { className: 'bv-label', text: c.manifest.description, style: { margin: '0' } }),
+      el('div', {
+        className: 'bv-list-card',
+        style: { background: 'var(--bg-canvas)' },
+        text: `Data Usage Statement: ${c.manifest.dataUsageSummary}`,
+      }),
+      el('span', { className: 'bv-panel-title', text: 'Requested Access Scopes (Uncheck to Deny)' }),
+      permCheckboxes,
+      el(
+        'div',
+        { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' } },
+        el('button', {
+          className: 'bv-btn',
+          text: 'Cancel Install',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              pendingConsent = null;
+              renderContent();
+            },
+          },
+        }),
+        el(
+          'button',
+          {
+            className: 'bv-btn bv-btn-primary',
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                const list = loadInstalledExtensions().filter(
+                  (e) => e.manifest.id !== c.manifest.id,
+                );
+                list.push({
+                  manifest: c.manifest,
+                  source: 'external',
+                  enabled: true,
+                  grantedPermissions: Array.from(c.selectedPerms),
+                  installedAt: new Date().toISOString(),
+                  sha256: c.sha256,
+                });
+                saveInstalledExtensions(list);
+                const approvedName = c.manifest.name;
+                pendingConsent = null;
+                actions.notify(`Installed "${approvedName}" with ${list[list.length - 1].grantedPermissions.length} granted scope(s)`);
+                renderContent();
+              },
+            },
+          },
+          icon('check', 14),
+          'Grant Approved Scopes & Install',
+        ),
+      ),
+    );
+  };
+
+  const renderContent = () => {
+    contentArea.replaceChildren();
+    const installed = loadInstalledExtensions();
+
+    if (activeTab === 'integrated') {
+      const builtIns = installed.filter((e) => e.source === 'integrated');
+      contentArea.appendChild(
+        el('p', {
+          className: 'bv-label',
+          text: 'Integrated extensions ship directly inside Bookvibe, run 100% locally offline, and declare every data scope they access.',
+          style: { margin: '0' },
+        }),
+      );
+      if (lastReadabilitySummary) {
+        contentArea.appendChild(
+          el('div', {
+            className: 'bv-list-card',
+            style: { borderColor: 'var(--accent-emerald)', color: 'var(--accent-ivory)' },
+            text: `Readability Ledger: ${lastReadabilitySummary}`,
+          }),
+        );
+      }
+
+      for (const ext of builtIns) {
+        const enableChk = el('input', {
+          attrs: { type: 'checkbox', checked: ext.enabled },
+          on: {
+            change: () => {
+              const all = loadInstalledExtensions().map((item) =>
+                item.manifest.id === ext.manifest.id
+                  ? { ...item, enabled: enableChk.checked }
+                  : item,
+              );
+              saveInstalledExtensions(all);
+              renderContent();
+            },
+          },
+        });
+
+        contentArea.appendChild(
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el(
+              'div',
+              { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+              el(
+                'div',
+                {},
+                el('div', {
+                  text: `${ext.manifest.name} · v${ext.manifest.version}`,
+                  style: { fontWeight: '600', fontSize: '13.5px', color: 'var(--text-primary)' },
+                }),
+                el('div', { className: 'bv-label', text: ext.manifest.description }),
+              ),
+              el(
+                'label',
+                { style: { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' } },
+                enableChk,
+                ext.enabled ? 'Enabled' : 'Disabled',
+              ),
+            ),
+            el('div', {
+              className: 'bv-mono-tag',
+              text: `Data Usage: ${ext.manifest.dataUsageSummary}`,
+            }),
+            renderPermissionBadges(ext),
+            renderExtensionActions(ext),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (activeTab === 'external') {
+      const consentEl = renderConsentDialog();
+      if (consentEl) contentArea.appendChild(consentEl);
+
+      const extFileInput = el('input', {
+        attrs: { type: 'file', accept: '.bvext,.json' },
+        style: { display: 'none' },
+        on: {
+          change: async () => {
+            const f = extFileInput.files?.[0];
+            if (!f) return;
+            try {
+              const raw = await f.text();
+              const manifest = validateExternalExtensionManifest(raw);
+              const sha256 = await computeManifestSha256(raw);
+              pendingConsent = {
+                manifest,
+                sha256,
+                selectedPerms: new Set(manifest.permissions),
+              };
+              renderContent();
+            } catch (err) {
+              actions.notify(err instanceof Error ? err.message : 'Rejected extension file.');
+            }
+          },
+        },
+      });
+
+      const sandboxBox = el(
+        'section',
+        { className: 'bv-cork-card', style: { background: 'var(--bg-bar)' } },
+        el(
+          'div',
+          { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+          el('span', { className: 'bv-panel-title', text: 'External Extension Sandbox (.bvext)' }),
+          el(
+            'div',
+            { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+            el(
+              'button',
+              {
+                className: 'bv-btn bv-btn-primary',
+                attrs: { type: 'button' },
+                on: { click: () => extFileInput.click() },
+              },
+              icon('folder', 14),
+              'Install .bvext File…',
+            ),
+            el('button', {
+              className: 'bv-btn',
+              text: 'Inspect Sample External Extension',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  const manifest = validateExternalExtensionManifest(SAMPLE_EXTERNAL_EXTENSION_JSON);
+                  const sha256 = await computeManifestSha256(SAMPLE_EXTERNAL_EXTENSION_JSON);
+                  pendingConsent = {
+                    manifest,
+                    sha256,
+                    selectedPerms: new Set(manifest.permissions),
+                  };
+                  renderContent();
+                },
+              },
+            }),
+            el('button', {
+              className: 'bv-mini-btn',
+              text: 'Download .bvext Template',
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  const blob = new Blob([SAMPLE_EXTERNAL_EXTENSION_JSON], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'uk-house-style.bvext';
+                  a.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 2500);
+                },
+              },
+            }),
+            extFileInput,
+          ),
+        ),
+        el('div', {
+          className: 'bv-label',
+          text: SANDBOX_BLOCKED_CAPABILITIES.join('  ·  '),
+        }),
+      );
+      contentArea.appendChild(sandboxBox);
+
+      const externals = installed.filter((e) => e.source === 'external');
+      if (externals.length === 0 && !consentEl) {
+        contentArea.appendChild(
+          el('p', {
+            className: 'bv-label',
+            text: 'No external extensions installed. Drop any .bvext file onto Bookvibe or click "Inspect Sample External Extension" above to review permissions before installing.',
+          }),
+        );
+      } else {
+        for (const ext of externals) {
+          const enableChk = el('input', {
+            attrs: { type: 'checkbox', checked: ext.enabled },
+            on: {
+              change: () => {
+                const updated = loadInstalledExtensions().map((item) =>
+                  item.manifest.id === ext.manifest.id
+                    ? { ...item, enabled: enableChk.checked }
+                    : item,
+                );
+                saveInstalledExtensions(updated);
+                renderContent();
+              },
+            },
+          });
+
+          contentArea.appendChild(
+            el(
+              'section',
+              { className: 'bv-cork-card' },
+              el(
+                'div',
+                { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+                el(
+                  'div',
+                  {},
+                  el('div', {
+                    text: `${ext.manifest.name} · v${ext.manifest.version} by ${ext.manifest.author}`,
+                    style: { fontWeight: '600', fontSize: '13.5px' },
+                  }),
+                  el('div', { className: 'bv-label', text: ext.manifest.dataUsageSummary }),
+                ),
+                el(
+                  'div',
+                  { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+                  el(
+                    'label',
+                    { style: { display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px' } },
+                    enableChk,
+                    ext.enabled ? 'Enabled' : 'Paused',
+                  ),
+                  el(
+                    'button',
+                    {
+                      className: 'bv-mini-btn',
+                      attrs: { type: 'button' },
+                      tooltip: { title: 'Remove Extension', short: 'Uninstall external extension.' },
+                      on: {
+                        click: () => {
+                          const next = loadInstalledExtensions().filter(
+                            (i) => i.manifest.id !== ext.manifest.id,
+                          );
+                          saveInstalledExtensions(next);
+                          renderContent();
+                        },
+                      },
+                    },
+                    icon('trash', 12),
+                  ),
+                ),
+              ),
+              renderPermissionBadges(ext, (perm, granted) => {
+                const updated = loadInstalledExtensions().map((item) => {
+                  if (item.manifest.id !== ext.manifest.id) return item;
+                  const nextPerms = new Set(item.grantedPermissions);
+                  if (granted) nextPerms.add(perm);
+                  else nextPerms.delete(perm);
+                  return { ...item, grantedPermissions: Array.from(nextPerms) };
+                });
+                saveInstalledExtensions(updated);
+                renderContent();
+              }),
+              renderExtensionActions(ext),
+            ),
+          );
+        }
+      }
+
+      // Data Access Audit Log
+      const auditEntries = loadExtensionAuditLog();
+      const auditList = el('div', { className: 'bv-snap-list' });
+      if (auditEntries.length === 0) {
+        auditList.appendChild(
+          el('span', { className: 'bv-label', text: 'No extension runs recorded yet.' }),
+        );
+      } else {
+        for (const a of auditEntries.slice(0, 12)) {
+          auditList.appendChild(
+            el(
+              'div',
+              { className: 'bv-list-card' },
+              el(
+                'div',
+                {},
+                el('div', { text: `${a.extensionName}: ${a.action}`, style: { fontWeight: '600', fontSize: '12px' } }),
+                el('div', { className: 'bv-label', text: `Data read: ${a.dataAccessed}` }),
+              ),
+              el('span', { className: 'bv-mono-tag', text: new Date(a.timestamp).toLocaleTimeString() }),
+            ),
+          );
+        }
+      }
+
+      contentArea.appendChild(
+        el(
+          'section',
+          { className: 'bv-cork-card' },
+          el(
+            'div',
+            { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            el('span', { className: 'bv-panel-title', text: 'Extension Data Access Audit Log' }),
+            auditEntries.length > 0
+              ? el('button', {
+                  className: 'bv-mini-btn',
+                  text: 'Clear Log',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      clearExtensionAuditLog();
+                      renderContent();
+                    },
+                  },
+                })
+              : null,
+          ),
+          auditList,
+        ),
+      );
+      return;
+    }
+
+    // Tab 3: Official File Extensions & OS Registration
+    const statusBanner = el(
+      'div',
+      { className: 'bv-list-card', style: { background: 'var(--bg-bar)' } },
       el(
         'div',
         {},
         el('div', {
-          text: report.allRegistered
+          text: osReport.allRegistered
             ? 'All 6 Bookvibe extensions are active in your OS file shell'
-            : `Platform: ${report.platform} · Scope: ${report.scope}`,
+            : `Platform: ${osReport.platform} · Scope: ${osReport.scope}`,
           style: { fontWeight: '600' },
         }),
-        el('div', { className: 'bv-label', text: report.executablePath }),
+        el('div', { className: 'bv-label', text: osReport.executablePath }),
       ),
       el(
         'button',
@@ -38,13 +648,13 @@ export async function showExtensionsModal(actions: AppActions): Promise<void> {
           attrs: { type: 'button' },
           on: {
             click: async () => {
-              const updated = await registerOsExtensions();
-              refreshView(updated);
+              osReport = await registerOsExtensions();
               actions.notify(
-                updated.allRegistered
+                osReport.allRegistered
                   ? 'Registered all 6 Bookvibe extensions in OS shell.'
-                  : 'Extension registration requires launching the compiled desktop executable.',
+                  : 'OS registration requires launching the compiled desktop binary.',
               );
+              renderContent();
             },
           },
         },
@@ -53,18 +663,26 @@ export async function showExtensionsModal(actions: AppActions): Promise<void> {
       ),
     );
 
-    tableBody.replaceChildren();
+    const tbody = el('tbody');
     for (const spec of BOOKVIBE_EXTENSIONS) {
-      const liveItem = report.items.find((i) => i.extension === spec.extension);
+      const liveItem = osReport.items.find((i) => i.extension === spec.extension);
       const isOk = Boolean(liveItem?.registered);
-      tableBody.appendChild(
+      tbody.appendChild(
         el(
           'tr',
           {},
-          el('td', { className: 'bv-mono-tag', text: spec.extension, style: { color: 'var(--accent-ivory)', fontWeight: '600', whiteSpace: 'nowrap' } }),
-          el('td', { className: 'bv-ext-desc-col' }, el('div', { text: spec.name, style: { fontWeight: '500', color: 'var(--text-primary)' } }), el('div', { className: 'bv-label', text: spec.purpose })),
+          el('td', {
+            className: 'bv-mono-tag',
+            text: spec.extension,
+            style: { color: 'var(--accent-ivory)', fontWeight: '600', whiteSpace: 'nowrap' },
+          }),
+          el(
+            'td',
+            { className: 'bv-ext-desc-col' },
+            el('div', { text: spec.name, style: { fontWeight: '500', color: 'var(--text-primary)' } }),
+            el('div', { className: 'bv-label', text: spec.purpose }),
+          ),
           el('td', { className: 'bv-mono-tag', text: spec.mimeType }),
-          el('td', { className: 'bv-mono-tag', text: spec.uti, style: { whiteSpace: 'nowrap' } }),
           el(
             'td',
             { style: { whiteSpace: 'nowrap' } },
@@ -80,46 +698,69 @@ export async function showExtensionsModal(actions: AppActions): Promise<void> {
             el('button', {
               className: 'bv-mini-btn',
               text: 'Save',
-              attrs: { type: 'button', title: `Export current project as ${spec.extension}` },
+              attrs: { type: 'button' },
               on: { click: () => void actions.exportAsExtension(spec.extension) },
             }),
           ),
         ),
       );
     }
+
+    const table = el(
+      'table',
+      { className: 'bv-table bv-ext-table' },
+      el(
+        'thead',
+        {},
+        el(
+          'tr',
+          {},
+          el('th', { text: 'Ext' }),
+          el('th', { text: 'Format' }),
+          el('th', { text: 'Official MIME' }),
+          el('th', { text: 'OS Status' }),
+          el('th', { text: 'Action' }),
+        ),
+      ),
+      tbody,
+    );
+
+    contentArea.append(statusBanner, el('div', { className: 'bv-table-wrap' }, table));
   };
 
-  refreshView(report);
+  const tabSwitcher = new LiquidGlassControl<ExtensionsModalTab>({
+    ariaLabel: 'Extensions section',
+    surface: 'solid',
+    compact: true,
+    iconOnly: true,
+    value: activeTab,
+    options: [
+      { id: 'integrated', label: 'Integrated', icon: 'extensions', tooltip: TOOLTIP_CATALOG.extIntegrated },
+      { id: 'external', label: 'External Sandbox', icon: 'shield', tooltip: TOOLTIP_CATALOG.extExternal },
+      { id: 'formats', label: 'File Formats', icon: 'file', tooltip: TOOLTIP_CATALOG.extFormats },
+    ],
+    onChange: (tab) => {
+      activeTab = tab;
+      renderContent();
+    },
+  });
+  tabGlass = tabSwitcher;
 
-  const table = el(
-    'table',
-    { className: 'bv-table bv-ext-table' },
-    el(
-      'thead',
-      {},
-      el(
-        'tr',
-        {},
-        el('th', { text: 'Ext' }),
-        el('th', { text: 'Format' }),
-        el('th', { text: 'Official IANA MIME' }),
-        el('th', { text: 'Apple UTI' }),
-        el('th', { text: 'OS Status' }),
-        el('th', { text: 'Action' }),
-      ),
-    ),
-    tableBody,
-  );
-
-  const closeModal = () => backdrop.remove();
+  const closeModal = () => {
+    tabGlass?.destroy();
+    backdrop.remove();
+  };
 
   const modal = el(
     'div',
-    { className: 'bv-modal', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Official Bookvibe File Extensions' } },
+    {
+      className: 'bv-modal',
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Extensions and Formats Manager' },
+    },
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Official Bookvibe File Extensions & OS Registration' }),
+      el('span', { className: 'bv-panel-title', text: 'Extensions, Permissions & Official File Formats' }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',
@@ -130,12 +771,8 @@ export async function showExtensionsModal(actions: AppActions): Promise<void> {
     el(
       'div',
       { className: 'bv-modal-body' },
-      statusBanner,
-      el('div', { className: 'bv-table-wrap' }, table),
-      el('p', {
-        className: 'bv-label',
-        text: 'Double-clicking any .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle file in Windows Explorer, macOS Finder, or Linux Files launches Bookvibe directly into that file. Formal IANA RFC 6838 MIME templates and FreeDesktop shared-mime-info XML are included in docs/ and packaging/.',
-      }),
+      tabSwitcher.element,
+      contentArea,
     ),
   );
 
@@ -154,4 +791,5 @@ export async function showExtensionsModal(actions: AppActions): Promise<void> {
   );
 
   document.body.appendChild(backdrop);
+  renderContent();
 }

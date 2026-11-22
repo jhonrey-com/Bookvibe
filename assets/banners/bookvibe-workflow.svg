@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 190" width="1200" height="190" fill="none">
+  <rect width="1200" height="190" rx="10" fill="#0b0c10" />
+  <rect x="0.5" y="0.5" width="1199" height="189" rx="9.5" stroke="#1f232d" />
+  <text x="32" y="34" fill="#c7a97b" font-family="ui-monospace, Consolas, monospace" font-size="11.5" letter-spacing="1.4">STUDIO WORKFLOW</text>
+
+  <!-- 5 Stage Cards -->
+  <g transform="translate(32, 52)">
+    <rect width="210" height="112" rx="7" fill="#0f1117" stroke="#232734" />
+    <text x="16" y="30" fill="#6f7785" font-family="ui-monospace, Consolas, monospace" font-size="11">01 · DRAFT</text>
+    <text x="16" y="56" fill="#eceef2" font-family="Inter, 'Segoe UI', sans-serif" font-size="15" font-weight="600">Manuscript</text>
+    <text x="16" y="79" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">Parts, chapters, scenes,</text>
+    <text x="16" y="96" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">corkboard &amp; sprints.</text>
+  </g>
+  <path d="M248 108H264" stroke="#464d5e" stroke-width="1.5" />
+
+  <g transform="translate(264, 52)">
+    <rect width="210" height="112" rx="7" fill="#0f1117" stroke="#232734" />
+    <text x="16" y="30" fill="#6f7785" font-family="ui-monospace, Consolas, monospace" font-size="11">02 · REVISE</text>
+    <text x="16" y="56" fill="#eceef2" font-family="Inter, 'Segoe UI', sans-serif" font-size="15" font-weight="600">Proofread</text>
+    <text x="16" y="79" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">Strikeout, caret, stet,</text>
+    <text x="16" y="96" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">transpose, comments.</text>
+  </g>
+  <path d="M480 108H496" stroke="#464d5e" stroke-width="1.5" />
+
+  <g transform="translate(496, 52)">
+    <rect width="210" height="112" rx="7" fill="#0f1117" stroke="#232734" />
+    <text x="16" y="30" fill="#6f7785" font-family="ui-monospace, Consolas, monospace" font-size="11">03 · ORGANIZE</text>
+    <text x="16" y="56" fill="#eceef2" font-family="Inter, 'Segoe UI', sans-serif" font-size="15" font-weight="600">Bible &amp; Graph</text>
+    <text x="16" y="79" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">Characters, places, lore,</text>
+    <text x="16" y="96" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">&amp; visual link canvas.</text>
+  </g>
+  <path d="M712 108H728" stroke="#464d5e" stroke-width="1.5" />
+
+  <g transform="translate(728, 52)">
+    <rect width="210" height="112" rx="7" fill="#0f1117" stroke="#232734" />
+    <text x="16" y="30" fill="#6f7785" font-family="ui-monospace, Consolas, monospace" font-size="11">04 · SHARE OFFLINE</text>
+    <text x="16" y="56" fill="#eceef2" font-family="Inter, 'Segoe UI', sans-serif" font-size="15" font-weight="600">Direct Sync</text>
+    <text x="16" y="79" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">Same-Wi-Fi PIN pairing</text>
+    <text x="16" y="96" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">&amp; Bluetooth transfer.</text>
+  </g>
+  <path d="M944 108H960" stroke="#464d5e" stroke-width="1.5" />
+
+  <g transform="translate(960, 52)">
+    <rect width="208" height="112" rx="7" fill="#0f1117" stroke="#c7a97b" stroke-opacity="0.45" />
+    <text x="16" y="30" fill="#c7a97b" font-family="ui-monospace, Consolas, monospace" font-size="11">05 · RELEASE</text>
+    <text x="16" y="56" fill="#f2efe8" font-family="Inter, 'Segoe UI', sans-serif" font-size="15" font-weight="600">Typeset &amp; Cover</text>
+    <text x="16" y="79" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">EPUB 3, Print PDF, Cover</text>
+    <text x="16" y="96" fill="#8e95a3" font-family="Inter, 'Segoe UI', sans-serif" font-size="12">PNG &amp; Author Key seal.</text>
+  </g>
+</svg>

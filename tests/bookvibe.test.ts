@@ -14,9 +14,32 @@ import {
   applySmartTypography,
   buildEpubBlobBytes,
   buildEpubExportPayload,
+  buildHtmlExport,
   buildMarkdownExport,
+  buildPlainTextExport,
   formatChapterLabel,
 } from '../src/core/export';
+import {
+  applyExtensionPreset,
+  computeManifestSha256,
+  isSafeRegexPattern,
+  loadExtensionAuditLog,
+  loadInstalledExtensions,
+  runExtensionReadabilityReport,
+  runExtensionRulesOnScene,
+  runExtensionTransformOnScene,
+  SAMPLE_EXTERNAL_EXTENSION_JSON,
+  validateExternalExtensionManifest,
+} from '../src/core/plugins';
+import {
+  acceptAllProofreadMarks,
+  acceptProofreadMark,
+  addProofreadMark,
+  computeCleanProofPreview,
+  realignMarksAfterEdit,
+  rejectProofreadMark,
+  stetProofreadMark,
+} from '../src/core/proofread';
 import {
   BOOKVIBE_EXTENSIONS,
   BOOKVIBE_MAGIC,
@@ -121,6 +144,17 @@ describe('Bookvibe Official File Extension Suite', () => {
     expect(styleApplied.focusView).toBe('typeset');
     expect(styleApplied.project.paperTheme).toBe('parchment');
     expect(styleApplied.project.typography.trimSize).toBe('5x8');
+  });
+
+  it('builds clean HTML and Plain Text exports alongside EPUB and Markdown', () => {
+    const project = createStarterBookProject();
+    const html = buildHtmlExport(project);
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('The Salt Cartographer');
+
+    const txt = buildPlainTextExport(project);
+    expect(txt).toContain('THE SALT CARTOGRAPHER');
+    expect(txt).toContain('Chapter I: The Brass Astrolabe');
   });
 
   it('rejects malformed or missing magic headers and strips prototype pollution keys', () => {
@@ -377,5 +411,161 @@ describe('Typesetting, Smart Typography & EPUB 3 Export with Cover & Credits', (
       expect(applied.project.title).toBeTruthy();
       expect(applied.summaryMessage.length).toBeGreaterThan(5);
     }
+  });
+});
+
+describe('Proofreading Marks Engine', () => {
+  it('supports delete, insert, transpose, stet, accept, reject, clean preview, and realignment', () => {
+    let project = normalizeProjectDefaults(createStarterBookProject());
+    const sceneId = 'scene-1';
+    const baseText = findSceneContext(project, sceneId)!.scene.content;
+
+    // Cross out the first phrase
+    const delWord = 'brass';
+    const delIdx = baseText.toLowerCase().indexOf(delWord);
+    expect(delIdx).toBeGreaterThan(-1);
+    const addDel = addProofreadMark(project, sceneId, {
+      kind: 'delete',
+      start: delIdx,
+      end: delIdx + delWord.length,
+      authorName: 'K. Lin',
+      role: 'proofreader',
+    });
+    project = addDel.project;
+
+    // Mark stet on a phrase
+    const stetTarget = 'nine fathoms';
+    const stetIdx = baseText.indexOf(stetTarget);
+    const addStet = addProofreadMark(project, sceneId, {
+      kind: 'stet',
+      start: stetIdx,
+      end: stetIdx + stetTarget.length,
+      authorName: 'K. Lin',
+      role: 'proofreader',
+    });
+    project = stetProofreadMark(addStet.project, sceneId, addStet.mark!.id);
+    expect(
+      findSceneContext(project, sceneId)!.scene.proofreadMarks!.some((m) => m.status === 'stet'),
+    ).toBe(true);
+
+    // Clean preview hides deleted word while leaving prose readable
+    const sceneNow = findSceneContext(project, sceneId)!;
+    const clean = computeCleanProofPreview(sceneNow.scene.content, sceneNow.scene.proofreadMarks!);
+    expect(clean.length).toBeLessThan(sceneNow.scene.content.length);
+
+    // Accept deletion -> creates snapshot & removes target word
+    const accepted = acceptProofreadMark(project, sceneId, addDel.mark!.id);
+    expect(accepted.applied).toBe(true);
+    project = accepted.project;
+    const afterAccept = findSceneContext(project, sceneId)!.scene;
+    expect(afterAccept.snapshots.length).toBeGreaterThan(0);
+
+    // Realignment test + reject + acceptAll
+    const extraInsert = addProofreadMark(project, sceneId, {
+      kind: 'insert',
+      start: 5,
+      end: 5,
+      replacement: 'carefully ',
+      authorName: 'K. Lin',
+      role: 'proofreader',
+    });
+    project = acceptAllProofreadMarks(extraInsert.project, sceneId);
+    expect(findSceneContext(project, sceneId)!.scene.content).toContain('carefully ');
+
+    const dummyReject = addProofreadMark(project, sceneId, {
+      kind: 'comment',
+      start: 0,
+      end: 4,
+      note: 'Check phrasing',
+      authorName: 'K. Lin',
+      role: 'proofreader',
+    });
+    const afterRej = rejectProofreadMark(dummyReject.project, sceneId, dummyReject.mark!.id);
+    expect(
+      findSceneContext(afterRej, sceneId)!.scene.proofreadMarks!.some((m) => m.status === 'rejected'),
+    ).toBe(true);
+
+    const realigned = realignMarksAfterEdit(
+      [{ ...dummyReject.mark!, start: 20, end: 25, status: 'open' }],
+      '01234567890123456789abcde',
+      'XX01234567890123456789abcde',
+    );
+    expect(realigned[0].start).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('Sandboxed Integrated & External Extensions (.bvext)', () => {
+  it('validates external manifests, blocks ReDoS & bad scopes, enforces permissions, and audits access', async () => {
+    expect(isSafeRegexPattern('\\bcolor\\b')).toBe(true);
+    expect(isSafeRegexPattern('(a+)+')).toBe(false);
+    expect(isSafeRegexPattern('a\\1')).toBe(false);
+
+    const manifest = validateExternalExtensionManifest(SAMPLE_EXTERNAL_EXTENSION_JSON);
+    expect(manifest.id).toBe('ext.uk-house-style');
+    const hash = await computeManifestSha256(SAMPLE_EXTERNAL_EXTENSION_JSON);
+    expect(hash.length).toBeGreaterThanOrEqual(8);
+
+    // Reject core impersonation, script tags, or unknown permissions
+    expect(() =>
+      validateExternalExtensionManifest(
+        SAMPLE_EXTERNAL_EXTENSION_JSON.replace('ext.uk-house-style', 'core.fake'),
+      ),
+    ).toThrow();
+    expect(() =>
+      validateExternalExtensionManifest(
+        SAMPLE_EXTERNAL_EXTENSION_JSON.replace('read:active-scene', 'fs:write-disk'),
+      ),
+    ).toThrow();
+    expect(() =>
+      validateExternalExtensionManifest(
+        SAMPLE_EXTERNAL_EXTENSION_JSON.replace('Editorial Guild', '<script>alert(1)</script>'),
+      ),
+    ).toThrow();
+
+    // Test permission enforcement & integrated extensions execution
+    const integrated = loadInstalledExtensions();
+    const proofingExt = integrated.find((e) => e.manifest.id === 'core.editorial-proofing')!;
+    const transformExt = integrated.find((e) => e.manifest.id === 'core.typo-cleanup')!;
+    const metricsExt = integrated.find((e) => e.manifest.id === 'core.readability-ledger')!;
+    const presetExt = integrated.find((e) => e.manifest.id === 'core.print-presets')!;
+
+    let project = normalizeProjectDefaults(createStarterBookProject());
+    // Inject a color word & double space in scene-1 to test external rule + integrated cleanup
+    project.parts[0].chapters[0].scenes[0].content += ' She admired the color  of the sea--dark and very deep.';
+
+    const externalInstalled = {
+      manifest,
+      source: 'external' as const,
+      enabled: true,
+      grantedPermissions: [...manifest.permissions],
+      installedAt: new Date().toISOString(),
+      sha256: hash,
+    };
+    const ukRun = runExtensionRulesOnScene(externalInstalled, project, 'scene-1');
+    expect(ukRun.addedMarks).toBeGreaterThanOrEqual(1);
+    project = ukRun.project;
+
+    // Revoking propose:proofread-marks must immediately deny execution
+    expect(() =>
+      runExtensionRulesOnScene(
+        { ...externalInstalled, grantedPermissions: ['read:active-scene'] },
+        project,
+        'scene-1',
+      ),
+    ).toThrow(/Permission denied/);
+
+    const proofRun = runExtensionRulesOnScene(proofingExt, project, 'scene-1');
+    expect(proofRun.addedMarks).toBeGreaterThanOrEqual(2);
+
+    const typoRun = runExtensionTransformOnScene(transformExt, 'tr-collapse-spaces', proofRun.project, 'scene-1');
+    expect(typoRun.changed).toBe(true);
+
+    const readability = runExtensionReadabilityReport(metricsExt, typoRun.project, 'scene-1');
+    expect(readability.words).toBeGreaterThan(50);
+
+    const presetProj = applyExtensionPreset(presetExt, 'preset-pocket-5x8', typoRun.project);
+    expect(presetProj.typography.trimSize).toBe('5x8');
+
+    expect(loadExtensionAuditLog().length).toBeGreaterThan(0);
   });
 });

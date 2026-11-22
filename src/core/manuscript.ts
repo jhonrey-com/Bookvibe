@@ -177,7 +177,21 @@ export function addSceneToChapter(
 export function updateSceneInProject(
   project: BookProject,
   sceneId: string,
-  patch: Partial<Pick<SceneNode, 'title' | 'synopsis' | 'status' | 'pov' | 'location' | 'timeline' | 'wordTarget' | 'content' | 'notes'>>,
+  patch: Partial<
+    Pick<
+      SceneNode,
+      | 'title'
+      | 'synopsis'
+      | 'status'
+      | 'pov'
+      | 'location'
+      | 'timeline'
+      | 'wordTarget'
+      | 'content'
+      | 'notes'
+      | 'proofreadMarks'
+    >
+  >,
 ): BookProject {
   const next = structuredClone(project);
   const ctx = findSceneContext(next, sceneId);

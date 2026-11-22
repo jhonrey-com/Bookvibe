@@ -4,9 +4,30 @@ import { getProjectWordCount } from './manuscript';
 import type {
   BookProject,
   ChapterNumeralStyle,
+  ExportFormatId,
   FontFamilyId,
   TrimSize,
 } from './types';
+
+export interface ExportFormatOption {
+  id: ExportFormatId;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
+export const EXPORT_FORMAT_OPTIONS: readonly ExportFormatOption[] = [
+  { id: '.bookvibe', label: 'Master Project (.bookvibe)', shortLabel: '.bookvibe', description: 'Complete manuscript, story bible, graph, cover, snapshots, and author key seal.' },
+  { id: '.epub', label: 'EPUB 3 eBook (.epub)', shortLabel: '.epub', description: 'Standard eBook archive with cover artwork, credits, and reflowable chapters.' },
+  { id: '.md', label: 'Markdown Manuscript (.md)', shortLabel: '.md', description: 'Plain-text Markdown with YAML front matter and formatted scene breaks.' },
+  { id: '.html', label: 'Standalone Web Book (.html)', shortLabel: '.html', description: 'Self-contained readable HTML manuscript with clean serif styling.' },
+  { id: '.txt', label: 'Plain Text Manuscript (.txt)', shortLabel: '.txt', description: 'Clean unformatted UTF-8 prose manuscript.' },
+  { id: '.bvibe', label: 'Compact Project (.bvibe)', shortLabel: '.bvibe', description: 'Short-alias project file identical in structure to .bookvibe.' },
+  { id: '.bvbook', label: 'Manuscript Package (.bvbook)', shortLabel: '.bvbook', description: 'Portable manuscript parts, chapters, scenes, and credits without bible/graph.' },
+  { id: '.bvbible', label: 'Story Bible DB (.bvbible)', shortLabel: '.bvbible', description: 'Shareable characters, locations, lore, and custom categories database.' },
+  { id: '.bvscene', label: 'Active Scene Draft (.bvscene)', shortLabel: '.bvscene', description: 'Exports only the currently open scene draft, marks, and snapshots.' },
+  { id: '.bvstyle', label: 'Typeset Preset (.bvstyle)', shortLabel: '.bvstyle', description: 'Reusable trim size, margins, drop caps, and paper preset.' },
+] as const;
 
 export interface TrimSpec {
   id: TrimSize;
@@ -229,6 +250,100 @@ export function buildMarkdownExport(project: BookProject): string {
   }
 
   return lines.join('\n') + '\n';
+}
+
+export function buildHtmlExport(project: BookProject): string {
+  const identity = ensureAuthorIdentity(project);
+  const penName = identity.penName || project.author;
+  const font = FONT_STACKS[project.typography.fontFamily].css;
+  const partsHtml: string[] = [];
+
+  let chapNum = 0;
+  for (const part of project.parts) {
+    partsHtml.push(`<h2 class="part-heading">${escapeXmlText(part.title)}</h2>`);
+    for (const chapter of part.chapters) {
+      chapNum++;
+      const label = formatChapterLabel(chapNum, project.typography.chapterNumeralStyle);
+      partsHtml.push('<section class="chapter">');
+      partsHtml.push(`<p class="chapter-kicker">${escapeXmlText(label)}</p>`);
+      partsHtml.push(`<h2 class="chapter-title">${escapeXmlText(chapter.title)}</h2>`);
+      chapter.scenes.forEach((scene, sIdx) => {
+        if (sIdx > 0) partsHtml.push('<p class="scene-break">* * *</p>');
+        const blocks = convertSceneProseToParagraphs(
+          scene.content,
+          project.typography.smartTypography,
+        );
+        for (const block of blocks) {
+          if (/^\*\s*\*\s*\*$/.test(block)) {
+            partsHtml.push('<p class="scene-break">* * *</p>');
+          } else if (block.startsWith('> ')) {
+            partsHtml.push(`<blockquote>${inlineMarkdownToXhtml(block.replace(/^>\s?/gm, ''))}</blockquote>`);
+          } else {
+            partsHtml.push(`<p>${inlineMarkdownToXhtml(block)}</p>`);
+          }
+        }
+      });
+      partsHtml.push('</section>');
+    }
+  }
+
+  return `<!doctype html>
+<html lang="${escapeXmlText(project.language || 'en')}">
+<head>
+<meta charset="UTF-8" />
+<title>${escapeXmlText(project.title)}</title>
+<style>
+  body { background: #faf8f3; color: #16171b; font-family: ${font}; font-size: ${project.typography.fontSizePt}pt; line-height: ${project.typography.lineHeight}; max-width: 40em; margin: 48px auto; padding: 0 24px; }
+  header { text-align: center; margin-bottom: 56px; border-bottom: 1px solid #ddd7ca; padding-bottom: 32px; }
+  h1 { font-size: 2.2em; margin: 0 0 8px; font-weight: 500; }
+  .subtitle { font-style: italic; color: #57534a; margin: 0 0 18px; }
+  .author { letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.85em; }
+  .part-heading { text-align: center; margin-top: 56px; letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.9em; color: #57534a; }
+  .chapter { margin-top: 40px; }
+  .chapter-kicker { text-align: center; font-size: 0.8em; letter-spacing: 0.16em; text-transform: uppercase; color: #57534a; margin-bottom: 4px; }
+  .chapter-title { text-align: center; font-weight: 500; margin: 0 0 24px; }
+  p { text-indent: 1.4em; margin: 0 0 8px; text-align: justify; }
+  .scene-break { text-align: center; text-indent: 0; margin: 22px 0; letter-spacing: 0.35em; color: #57534a; }
+  blockquote { font-style: italic; margin: 16px 28px; color: #3a3731; }
+</style>
+</head>
+<body>
+<header>
+  <h1>${escapeXmlText(project.title)}</h1>
+  ${project.subtitle ? `<p class="subtitle">${escapeXmlText(project.subtitle)}</p>` : ''}
+  <p class="author">${escapeXmlText(penName)}</p>
+</header>
+${partsHtml.join('\n')}
+</body>
+</html>
+`;
+}
+
+export function buildPlainTextExport(project: BookProject): string {
+  const identity = ensureAuthorIdentity(project);
+  const penName = identity.penName || project.author;
+  const out: string[] = [project.title.toUpperCase()];
+  if (project.subtitle.trim()) out.push(project.subtitle.trim());
+  if (penName.trim()) out.push(`by ${penName.trim()}`);
+  out.push('');
+
+  let chapNum = 0;
+  for (const part of project.parts) {
+    out.push('', `=== ${part.title} ===`);
+    for (const chapter of part.chapters) {
+      chapNum++;
+      const label = formatChapterLabel(chapNum, project.typography.chapterNumeralStyle);
+      out.push('', `${label}: ${chapter.title}`, '');
+      chapter.scenes.forEach((scene, sIdx) => {
+        if (sIdx > 0) out.push('', '* * *', '');
+        const text = project.typography.smartTypography
+          ? applySmartTypography(scene.content)
+          : scene.content;
+        out.push(text.trim(), '');
+      });
+    }
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
 export function buildCreditsXhtml(project: BookProject): string {

@@ -131,7 +131,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: `bv-fmt-btn${connectMode ? ' is-active' : ''}`,
         text: connectMode ? 'Connect: Click 2 Nodes…' : 'Connect Nodes',
-        attrs: { type: 'button', title: 'Click two nodes to create a relationship edge' },
+        tooltip: { title: 'Connect Two Nodes', short: 'Click any two nodes in order to draw a labeled relationship line.' },
+        attrs: { type: 'button' },
         on: {
           click: () => {
             connectMode = !connectMode;
@@ -148,7 +149,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-fmt-btn',
         text: 'Sync from Book',
-        attrs: { type: 'button', title: 'Refresh nodes & links from Story Bible and Scenes' },
+        tooltip: { title: 'Sync Graph from Book', short: 'Pull characters, locations, lore, and scenes into the graph.' },
+        attrs: { type: 'button' },
         on: {
           click: () => {
             actions.mutateProject((prev) => ({
@@ -162,6 +164,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-fmt-btn',
         text: 'Auto-Layout',
+        tooltip: { title: 'Auto-Layout Canvas', short: 'Arrange nodes cleanly into grouped rows.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -175,7 +178,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-mini-btn',
         text: '−',
-        attrs: { type: 'button', title: 'Zoom Out' },
+        tooltip: { title: 'Zoom Out', short: 'Shrink graph canvas view.' },
+        attrs: { type: 'button' },
         on: {
           click: () => {
             zoomScale = Math.max(0.55, Number((zoomScale - 0.1).toFixed(2)));
@@ -187,7 +191,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-mini-btn',
         text: '+',
-        attrs: { type: 'button', title: 'Zoom In' },
+        tooltip: { title: 'Zoom In', short: 'Magnify graph canvas view.' },
+        attrs: { type: 'button' },
         on: {
           click: () => {
             zoomScale = Math.min(1.6, Number((zoomScale + 0.1).toFixed(2)));
@@ -233,17 +238,66 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   svg.appendChild(defs);
 
   const nodeMap = new Map(visibleNodes.map((n) => [n.id, n]));
+  const nodeBoxes = visibleNodes.map((n) => ({
+    x1: n.x - 6,
+    y1: n.y - 6,
+    x2: n.x + 178,
+    y2: n.y + 74,
+  }));
+  const placedLabelBoxes: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+  const labelLayer = svgEl('g');
+
+  const overlapsBox = (
+    a: { x1: number; y1: number; x2: number; y2: number },
+    b: { x1: number; y1: number; x2: number; y2: number },
+  ) => a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
+
   for (const edge of visibleEdges) {
     const src = nodeMap.get(edge.sourceId);
     const dst = nodeMap.get(edge.targetId);
     if (!src || !dst) continue;
 
-    const sx = src.x + 80;
-    const sy = src.y + 28;
-    const tx = dst.x + 80;
-    const ty = dst.y + 28;
-    const mx = (sx + tx) / 2;
-    const my = (sy + ty) / 2;
+    const sx = src.x + 84;
+    const sy = src.y + 30;
+    const tx = dst.x + 84;
+    const ty = dst.y + 30;
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = -dy / dist;
+    const ny = dx / dist;
+
+    const halfW = Math.max(22, edge.label.length * 3.4 + 6);
+    let bestX = (sx + tx) / 2;
+    let bestY = (sy + ty) / 2 - 6;
+
+    // Pick first collision-free position along open middle span avoiding node cards & sibling labels
+    let placed = false;
+    for (const perp of [0, -14, 14, -26, 26]) {
+      for (const t of [0.5, 0.42, 0.58, 0.34, 0.66, 0.25, 0.75]) {
+        const cx = sx + dx * t + nx * perp;
+        const cy = sy + dy * t + ny * perp - 4;
+        const candBox = { x1: cx - halfW, y1: cy - 11, x2: cx + halfW, y2: cy + 5 };
+        if (
+          !nodeBoxes.some((nb) => overlapsBox(candBox, nb)) &&
+          !placedLabelBoxes.some((lb) => overlapsBox(candBox, lb))
+        ) {
+          bestX = cx;
+          bestY = cy;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+
+    placedLabelBoxes.push({
+      x1: bestX - halfW - 3,
+      y1: bestY - 13,
+      x2: bestX + halfW + 3,
+      y2: bestY + 7,
+    });
+
     const isEdgeSelected = edge.id === selectedEdgeId;
 
     const line = svgEl('line', {
@@ -263,9 +317,12 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     });
 
     const label = svgEl('text', {
-      x: mx,
-      y: my - 6,
+      x: Math.round(bestX),
+      y: Math.round(bestY),
       fill: isEdgeSelected ? '#ffffff' : '#a2a9b5',
+      stroke: '#07080a',
+      'stroke-width': '4',
+      'paint-order': 'stroke',
       'font-size': '11',
       'text-anchor': 'middle',
       'font-family': 'Inter, sans-serif',
@@ -277,8 +334,10 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       actions.setState({ activeGraphNodeId: '' }, true);
     });
 
-    svg.append(line, label);
+    svg.appendChild(line);
+    labelLayer.appendChild(label);
   }
+  svg.appendChild(labelLayer);
   viewport.appendChild(svg);
 
   // Render draggable graph nodes

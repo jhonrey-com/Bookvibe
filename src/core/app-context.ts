@@ -2,25 +2,31 @@ import type {
   BookLibraryState,
   BookProject,
   BookvibeExtension,
+  ExportFormatId,
   StudioViewId,
 } from './types';
 
-export type EditorSubMode = 'draft' | 'split' | 'diff';
+export type EditorSubMode = 'draft' | 'proofread' | 'split' | 'diff';
 export type BibleCategory = 'characters' | 'locations' | 'lore' | string;
 export type TypesetSubTab = 'interior' | 'cover' | 'publish';
+export type ExtensionsModalTab = 'integrated' | 'external' | 'formats';
 
 export interface AppState {
   library: BookLibraryState;
   project: BookProject;
   activeView: StudioViewId;
   activeSceneId: string;
+  defaultExportFormat: ExportFormatId;
   editorSubMode: EditorSubMode;
   splitTargetKind: 'scene' | 'character' | 'location' | 'lore';
   splitTargetId: string;
   diffSnapshotId: string;
   typewriterMode: boolean;
   zenMode: boolean;
+  showBinder: boolean;
   showInspector: boolean;
+  proofreadPreviewClean: boolean;
+  activeProofreadMarkId: string;
   bibleCategory: BibleCategory;
   activeBibleId: string;
   activeGraphNodeId: string;
@@ -39,15 +45,19 @@ export interface AppActions {
   updateActiveSceneTextQuietly(field: 'title' | 'content', value: string): void;
   selectScene(sceneId: string, switchToEditor?: boolean): void;
   openBibleEntry(category: BibleCategory, entryId: string): void;
-  openExtensionsModal(): void;
+  openExtensionsModal(initialTab?: ExtensionsModalTab): void;
   openLibraryModal(): void;
   openCollabModal(): void;
   switchBook(bookId: string): void;
   replaceLibrary(library: BookLibraryState): void;
+  setDefaultExportFormat(fmt: ExportFormatId): void;
+  exportDefaultFormat(): Promise<void>;
   openAnyBookvibeFile(): Promise<void>;
   exportAsExtension(ext: BookvibeExtension, options?: { sceneId?: string }): Promise<void>;
   exportEpub(): Promise<void>;
   exportMarkdown(): Promise<void>;
+  exportHtml(): Promise<void>;
+  exportPlainText(): Promise<void>;
   exportCoverPng(): Promise<void>;
   printTypeset(): void;
   createSnapshot(label?: string): void;

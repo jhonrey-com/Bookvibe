@@ -28,7 +28,8 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
           'button',
           {
             className: 'bv-mini-btn',
-            attrs: { type: 'button', title: 'Save scene as standalone .bvscene file' },
+            tooltip: { title: 'Export .bvscene', short: 'Save this scene alone as a double-clickable .bvscene file.' },
+            attrs: { type: 'button' },
             on: { click: () => void actions.exportAsExtension('.bvscene', { sceneId: ctx.scene.id }) },
           },
           icon('file', 11),
@@ -246,6 +247,40 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
     snapList,
   );
 
+  // Proofreading Marks Summary
+  const openMarksCount = (scene.proofreadMarks ?? []).filter((m) => m.status === 'open').length;
+  const stetMarksCount = (scene.proofreadMarks ?? []).filter((m) => m.status === 'stet').length;
+  const proofSummaryGroup = el(
+    'div',
+    { className: 'bv-field-group' },
+    el(
+      'div',
+      { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+      el('span', { className: 'bv-panel-title', text: 'Proofread Marks' }),
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          tooltip: { title: 'Open Proofread Mode', short: 'Review strikeout, caret, transpose, and stet marks on this scene.' },
+          attrs: { type: 'button' },
+          on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
+        },
+        icon('proofread', 11),
+        'Review',
+      ),
+    ),
+    el(
+      'div',
+      { className: 'bv-list-card' },
+      el('span', { className: 'bv-label', text: `${openMarksCount} open · ${stetMarksCount} stet` }),
+      el('span', {
+        className: 'bv-mono-tag',
+        text: openMarksCount > 0 ? 'REVIEW' : 'CLEAR',
+        style: { color: openMarksCount > 0 ? 'var(--accent-amber)' : 'var(--accent-emerald)' },
+      }),
+    ),
+  );
+
   // Proofreader & Co-Author Review Annotations
   const openAnnotations = (scene.annotations ?? []).filter((a) => a.status === 'open');
   const annList = el('div', { className: 'bv-snap-list' });
@@ -387,6 +422,6 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
     ),
   );
 
-  scroll.append(metaGroup, annotationsGroup, mentionsGroup, snapsGroup);
+  scroll.append(metaGroup, proofSummaryGroup, annotationsGroup, mentionsGroup, snapsGroup);
   container.append(head, scroll);
 }
