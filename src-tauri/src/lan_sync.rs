@@ -15,6 +15,7 @@ const MAX_HTTP_HEADER_BYTES: usize = 16 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct LanSessionInfo {
     pub host_ip: String,
+    pub candidate_ips: Vec<String>,
     pub port: u16,
     pub pin: String,
     pub host_name: String,
@@ -25,12 +26,13 @@ pub struct LanSessionInfo {
 struct LanHostInner {
     active: Arc<AtomicBool>,
     host_ip: String,
+    candidate_ips: Vec<String>,
     port: u16,
     pin: String,
     host_name: String,
-    #[allow(dead_code)]
     book_json: Arc<Mutex<String>>,
     incoming_queue: Arc<Mutex<VecDeque<String>>>,
+    handle: Option<thread::JoinHandle<()>>,
 }
 
 static LAN_HOST_SLOT: OnceLock<Mutex<Option<LanHostInner>>> = OnceLock::new();
@@ -74,7 +76,17 @@ pub fn is_allowed_lan_ipv4(ip: Ipv4Addr) -> bool {
 }
 
 pub fn parse_allowed_lan_addr(peer_addr: &str) -> Result<SocketAddrV4, String> {
-    let trimmed = peer_addr.trim();
+    let mut trimmed = peer_addr.trim();
+    if let Some(rest) = trimmed
+        .strip_prefix("http://")
+        .or_else(|| trimmed.strip_prefix("https://"))
+        .or_else(|| trimmed.strip_prefix("HTTP://"))
+        .or_else(|| trimmed.strip_prefix("HTTPS://"))
+    {
+        trimmed = rest;
+    }
+    trimmed = trimmed.trim_end_matches('/');
+
     let parsed: SocketAddrV4 = trimmed
         .parse()
         .map_err(|_| String::from("Peer address must be IPv4:PORT (e.g. 192.168.1.24:48321)."))?;
@@ -89,20 +101,47 @@ pub fn parse_allowed_lan_addr(peer_addr: &str) -> Result<SocketAddrV4, String> {
     Ok(parsed)
 }
 
-pub fn get_local_lan_ip() -> String {
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        // Non-sending connect determines the active local Wi-Fi/LAN interface address
-        if socket.connect("192.168.255.254:9").is_ok() {
-            if let Ok(local_addr) = socket.local_addr() {
-                if let std::net::IpAddr::V4(v4) = local_addr.ip() {
-                    if !v4.is_unspecified() {
-                        return v4.to_string();
+fn is_private_lan_ipv4(ip: Ipv4Addr) -> bool {
+    !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified() && is_allowed_lan_ipv4(ip)
+}
+
+pub fn detect_local_lan_ips() -> Vec<String> {
+    let probe_targets = [
+        "192.168.1.1:9",
+        "192.168.0.1:9",
+        "10.0.0.1:9",
+        "172.16.0.1:9",
+        "192.168.255.254:9",
+        "1.1.1.1:80",
+        "8.8.8.8:80",
+    ];
+    let mut private_ips = Vec::new();
+    let mut fallback_ips = Vec::new();
+
+    for target in probe_targets {
+        if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+            if socket.connect(target).is_ok() {
+                if let Ok(local_addr) = socket.local_addr() {
+                    if let std::net::IpAddr::V4(v4) = local_addr.ip() {
+                        if v4.is_unspecified() || v4.is_loopback() || v4.is_link_local() {
+                            continue;
+                        }
+                        let s = v4.to_string();
+                        if is_private_lan_ipv4(v4) {
+                            if !private_ips.contains(&s) {
+                                private_ips.push(s);
+                            }
+                        } else if !fallback_ips.contains(&s) {
+                            fallback_ips.push(s);
+                        }
                     }
                 }
             }
         }
     }
-    String::from("127.0.0.1")
+
+    private_ips.extend(fallback_ips);
+    private_ips
 }
 
 fn generate_six_digit_pin() -> String {
@@ -212,7 +251,14 @@ pub fn start_lan_sync_host(
     let _ = listener.set_nonblocking(true);
 
     let pin = generate_six_digit_pin();
-    let host_ip = get_local_lan_ip();
+    let mut candidate_ips = detect_local_lan_ips();
+    let host_ip = candidate_ips
+        .first()
+        .cloned()
+        .unwrap_or_else(|| String::from("127.0.0.1"));
+    if candidate_ips.is_empty() {
+        candidate_ips.push(host_ip.clone());
+    }
     let active = Arc::new(AtomicBool::new(true));
     let shared_book = Arc::new(Mutex::new(book_json));
     let incoming_queue = Arc::new(Mutex::new(VecDeque::new()));
@@ -222,7 +268,7 @@ pub fn start_lan_sync_host(
     let queue_clone = Arc::clone(&incoming_queue);
     let pin_clone = pin.clone();
 
-    thread::spawn(move || {
+    let handle = thread::spawn(move || {
         while active_clone.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _addr)) => {
@@ -267,6 +313,7 @@ pub fn start_lan_sync_host(
 
     let info = LanSessionInfo {
         host_ip: host_ip.clone(),
+        candidate_ips: candidate_ips.clone(),
         port: actual_port,
         pin: pin.clone(),
         host_name: host_name.clone(),
@@ -278,21 +325,48 @@ pub fn start_lan_sync_host(
         *guard = Some(LanHostInner {
             active,
             host_ip,
+            candidate_ips,
             port: actual_port,
             pin,
             host_name,
             book_json: shared_book,
             incoming_queue,
+            handle: Some(handle),
         });
     }
 
     Ok(info)
 }
 
+pub fn update_lan_sync_host_book(book_json: String) -> Result<bool, String> {
+    if book_json.len() > MAX_SYNC_PAYLOAD_BYTES {
+        return Err(String::from("Book payload exceeds 50 MB limit."));
+    }
+    let guard = host_slot()
+        .lock()
+        .map_err(|_| String::from("Unable to lock active LAN host state."))?;
+    let Some(inner) = guard.as_ref() else {
+        return Ok(false);
+    };
+    let mut book_guard = inner
+        .book_json
+        .lock()
+        .map_err(|_| String::from("Unable to lock shared LAN snapshot."))?;
+    *book_guard = book_json;
+    Ok(true)
+}
+
 pub fn stop_lan_sync_host() {
-    if let Ok(mut guard) = host_slot().lock() {
-        if let Some(prev) = guard.take() {
-            prev.active.store(false, Ordering::Relaxed);
+    let prev = {
+        let Ok(mut guard) = host_slot().lock() else {
+            return;
+        };
+        guard.take()
+    };
+    if let Some(mut inner) = prev {
+        inner.active.store(false, Ordering::Relaxed);
+        if let Some(handle) = inner.handle.take() {
+            let _ = handle.join();
         }
     }
 }
@@ -303,6 +377,7 @@ pub fn get_lan_sync_status() -> Option<LanSessionInfo> {
     let incoming_count = inner.incoming_queue.lock().map(|q| q.len()).unwrap_or(0);
     Some(LanSessionInfo {
         host_ip: inner.host_ip.clone(),
+        candidate_ips: inner.candidate_ips.clone(),
         port: inner.port,
         pin: inner.pin.clone(),
         host_name: inner.host_name.clone(),
@@ -407,38 +482,125 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
     Ok((hdr, code, body))
 }
 
-pub fn launch_os_bluetooth_share(file_path: Option<String>) -> Result<String, String> {
+pub fn launch_os_bluetooth_share(
+    file_path: Option<String>,
+    mode: Option<String>,
+) -> Result<String, String> {
+    let receive_mode = mode
+        .as_deref()
+        .map(|m| m.trim().eq_ignore_ascii_case("receive"))
+        .unwrap_or(false);
+    let clean_path = file_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
     #[cfg(target_os = "windows")]
     {
-        if let Some(ref p) = file_path {
-            let trimmed = p.trim();
-            if !trimmed.is_empty() {
-                let _ = Command::new("explorer.exe").arg("/select,").arg(trimmed).spawn();
+        if !receive_mode {
+            if let Some(ref p) = clean_path {
+                if std::path::Path::new(p).exists() {
+                    let _ = Command::new("explorer.exe")
+                        .arg(format!("/select,{p}"))
+                        .spawn();
+                }
             }
         }
-        let status = Command::new("fsquirt.exe").spawn();
-        return match status {
-            Ok(_) => Ok(String::from("Opened Windows Bluetooth File Transfer wizard (fsquirt.exe).")),
-            Err(_) => Ok(String::from("Saved sync file. Send it via Windows Nearby Sharing or Bluetooth.")),
-        };
+
+        let fsquirt_path = std::env::var_os("SystemRoot")
+            .map(|root| {
+                std::path::PathBuf::from(root)
+                    .join("System32")
+                    .join("fsquirt.exe")
+            })
+            .filter(|candidate| candidate.is_file())
+            .unwrap_or_else(|| std::path::PathBuf::from("fsquirt.exe"));
+
+        let flag = if receive_mode { "-receive" } else { "-send" };
+        match Command::new(&fsquirt_path).arg(flag).spawn() {
+            Ok(_) => {
+                if receive_mode {
+                    return Ok(String::from(
+                        "Opened Windows Bluetooth File Transfer (Receive files). Accept the peer file, then click Pick & Merge Peer File.",
+                    ));
+                }
+                return Ok(String::from(
+                    "Opened Windows Bluetooth File Transfer (Send files). Choose a paired device and select your saved .bookvibe file.",
+                ));
+            }
+            Err(_) => {
+                let _ = Command::new("cmd")
+                    .args(["/C", "start", "", "ms-settings:bluetooth"])
+                    .spawn();
+                return Ok(String::from(
+                    "Opened Windows Bluetooth settings. Share or receive the .bookvibe file via Bluetooth or Nearby Sharing.",
+                ));
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]
     {
-        if let Some(ref p) = file_path {
-            let _ = Command::new("open").arg("-R").arg(p).spawn();
+        if !receive_mode {
+            if let Some(ref p) = clean_path {
+                if Command::new("open")
+                    .args(["-a", "Bluetooth File Exchange", p])
+                    .spawn()
+                    .is_ok()
+                {
+                    return Ok(String::from(
+                        "Opened macOS Bluetooth File Exchange with your saved .bookvibe file.",
+                    ));
+                }
+                let _ = Command::new("open").arg("-R").arg(p).spawn();
+                return Ok(String::from(
+                    "Revealed sync file in Finder. Right-click -> Share -> AirDrop or Bluetooth.",
+                ));
+            }
         }
-        return Ok(String::from("Revealed sync file in Finder. Right-click -> Share -> AirDrop or Bluetooth."));
+        if Command::new("open")
+            .args(["-a", "Bluetooth File Exchange"])
+            .spawn()
+            .is_ok()
+        {
+            return Ok(String::from("Opened macOS Bluetooth File Exchange."));
+        }
+        let _ = Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.BluetoothSettings")
+            .spawn();
+        return Ok(String::from("Opened macOS Bluetooth preferences."));
     }
 
     #[cfg(target_os = "linux")]
     {
-        if let Some(ref p) = file_path {
-            if let Some(parent) = std::path::Path::new(p).parent() {
-                let _ = Command::new("xdg-open").arg(parent).spawn();
+        if !receive_mode {
+            if let Some(ref p) = clean_path {
+                if Command::new("bluetooth-sendto").arg(p).spawn().is_ok() {
+                    return Ok(String::from("Opened Bluetooth Send dialog with your .bookvibe file."));
+                }
+                if Command::new("blueman-sendto").arg(p).spawn().is_ok() {
+                    return Ok(String::from("Opened Blueman Bluetooth Send dialog with your .bookvibe file."));
+                }
+                if let Some(parent) = std::path::Path::new(p).parent() {
+                    let _ = Command::new("xdg-open").arg(parent).spawn();
+                }
+                return Ok(String::from(
+                    "Opened sync folder. Send the .bookvibe file via Bluetooth or Nearby Share.",
+                ));
+            }
+            if Command::new("bluetooth-sendto").spawn().is_ok()
+                || Command::new("blueman-sendto").spawn().is_ok()
+            {
+                return Ok(String::from("Opened Linux Bluetooth Send dialog."));
             }
         }
-        return Ok(String::from("Opened sync folder. Send the .bookvibe file via Bluetooth or Nearby Share."));
+        let _ = Command::new("blueman-manager")
+            .spawn()
+            .or_else(|_| Command::new("gnome-control-center").arg("bluetooth").spawn());
+        return Ok(String::from(
+            "Opened Bluetooth manager. Receive the .bookvibe file, then click Pick & Merge Peer File.",
+        ));
     }
 }
 
@@ -449,7 +611,7 @@ mod tests {
     #[test]
     fn rejects_public_and_metadata_ips() {
         assert!(parse_allowed_lan_addr("127.0.0.1:48000").is_ok());
-        assert!(parse_allowed_lan_addr("192.168.1.42:48000").is_ok());
+        assert!(parse_allowed_lan_addr("http://192.168.1.42:48000/").is_ok());
         assert!(parse_allowed_lan_addr("10.0.0.5:48000").is_ok());
         assert!(parse_allowed_lan_addr("172.16.4.12:48000").is_ok());
 
@@ -466,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn loopback_host_pull_and_push_round_trip() {
+    fn loopback_host_pull_update_and_push_round_trip() {
         let initial = String::from(r#"{"title":"Lan Book","parts":[]}"#);
         let session = start_lan_sync_host(initial.clone(), String::from("Desk-A"), None)
             .expect("host binds");
@@ -474,6 +636,11 @@ mod tests {
 
         let pulled = pull_book_from_lan_peer(&peer_addr, &session.pin).expect("pulls ok");
         assert_eq!(pulled, initial);
+
+        let updated = String::from(r#"{"title":"Lan Book v2","parts":[]}"#);
+        assert!(update_lan_sync_host_book(updated.clone()).expect("updates host snapshot"));
+        let pulled_updated = pull_book_from_lan_peer(&peer_addr, &session.pin).expect("pulls v2");
+        assert_eq!(pulled_updated, updated);
 
         assert!(pull_book_from_lan_peer(&peer_addr, "000000").is_err());
 
@@ -484,5 +651,6 @@ mod tests {
         assert_eq!(queued, pushed);
 
         stop_lan_sync_host();
+        assert!(get_lan_sync_status().is_none());
     }
 }

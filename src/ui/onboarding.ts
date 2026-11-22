@@ -1,9 +1,11 @@
 import type { AppActions } from '../core/app-context';
+import { createEmptyBookProject, upsertBookInLibrary } from '../core/library';
 import type { StudioViewId } from '../core/types';
-import { bookvibeLogo, el, svgEl } from './dom';
+import { bookvibeLogo, el } from './dom';
 
 const SPLASH_SEEN_KEY = 'bookvibe.splashSeen.v1';
 const TOURS_SEEN_KEY = 'bookvibe.toursSeen.v1';
+const PREVIEW_BOOK_ID = 'proj-salt-cartographer';
 
 interface TourStep {
   selector: string;
@@ -15,60 +17,59 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
   editor: [
     {
       selector: '.bv-paper-float-nav',
-      title: 'Draft, Proofread, Split & Diff',
-      body: 'Switch right here between clean Draft prose, 15 editorial Proofread marks, side-by-side Story Bible reference, and word-level Revision Diffs.',
+      title: 'Switch Modes',
+      body: 'Move between Draft, 15 Proofread marks, Split reference, and Revision Diff.',
     },
     {
       selector: '.bv-scene-heading',
-      title: 'Distraction-Free Paper Sheet',
-      body: 'Rename scenes inline or write directly on Obsidian, Parchment, or Ivory paper sheets.',
+      title: 'Write Freely',
+      body: 'Rename scenes inline or write directly on Obsidian, Parchment, or Ivory sheets.',
     },
     {
       selector: '.bv-save-split',
-      title: 'One-Click Save & Export Format',
-      body: 'Pick your preferred extension (.bookvibe, .epub, .md, .bvscene) and click Save anytime to export immediately.',
+      title: 'Save Locally',
+      body: 'Pick any format and click Save anytime to export a copy to your computer.',
     },
   ],
   corkboard: [
     {
       selector: '.bv-main-stage',
-      title: 'Index Card Corkboard',
-      body: 'Arrange chapters and scenes visually, track POV badges, and adjust target progress bars.',
+      title: 'Index Cards',
+      body: 'Drag scene cards to reorder chapters and edit quick synopses.',
     },
   ],
   outline: [
     {
       selector: '.bv-main-stage',
-      title: 'Outline Revision Ledger',
-      body: 'Filter scenes by draft stage, timeline location, and word count across the full book.',
+      title: 'Outline Table',
+      body: 'Filter chapters by draft stage, POV character, or word progress.',
     },
   ],
   bible: [
     {
       selector: '.bv-main-stage',
-      title: 'Story Bible Codex',
-      body: 'Store character sheets, locations, lore, custom world tabs, reference images, and arbitrary metadata fields.',
+      title: 'Story Bible',
+      body: 'Track characters, places, lore, and custom categories with portraits.',
     },
   ],
   graph: [
     {
       selector: '.bv-graph-canvas-wrap',
-      title: 'Live Interactive Story Graph',
-      body: 'Drag cards to see edges follow live at 60fps, drag any handle port onto another card to link them, and switch Compact / Standard / Detailed views.',
+      title: 'Infinite Graph Canvas',
+      body: 'Drag cards anywhere freely; hover card edges to drag connection lines live.',
     },
   ],
   typeset: [
     {
       selector: '.bv-main-stage',
-      title: 'Typeset, Full Cover Wrap & Author Seal',
-      body: 'Preview book pages with custom device fonts, design front/back/spine covers, and sign builds with your ECDSA Author Key.',
+      title: 'Typeset & Cover Wrap',
+      body: 'Choose a book trim size, preview Table of Contents, and export clean Print PDF.',
     },
   ],
 };
 
 let activeTourOverlay: {
-  cursor: HTMLElement;
-  ring: HTMLElement;
+  outline: HTMLElement;
   card: HTMLElement;
   viewId: StudioViewId;
   stepIdx: number;
@@ -101,31 +102,20 @@ function markSectionSeen(viewId: StudioViewId): void {
   writeSeenTours(seen);
 }
 
+function markAllSectionsSeen(): void {
+  writeSeenTours(new Set(['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset']));
+}
+
 export function destroyActiveTour(): void {
   if (!activeTourOverlay) return;
-  activeTourOverlay.cursor.remove();
-  activeTourOverlay.ring.remove();
+  activeTourOverlay.outline.remove();
   activeTourOverlay.card.remove();
   activeTourOverlay = null;
 }
 
-function buildPointerSvg(): SVGSVGElement {
-  const s = svgEl('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none' });
-  s.appendChild(
-    svgEl('path', {
-      d: 'M4.5 3.5l14 7.5-5.6 1.9-2.2 5.7-6.2-15.1z',
-      fill: '#eceef2',
-      stroke: '#08080a',
-      'stroke-width': 1.5,
-      'stroke-linejoin': 'round',
-    }),
-  );
-  return s;
-}
-
 function positionTourStep(): void {
   if (!activeTourOverlay) return;
-  const { viewId, stepIdx, cursor, ring, card } = activeTourOverlay;
+  const { viewId, stepIdx, outline, card } = activeTourOverlay;
   const steps = SECTION_TOURS[viewId] ?? [];
   const step = steps[stepIdx];
   if (!step) return;
@@ -133,14 +123,17 @@ function positionTourStep(): void {
   const target = document.querySelector(step.selector) as HTMLElement | null;
   if (target) {
     const r = target.getBoundingClientRect();
-    const cx = Math.max(24, Math.min(window.innerWidth - 32, r.left + Math.min(r.width * 0.45, 110)));
-    const cy = Math.max(24, Math.min(window.innerHeight - 32, r.top + Math.min(r.height * 0.5, 28)));
-    cursor.style.transform = `translate3d(${cx}px, ${cy}px, 0)`;
-    ring.style.transform = `translate3d(${cx - 14}px, ${cy - 14}px, 0)`;
-    ring.style.opacity = '1';
+    const pad = 4;
+    const x = Math.max(4, Math.round(r.left - pad));
+    const y = Math.max(4, Math.round(r.top - pad));
+    const w = Math.max(24, Math.min(window.innerWidth - x - 4, Math.round(r.width + pad * 2)));
+    const h = Math.max(20, Math.min(window.innerHeight - y - 4, Math.round(r.height + pad * 2)));
+    outline.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    outline.style.width = `${w}px`;
+    outline.style.height = `${h}px`;
+    outline.style.opacity = '1';
   } else {
-    cursor.style.transform = 'translate3d(240px, 140px, 0)';
-    ring.style.opacity = '0';
+    outline.style.opacity = '0';
   }
 
   const titleEl = card.querySelector('.bv-tour-title') as HTMLElement;
@@ -149,7 +142,7 @@ function positionTourStep(): void {
   const nextBtn = card.querySelector('.bv-tour-next') as HTMLButtonElement;
   if (titleEl) titleEl.textContent = step.title;
   if (bodyEl) bodyEl.textContent = step.body;
-  if (metaEl) metaEl.textContent = `${viewId.toUpperCase()} · Step ${stepIdx + 1} of ${steps.length}`;
+  if (metaEl) metaEl.textContent = `${stepIdx + 1} / ${steps.length}`;
   if (nextBtn) nextBtn.textContent = stepIdx + 1 >= steps.length ? 'Done' : 'Next';
 }
 
@@ -158,8 +151,11 @@ export function maybeStartSectionTour(
   actions: AppActions,
   force = false,
 ): void {
-  const settings = actions.getState().settings;
-  if (!force && !settings.showOnboardingHints) return;
+  const state = actions.getState();
+  if (!force) {
+    if (!state.settings.showOnboardingHints) return;
+    if (state.project.id !== PREVIEW_BOOK_ID) return;
+  }
 
   const seen = readSeenTours();
   if (!force && seen.has(viewId)) return;
@@ -169,12 +165,11 @@ export function maybeStartSectionTour(
 
   destroyActiveTour();
 
-  const cursor = el('div', { className: 'bv-tour-cursor' }, buildPointerSvg());
-  const ring = el('div', { className: 'bv-tour-spotlight' });
+  const outline = el('div', { className: 'bv-tour-outline' });
 
   const skipSectionBtn = el('button', {
     className: 'bv-mini-btn',
-    text: 'Skip Section',
+    text: 'Skip',
     attrs: { type: 'button' },
     on: {
       click: () => {
@@ -193,7 +188,6 @@ export function maybeStartSectionTour(
         markSectionSeen(viewId);
         actions.updateSettings({ showOnboardingHints: false });
         destroyActiveTour();
-        actions.notify('Guided tours paused. Re-open anytime via Help (?)');
       },
     },
   });
@@ -220,8 +214,12 @@ export function maybeStartSectionTour(
   const card = el(
     'aside',
     { className: 'bv-tour-card', attrs: { role: 'status', 'aria-live': 'polite' } },
-    el('div', { className: 'bv-mono-tag bv-tour-step-meta', style: { color: 'var(--accent-amber)' } }),
-    el('strong', { className: 'bv-tour-title', style: { fontSize: '13.5px' } }),
+    el(
+      'div',
+      { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+      el('strong', { className: 'bv-tour-title', style: { fontSize: '13px' } }),
+      el('span', { className: 'bv-mono-tag bv-tour-step-meta', style: { color: 'var(--accent-amber)' } }),
+    ),
     el('p', { className: 'bv-label bv-tour-body', style: { margin: '2px 0 8px' } }),
     el(
       'div',
@@ -231,8 +229,8 @@ export function maybeStartSectionTour(
     ),
   );
 
-  activeTourOverlay = { cursor, ring, card, viewId, stepIdx: 0 };
-  document.body.append(ring, cursor, card);
+  activeTourOverlay = { outline, card, viewId, stepIdx: 0 };
+  document.body.append(outline, card);
   requestAnimationFrame(() => positionTourStep());
 }
 
@@ -248,23 +246,48 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
     window.localStorage &&
     window.localStorage.getItem(SPLASH_SEEN_KEY) === '1';
 
-  const reduced =
-    actions.getState().settings.reducedMotionOverride === 'reduce' ||
-    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  const isPreview = actions.getState().project.id === PREVIEW_BOOK_ID;
 
-  if (alreadyShown || reduced) {
+  if (alreadyShown) {
     requestAnimationFrame(() => maybeStartSectionTour(actions.getState().activeView, actions));
     return;
   }
 
   let finished = false;
-  const finishSplash = () => {
+  const finishWithMode = (mode: 'preview' | 'blank' | 'skip') => {
     if (finished) return;
     finished = true;
     try {
       window.localStorage.setItem(SPLASH_SEEN_KEY, '1');
     } catch {
       // Ignore storage error
+    }
+
+    const reduced =
+      actions.getState().settings.reducedMotionOverride === 'reduce' ||
+      (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+
+    const applyChoice = () => {
+      splash.remove();
+      if (mode === 'blank') {
+        markAllSectionsSeen();
+        const fresh = createEmptyBookProject('Untitled Book', 'Author');
+        const lib = upsertBookInLibrary(actions.getState().library, fresh);
+        actions.replaceLibrary(lib);
+        requestAnimationFrame(() => {
+          const prose = document.querySelector('.bv-prose-textarea') as HTMLTextAreaElement | null;
+          prose?.focus();
+        });
+      } else if (mode === 'preview') {
+        maybeStartSectionTour(actions.getState().activeView, actions, true);
+      } else {
+        markSectionSeen(actions.getState().activeView);
+      }
+    };
+
+    if (reduced) {
+      applyChoice();
+      return;
     }
 
     const emblem = splash.querySelector('.bv-splash-emblem') as HTMLElement | null;
@@ -278,17 +301,28 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
       emblem.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${scale})`;
     }
     splash.classList.add('is-morphing-out');
-    window.setTimeout(() => {
-      splash.remove();
-      maybeStartSectionTour(actions.getState().activeView, actions);
-    }, 380);
+    window.setTimeout(applyChoice, 340);
   };
 
-  const skipBtn = el('button', {
+  const exploreBtn = el('button', {
+    className: 'bv-btn bv-btn-primary',
+    text: 'Explore Preview Book',
+    attrs: { type: 'button' },
+    on: { click: () => finishWithMode('preview') },
+  });
+
+  const blankBtn = el('button', {
     className: 'bv-btn',
+    text: 'Start New Blank Book',
+    attrs: { type: 'button' },
+    on: { click: () => finishWithMode('blank') },
+  });
+
+  const skipBtn = el('button', {
+    className: 'bv-mini-btn',
     text: 'Skip Intro',
     attrs: { type: 'button' },
-    on: { click: finishSplash },
+    on: { click: () => finishWithMode('skip') },
   });
 
   const splash = el(
@@ -299,11 +333,20 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
       { className: 'bv-splash-inner' },
       el('div', { className: 'bv-splash-emblem' }, bookvibeLogo(74)),
       el('h1', { className: 'bv-splash-title', text: 'Bookvibe' }),
-      el('p', { className: 'bv-splash-sub', text: 'Offline book writing, proofing, typesetting & cover studio' }),
-      skipBtn,
+      el('p', {
+        className: 'bv-splash-sub',
+        text: isPreview
+          ? 'Open the sample book for a brief highlight guide, or begin a blank book right away.'
+          : 'Offline book writing, proofing, typesetting & cover studio',
+      }),
+      el(
+        'div',
+        { className: 'bv-splash-actions' },
+        ...(isPreview ? [exploreBtn, blankBtn] : []),
+        skipBtn,
+      ),
     ),
   );
 
   document.body.appendChild(splash);
-  window.setTimeout(() => finishSplash(), 920);
 }

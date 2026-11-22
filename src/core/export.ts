@@ -67,6 +67,20 @@ export const TRIM_SPECS: Record<TrimSize, TrimSpec> = {
     heightIn: 8.27,
     cssPageSize: '148mm 210mm',
   },
+  royal: {
+    id: 'royal',
+    label: '6.14" × 9.21" Royal Octavo',
+    widthIn: 6.14,
+    heightIn: 9.21,
+    cssPageSize: '6.14in 9.21in',
+  },
+  letter: {
+    id: 'letter',
+    label: '8.5" × 11" Full Quarto',
+    widthIn: 8.5,
+    heightIn: 11,
+    cssPageSize: '8.5in 11in',
+  },
 };
 
 export const FONT_STACKS: Record<FontFamilyId, { label: string; css: string }> = {
@@ -721,4 +735,331 @@ export function buildEpubBlobBytes(project: BookProject, coverPngDataUrl?: strin
   });
 
   return buildStoredZip(entries);
+}
+
+export interface BookTocEntry {
+  partTitle: string;
+  chapterLabel: string;
+  chapterTitle: string;
+  pageNumber: number;
+}
+
+export interface BookPageBlock {
+  kind: 'paragraph' | 'blockquote' | 'scene-break';
+  text: string;
+  dropCap?: boolean;
+  indent?: boolean;
+}
+
+export interface PaginatedBookSheet {
+  kind: 'front-matter' | 'toc' | 'chapter';
+  pageNumber: number;
+  partTitle?: string;
+  chapterLabel?: string;
+  chapterTitle?: string;
+  isChapterStart?: boolean;
+  blocks: BookPageBlock[];
+}
+
+export interface PaginatedBookResult {
+  tocEntries: BookTocEntry[];
+  pages: PaginatedBookSheet[];
+}
+
+export function computeBookPagination(project: BookProject): PaginatedBookResult {
+  const typo = project.typography;
+  const trim = TRIM_SPECS[typo.trimSize] ?? TRIM_SPECS['6x9'];
+  const includeFront = typo.includeFrontMatter !== false;
+  const includeToc = typo.includeTableOfContents !== false;
+
+  const usableWIn = Math.max(2.6, trim.widthIn - typo.marginInches * 2);
+  const usableHIn = Math.max(3.8, trim.heightIn - typo.marginInches * 2 - 0.55);
+  const charsPerLine = Math.max(34, Math.floor((usableWIn * 72) / (typo.fontSizePt * 0.49)));
+  const linesPerPage = Math.max(16, Math.floor((usableHIn * 72) / (typo.fontSizePt * typo.lineHeight)));
+
+  let pageCursor = 1;
+  const pages: PaginatedBookSheet[] = [];
+  const tocEntries: BookTocEntry[] = [];
+
+  if (includeFront) {
+    pages.push({
+      kind: 'front-matter',
+      pageNumber: pageCursor++,
+      blocks: [],
+    });
+  }
+
+  if (includeToc) {
+    pages.push({
+      kind: 'toc',
+      pageNumber: pageCursor++,
+      blocks: [],
+    });
+  }
+
+  let chapNum = 0;
+  for (const part of project.parts) {
+    for (const chapter of part.chapters) {
+      chapNum++;
+      const chLabel = formatChapterLabel(chapNum, typo.chapterNumeralStyle);
+      const chTitle = typo.smartTypography ? applySmartTypography(chapter.title) : chapter.title;
+      tocEntries.push({
+        partTitle: part.title,
+        chapterLabel: chLabel,
+        chapterTitle: chTitle,
+        pageNumber: pageCursor,
+      });
+
+      const allBlocks: BookPageBlock[] = [];
+      chapter.scenes.forEach((scene, sIdx) => {
+        if (sIdx > 0) {
+          allBlocks.push({ kind: 'scene-break', text: '* * *' });
+        }
+        const paras = convertSceneProseToParagraphs(scene.content, typo.smartTypography);
+        let isChapterLead = sIdx === 0;
+        let isFlushAfterBreak = sIdx > 0;
+        for (const para of paras) {
+          if (/^\*\s*\*\s*\*$/.test(para)) {
+            allBlocks.push({ kind: 'scene-break', text: '* * *' });
+            isFlushAfterBreak = true;
+            continue;
+          }
+          if (para.startsWith('> ')) {
+            allBlocks.push({ kind: 'blockquote', text: para.replace(/^>\s?/gm, '') });
+            continue;
+          }
+          const startsWithLetter = /^\p{L}/u.test(para);
+          allBlocks.push({
+            kind: 'paragraph',
+            text: para,
+            dropCap: Boolean(isChapterLead && typo.dropCaps && startsWithLetter),
+            indent: !(isChapterLead || isFlushAfterBreak),
+          });
+          isChapterLead = false;
+          isFlushAfterBreak = false;
+        }
+      });
+
+      let currentBlocks: BookPageBlock[] = [];
+      let usedLines = 6;
+      let isFirstSheetOfChapter = true;
+
+      for (const blk of allBlocks) {
+        const plainLen = blk.text.replace(/\*\*/g, '').replace(/\*/g, '').length;
+        const estLines =
+          blk.kind === 'scene-break' ? 3 : Math.max(1, Math.ceil(plainLen / charsPerLine)) + 1;
+
+        if (currentBlocks.length > 0 && usedLines + estLines > linesPerPage) {
+          pages.push({
+            kind: 'chapter',
+            pageNumber: pageCursor++,
+            partTitle: part.title,
+            chapterLabel: chLabel,
+            chapterTitle: chTitle,
+            isChapterStart: isFirstSheetOfChapter,
+            blocks: currentBlocks,
+          });
+          isFirstSheetOfChapter = false;
+          currentBlocks = [];
+          usedLines = typo.runningHeader ? 2 : 0;
+        }
+        currentBlocks.push(blk);
+        usedLines += estLines;
+      }
+
+      if (currentBlocks.length > 0 || isFirstSheetOfChapter) {
+        pages.push({
+          kind: 'chapter',
+          pageNumber: pageCursor++,
+          partTitle: part.title,
+          chapterLabel: chLabel,
+          chapterTitle: chTitle,
+          isChapterStart: isFirstSheetOfChapter,
+          blocks: currentBlocks,
+        });
+      }
+    }
+  }
+
+  return { tocEntries, pages };
+}
+
+export function buildPrintableBookHtml(project: BookProject): string {
+  const typo = project.typography;
+  const trim = TRIM_SPECS[typo.trimSize] ?? TRIM_SPECS['6x9'];
+  const identity = ensureAuthorIdentity(project);
+  const penName = identity.penName || project.author;
+  const font = resolveEffectiveFontCss(typo.fontFamily, typo.customFontFamily);
+  const showPageNumbers = typo.includePageNumbers !== false;
+  const { tocEntries, pages } = computeBookPagination(project);
+
+  const renderInline = (raw: string) => inlineMarkdownToXhtml(raw);
+
+  const sheetHtml = pages
+    .map((sheet) => {
+      if (sheet.kind === 'front-matter') {
+        const credits = (project.collaborators ?? [])
+          .map((c) => `<p class="credit-line">${escapeXmlText(COLLABORATOR_ROLE_LABELS[c.role])}: ${escapeXmlText(c.creditLine)}</p>`)
+          .join('');
+        return `<section class="book-sheet front-sheet">
+          <div class="front-top">
+            <h1 class="front-title">${escapeXmlText(typo.smartTypography ? applySmartTypography(project.title) : project.title)}</h1>
+            ${project.subtitle ? `<p class="front-subtitle">${escapeXmlText(typo.smartTypography ? applySmartTypography(project.subtitle) : project.subtitle)}</p>` : ''}
+            <p class="front-author">${escapeXmlText(penName)}</p>
+          </div>
+          <div class="front-bottom">
+            ${project.dedication ? `<p class="front-dedication">${escapeXmlText(project.dedication)}</p>` : ''}
+            <p class="front-copy">${escapeXmlText(project.copyrightNotice)}</p>
+            ${credits}
+            ${showPageNumbers ? `<div class="page-footer">${sheet.pageNumber}</div>` : '<div class="page-footer"></div>'}
+          </div>
+        </section>`;
+      }
+
+      if (sheet.kind === 'toc') {
+        const tocRows = tocEntries
+          .map(
+            (entry) => `<div class="toc-row">
+              <span class="toc-name">${escapeXmlText(entry.chapterLabel)} — ${escapeXmlText(entry.chapterTitle)}</span>
+              <span class="toc-dots"></span>
+              <span class="toc-num">${entry.pageNumber}</span>
+            </div>`,
+          )
+          .join('');
+        return `<section class="book-sheet">
+          <div>
+            <p class="chapter-kicker">Contents</p>
+            <h2 class="chapter-title">Table of Contents</h2>
+            <div class="toc-list">${tocRows}</div>
+          </div>
+          ${showPageNumbers ? `<div class="page-footer">${sheet.pageNumber}</div>` : '<div class="page-footer"></div>'}
+        </section>`;
+      }
+
+      const bodyHtml = sheet.blocks
+        .map((blk) => {
+          if (blk.kind === 'scene-break') {
+            return '<p class="scene-break">* * *</p>';
+          }
+          if (blk.kind === 'blockquote') {
+            return `<blockquote>${renderInline(blk.text)}</blockquote>`;
+          }
+          const clsParts: string[] = [];
+          if (blk.dropCap) clsParts.push('drop-cap');
+          if (!blk.indent) clsParts.push('no-indent');
+          const cls = clsParts.length > 0 ? ` class="${clsParts.join(' ')}"` : '';
+          return `<p${cls}>${renderInline(blk.text)}</p>`;
+        })
+        .join('\n');
+
+      return `<section class="book-sheet">
+        <div>
+          ${typo.runningHeader ? `<div class="running-head"><span>${escapeXmlText(penName)}</span><span>${escapeXmlText(project.title)}</span></div>` : ''}
+          ${sheet.isChapterStart ? `<p class="chapter-kicker">${escapeXmlText(sheet.chapterLabel ?? '')}</p><h2 class="chapter-title">${escapeXmlText(sheet.chapterTitle ?? '')}</h2>` : ''}
+          <div class="book-prose">${bodyHtml}</div>
+        </div>
+        ${showPageNumbers ? `<div class="page-footer">${sheet.pageNumber}</div>` : '<div class="page-footer"></div>'}
+      </section>`;
+    })
+    .join('\n');
+
+  return `<!doctype html>
+<html lang="${escapeXmlText(project.language || 'en')}">
+<head>
+<meta charset="UTF-8" />
+<title>${escapeXmlText(project.title)}</title>
+<style>
+  @page {
+    size: ${trim.cssPageSize};
+    margin: 0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #141414;
+    font-family: ${font};
+    font-size: ${typo.fontSizePt}pt;
+    line-height: ${typo.lineHeight};
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .book-sheet {
+    width: ${trim.widthIn}in;
+    height: ${trim.heightIn}in;
+    padding: ${typo.marginInches}in;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+  }
+  .book-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .front-sheet { text-align: center; }
+  .front-top { margin-top: 1.4in; }
+  .front-title { font-size: 24pt; font-weight: 500; margin: 0 0 8pt; }
+  .front-subtitle { font-style: italic; font-size: 12pt; color: #4d4940; margin: 0 0 28pt; }
+  .front-author { font-size: 10.5pt; letter-spacing: 0.16em; text-transform: uppercase; }
+  .front-bottom { font-size: 9pt; color: #5c5850; }
+  .front-dedication { font-style: italic; margin-bottom: 10pt; }
+  .credit-line, .front-copy { margin: 2pt 0; }
+  .running-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6b685f;
+    margin-bottom: 16pt;
+  }
+  .chapter-kicker {
+    text-align: center;
+    font-size: 8.5pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #5c5850;
+    margin: 0 0 4pt;
+  }
+  .chapter-title {
+    text-align: center;
+    font-weight: 500;
+    font-size: 18pt;
+    margin: 0 0 18pt;
+  }
+  .toc-list { display: flex; flex-direction: column; gap: 7pt; margin-top: 12pt; }
+  .toc-row { display: flex; align-items: baseline; gap: 6pt; font-size: 10.5pt; }
+  .toc-dots { flex: 1; border-bottom: 1px dotted #9b9588; height: 0; }
+  .toc-num { font-variant-numeric: tabular-nums; min-width: 18pt; text-align: right; }
+  .book-prose p { margin: 0 0 5pt; text-indent: 1.4em; text-align: justify; }
+  .book-prose p.no-indent { text-indent: 0; }
+  .book-prose p.drop-cap::first-letter {
+    float: left;
+    font-size: 3.1em;
+    line-height: 0.85;
+    padding-right: 5pt;
+    padding-top: 2pt;
+    font-weight: 600;
+  }
+  .scene-break { text-align: center !important; text-indent: 0 !important; letter-spacing: 0.35em; margin: 12pt 0 !important; color: #5c5850; }
+  blockquote { font-style: italic; margin: 10pt 20pt; color: #3b3832; }
+  .page-footer {
+    text-align: center;
+    font-size: 9pt;
+    color: #6b685f;
+    font-variant-numeric: tabular-nums;
+    padding-top: 8pt;
+  }
+</style>
+</head>
+<body>
+${sheetHtml}
+</body>
+</html>
+`;
 }

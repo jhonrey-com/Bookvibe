@@ -59,6 +59,11 @@ export function normalizeProjectDefaults(raw: BookProject): BookProject {
       editorialStage: 'developmental',
     };
   }
+  next.typography = {
+    ...next.typography,
+    includeTableOfContents: next.typography.includeTableOfContents ?? true,
+    includePageNumbers: next.typography.includePageNumbers ?? true,
+  };
   return next;
 }
 

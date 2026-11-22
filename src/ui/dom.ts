@@ -134,7 +134,7 @@ export function clearNode(node: Element): void {
 }
 
 /**
- * Enlarged full-bleed obsidian-and-ivory emblem matching assets/bookvibe-logo.svg.
+ * Transparent sculpted Bookvibe layered open-folio + page-wing emblem matching assets/bookvibe-logo.svg.
  */
 export function bookvibeLogo(size = 24): SVGSVGElement {
   const svg = svgEl('svg', {
@@ -146,24 +146,20 @@ export function bookvibeLogo(size = 24): SVGSVGElement {
   });
   svg.append(
     svgEl('path', {
-      d: 'M9 15.5L32 22V50.5L9 44V15.5Z',
-      stroke: '#f2efe8',
-      'stroke-width': '3.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
+      d: 'M11 27C11 24.4 13.1 22.8 15.6 23.4L32 27.6L48.4 23.4C50.9 22.8 53 24.4 53 27V43.2C53 45.8 51.1 47.9 48.5 48.6L34.6 52.3C32.9 52.8 31.1 52.8 29.4 52.3L15.5 48.6C12.9 47.9 11 45.8 11 43.2V27Z',
+      fill: '#7e6644',
     }),
     svgEl('path', {
-      d: 'M55 15.5L32 22V50.5L55 44V15.5Z',
-      stroke: '#f2efe8',
-      'stroke-width': '3.8',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
+      d: 'M33.2 31.4C33 21.6 38.1 13.8 47.6 12.2C48.4 21.8 43.2 28.8 33.2 31.4Z',
+      fill: '#d9b478',
     }),
     svgEl('path', {
-      d: 'M16.5 26.5L25.5 29.2M16.5 34.5L25.5 37.2M38.5 29.2L47.5 26.5M38.5 37.2L47.5 34.5',
-      stroke: '#8c929f',
-      'stroke-width': '2.6',
-      'stroke-linecap': 'round',
+      d: 'M13.5 23.4C13.5 19.7 16.1 17.7 19.8 18.1C25.8 18.7 30.2 22.8 30.2 29.2V49.1C30.2 50.7 28.6 51.3 27.2 50.1C23.6 47 19.9 45.6 17.1 45.2C14.7 44.8 13.5 43.1 13.5 40.3V23.4Z',
+      fill: '#f5f2eb',
+    }),
+    svgEl('path', {
+      d: 'M33.8 35.4C33.8 29.8 38.1 26.2 44.2 26H45.8C48.8 26 50.8 28 50.8 31V40.6C50.8 43.2 49.4 44.8 46.8 45.2C43.9 45.6 40.3 47 36.7 50.1C35.3 51.3 33.8 50.7 33.8 49.1V35.4Z',
+      fill: '#dfd9cd',
     }),
   );
   return svg;

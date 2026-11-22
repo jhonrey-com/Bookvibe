@@ -4,8 +4,10 @@
 
 Bookvibe is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with traditional proofreading marks, manage story bibles and relationship graphs, install custom fonts, design print covers, and export release-ready books from one local workspace. It runs offline with zero account sign-ins, stores work in plain UTF-8 files you control, and syncs manuscripts directly across computers on your Wi-Fi or Bluetooth connection.
 
-> **Use Directly in Browser (No Install Required):** **[Launch Bookvibe Web Studio (`jhonrey-com.github.io/Bookvibe`)](https://jhonrey-com.github.io/Bookvibe/)**  
-> **Desktop Releases (`v1.3.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Bookvibe/releases/latest)**
+> **Try Bookvibe Now in Your Browser (Zero Account Needed):** **[Launch `https://bookvibe.jhonrey.com/`](https://bookvibe.jhonrey.com/)**  
+> *Browser tip:* Click **Save** anytime to export a `.bookvibe` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
+> **Desktop Releases (`v1.3.1` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Bookvibe/releases/latest)**  
+> **Project Wiki & Roadmap:** **[Bookvibe GitHub Wiki](https://github.com/jhonrey-com/Bookvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`bookvibe@jhonrey.com`)
 
 <p align="center">
   <img src="assets/banners/bookvibe-workspace.svg" alt="Bookvibe five-stage studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline LAN Sync, Typeset & Full Cover Wrap" width="100%" />
@@ -40,11 +42,11 @@ Many writers split work across five programs: a text editor for Markdown notes, 
 
 ## 2. How to Install, Run in Browser & Launch Bookvibe
 
-### Option A: Open Immediately in Any Browser (GitHub Pages)
-Visit **[https://jhonrey-com.github.io/Bookvibe/](https://jhonrey-com.github.io/Bookvibe/)** to write, organize Story Bibles, proofread, design covers, and export `.bookvibe` / `.epub` / `.md` files immediately with zero setup.
+### Option A: Open Immediately in Any Browser (No Login Required)
+Visit **[https://bookvibe.jhonrey.com/](https://bookvibe.jhonrey.com/)** to write, organize Story Bibles, proofread, design covers, and export `.bookvibe` / `.epub` / `.md` files right in your browser. Click **Save** locally whenever finishing a browser session so your `.bookvibe` archive is stored safely outside browser cache.
 
-### Option B: Desktop Installers (Frameless Native App)
-Download from **[GitHub Releases (`v1.3.0`)](https://github.com/jhonrey-com/Bookvibe/releases/latest)** (uses a custom frameless obsidian titlebar with drag/minimize/maximize/close instead of default OS bars):
+### Option B: Desktop Installers (Frameless Native App with Local Auto-Save)
+Download from **[GitHub Releases (`v1.3.1`)](https://github.com/jhonrey-com/Bookvibe/releases/latest)** (uses a custom frameless obsidian titlebar with drag/minimize/maximize/close instead of default OS bars and saves directly to your disk):
 - **Windows:** `.msi` or `.exe`
 - **macOS:** Universal `.dmg` (Apple Silicon & Intel)
 - **Linux:** `.AppImage` or `.deb`
@@ -197,9 +199,11 @@ Developers building new add-ons can read the full specification in **[docs/DEVEL
 
 ---
 
-## 9. FAQ, Controls Reference & Contributing
+## 9. FAQ, Security, Wiki Roadmap & Contributing
 
 - **Complete UI & FAQ Reference:** Read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)** for full answers on every slider, lever, dropdown (`15m`/`25m`/`45m`), sprint `Start` / `Reset`, custom fonts, cover design, and offline sync.
+- **Project Overview & Public Roadmap:** Browse the **[Bookvibe GitHub Wiki](https://github.com/jhonrey-com/Bookvibe/wiki)** for milestone planning and design notes.
+- **Security & Vulnerability Reporting:** See **[SECURITY.md](SECURITY.md)** or email **bookvibe@jhonrey.com** directly (all reports are handled and answered by the maintainer from `contact@jhonrey.com`).
 - **Contributions:** Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before submitting pull requests:
   - **Fork & branch first**: Keep commits off `main` in forks; work in dedicated topic branches.
   - **Run local checks**: Ensure `npm run typecheck`, `npm test`, and `npm run build` succeed cleanly after your last edit.

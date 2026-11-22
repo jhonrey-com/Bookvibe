@@ -12,12 +12,15 @@ import {
 } from '../src/core/collab';
 import {
   FONT_STACKS,
+  TRIM_SPECS,
   applySmartTypography,
   buildEpubBlobBytes,
   buildEpubExportPayload,
   buildHtmlExport,
   buildMarkdownExport,
   buildPlainTextExport,
+  buildPrintableBookHtml,
+  computeBookPagination,
   formatChapterLabel,
 } from '../src/core/export';
 import { sanitizeSvgMarkup } from '../src/core/cover';
@@ -745,5 +748,31 @@ describe('Bookvibe v1.3 Beta Modules (Provenance, Settings, Fonts, Migration, Co
     expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Slider')).toBe(true);
     expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Lever')).toBe(true);
     expect(CONTROL_REFERENCE_ITEMS.some((i) => i.controlType === 'Dropdown')).toBe(true);
+  });
+
+  it('builds physical trim-sized book PDF HTML with TOC, page numbers, and optional running headers', () => {
+    expect(TRIM_SPECS.royal.cssPageSize).toBe('6.14in 9.21in');
+    expect(TRIM_SPECS.letter.cssPageSize).toBe('8.5in 11in');
+
+    const book = normalizeProjectDefaults(createStarterBookProject());
+    book.typography.trimSize = 'royal';
+    const paginated = computeBookPagination(book);
+    expect(paginated.tocEntries.length).toBeGreaterThanOrEqual(2);
+    expect(paginated.pages.some((p) => p.kind === 'toc')).toBe(true);
+
+    const htmlWithHead = buildPrintableBookHtml(book);
+    expect(htmlWithHead).toContain('@page {');
+    expect(htmlWithHead).toContain('size: 6.14in 9.21in;');
+    expect(htmlWithHead).toContain('margin: 0;');
+    expect(htmlWithHead).toContain('Table of Contents');
+    expect(htmlWithHead).toContain('class="running-head"');
+    expect(htmlWithHead).toContain('class="page-footer"');
+
+    const noHeadNoToc = normalizeProjectDefaults(book);
+    noHeadNoToc.typography.runningHeader = false;
+    noHeadNoToc.typography.includeTableOfContents = false;
+    const htmlMinimal = buildPrintableBookHtml(noHeadNoToc);
+    expect(htmlMinimal).not.toContain('class="running-head"');
+    expect(htmlMinimal).not.toContain('Table of Contents');
   });
 });

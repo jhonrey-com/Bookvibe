@@ -2,7 +2,7 @@ export type SceneStatus = 'outline' | 'draft' | 'revision' | 'final';
 
 export type PaperTheme = 'obsidian' | 'parchment' | 'ivory';
 
-export type TrimSize = '5x8' | '5.5x8.5' | '6x9' | 'a5';
+export type TrimSize = '5x8' | '5.5x8.5' | '6x9' | 'a5' | 'royal' | 'letter';
 
 export type FontFamilyId = 'garamond' | 'baskerville' | 'palatino' | 'inter';
 
@@ -297,6 +297,8 @@ export interface TypographyConfig {
   chapterNumeralStyle: ChapterNumeralStyle;
   runningHeader: boolean;
   includeFrontMatter: boolean;
+  includeTableOfContents?: boolean;
+  includePageNumbers?: boolean;
 }
 
 export interface AuthorIdentity {
@@ -432,6 +434,7 @@ export interface BookLibraryState {
 
 export interface LanSessionInfo {
   hostIp: string;
+  candidateIps?: string[];
   port: number;
   pin: string;
   hostName: string;

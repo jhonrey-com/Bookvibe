@@ -10,7 +10,7 @@ use file_assoc::{
 use lan_sync::{
     get_lan_sync_status, launch_os_bluetooth_share, poll_lan_incoming_sync,
     pull_book_from_lan_peer, push_book_to_lan_peer, start_lan_sync_host, stop_lan_sync_host,
-    LanSessionInfo,
+    update_lan_sync_host_book, LanSessionInfo,
 };
 use serde::Serialize;
 use std::fs;
@@ -262,6 +262,11 @@ fn start_lan_sync_host_cmd(
 }
 
 #[tauri::command]
+fn update_lan_sync_host_book_cmd(book_json: String) -> Result<bool, String> {
+    update_lan_sync_host_book(book_json)
+}
+
+#[tauri::command]
 fn stop_lan_sync_host_cmd() {
     stop_lan_sync_host();
 }
@@ -291,8 +296,11 @@ fn push_book_to_lan_peer_cmd(
 }
 
 #[tauri::command]
-fn launch_os_bluetooth_share_cmd(file_path: Option<String>) -> Result<String, String> {
-    launch_os_bluetooth_share(file_path)
+fn launch_os_bluetooth_share_cmd(
+    file_path: Option<String>,
+    mode: Option<String>,
+) -> Result<String, String> {
+    launch_os_bluetooth_share(file_path, mode)
 }
 
 fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
@@ -333,6 +341,7 @@ pub fn run() {
             register_file_associations,
             get_file_association_status,
             start_lan_sync_host_cmd,
+            update_lan_sync_host_book_cmd,
             stop_lan_sync_host_cmd,
             get_lan_sync_status_cmd,
             poll_lan_incoming_sync_cmd,

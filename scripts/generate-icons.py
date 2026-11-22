@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate crisp full-bleed monochrome obsidian-and-ivory icons and multi-size ICO assets for Bookvibe."""
+"""Generate Bookvibe layered open-folio app icons (.png, .ico, .icns) matching assets/bookvibe-logo.svg."""
 import math
 import os
 import struct
@@ -14,22 +14,114 @@ os.makedirs(PUBLIC_DIR, exist_ok=True)
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
 
-def seg_dist(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
-    vx = bx - ax
-    vy = by - ay
-    wx = px - ax
-    wy = py - ay
-    denom = vx * vx + vy * vy
-    t = 0.0 if denom <= 1e-12 else max(0.0, min(1.0, (wx * vx + wy * vy) / denom))
-    dx = px - (ax + t * vx)
-    dy = py - (ay + t * vy)
-    return math.hypot(dx, dy)
+def cubic_points(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    steps: int = 24,
+) -> list[tuple[float, float]]:
+    pts = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        mt = 1.0 - t
+        mt2 = mt * mt
+        t2 = t * t
+        x = mt2 * mt * p0[0] + 3.0 * mt2 * t * p1[0] + 3.0 * mt * t2 * p2[0] + t2 * t * p3[0]
+        y = mt2 * mt * p0[1] + 3.0 * mt2 * t * p1[1] + 3.0 * mt * t2 * p2[1] + t2 * t * p3[1]
+        pts.append((x / 64.0 - 0.5, y / 64.0 - 0.5))
+    return pts
+
+
+def norm_pt(x: float, y: float) -> tuple[float, float]:
+    return (x / 64.0 - 0.5, y / 64.0 - 0.5)
+
+
+def build_layers() -> list[tuple[list[tuple[float, float]], tuple[float, float, float, float], tuple[float, float, float]]]:
+    # 1. Warm bronze back folio cradle (#7e6644)
+    cradle = [norm_pt(11, 27)]
+    cradle += cubic_points((11, 27), (11, 24.4), (13.1, 22.8), (15.6, 23.4))
+    cradle.append(norm_pt(32, 27.6))
+    cradle.append(norm_pt(48.4, 23.4))
+    cradle += cubic_points((48.4, 23.4), (50.9, 22.8), (53, 24.4), (53, 27))
+    cradle.append(norm_pt(53, 43.2))
+    cradle += cubic_points((53, 43.2), (53, 45.8), (51.1, 47.9), (48.5, 48.6))
+    cradle.append(norm_pt(34.6, 52.3))
+    cradle += cubic_points((34.6, 52.3), (32.9, 52.8), (31.1, 52.8), (29.4, 52.3))
+    cradle.append(norm_pt(15.5, 48.6))
+    cradle += cubic_points((15.5, 48.6), (12.9, 47.9), (11, 45.8), (11, 43.2))
+
+    # 2. Rising quill-page crest (#d9b478)
+    wing = [norm_pt(33.2, 31.4)]
+    wing += cubic_points((33.2, 31.4), (33.0, 21.6), (38.1, 13.8), (47.6, 12.2))
+    wing += cubic_points((47.6, 12.2), (48.4, 21.8), (43.2, 28.8), (33.2, 31.4))
+
+    # 3. Sculpted left ivory page (#f5f2eb)
+    left_page = [norm_pt(13.5, 23.4)]
+    left_page += cubic_points((13.5, 23.4), (13.5, 19.7), (16.1, 17.7), (19.8, 18.1))
+    left_page += cubic_points((19.8, 18.1), (25.8, 18.7), (30.2, 22.8), (30.2, 29.2))
+    left_page.append(norm_pt(30.2, 49.1))
+    left_page += cubic_points((30.2, 49.1), (30.2, 50.7), (28.6, 51.3), (27.2, 50.1))
+    left_page += cubic_points((27.2, 50.1), (23.6, 47.0), (19.9, 45.6), (17.1, 45.2))
+    left_page += cubic_points((17.1, 45.2), (14.7, 44.8), (13.5, 43.1), (13.5, 40.3))
+
+    # 4. Sculpted right ivory page (#dfd9cd)
+    right_page = [norm_pt(33.8, 35.4)]
+    right_page += cubic_points((33.8, 35.4), (33.8, 29.8), (38.1, 26.2), (44.2, 26.0))
+    right_page.append(norm_pt(45.8, 26.0))
+    right_page += cubic_points((45.8, 26.0), (48.8, 26.0), (50.8, 28.0), (50.8, 31.0))
+    right_page.append(norm_pt(50.8, 40.6))
+    right_page += cubic_points((50.8, 40.6), (50.8, 43.2), (49.4, 44.8), (46.8, 45.2))
+    right_page += cubic_points((46.8, 45.2), (43.9, 45.6), (40.3, 47.0), (36.7, 50.1))
+    right_page += cubic_points((36.7, 50.1), (35.3, 51.3), (33.8, 50.7), (33.8, 49.1))
+
+    layers = []
+    for pts, col in [
+        (cradle, (126.0, 102.0, 68.0)),
+        (wing, (217.0, 180.0, 120.0)),
+        (left_page, (245.0, 242.0, 235.0)),
+        (right_page, (223.0, 217.0, 205.0)),
+    ]:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        bbox = (min(xs), min(ys), max(xs), max(ys))
+        layers.append((pts, bbox, col))
+    return layers
+
+
+LAYERS = build_layers()
 
 
 def sd_rounded_box(px: float, py: float, half_w: float, half_h: float, radius: float) -> float:
     qx = abs(px) - (half_w - radius)
     qy = abs(py) - (half_h - radius)
     return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - radius
+
+
+def sd_polygon(px: float, py: float, pts: list[tuple[float, float]]) -> float:
+    n = len(pts)
+    min_d2 = 1e9
+    inside = False
+    j = n - 1
+    for i in range(n):
+        ax, ay = pts[j]
+        bx, by = pts[i]
+        vx = bx - ax
+        vy = by - ay
+        wx = px - ax
+        wy = py - ay
+        denom = vx * vx + vy * vy
+        t = 0.0 if denom <= 1e-12 else max(0.0, min(1.0, (wx * vx + wy * vy) / denom))
+        dx = px - (ax + t * vx)
+        dy = py - (ay + t * vy)
+        d2 = dx * dx + dy * dy
+        if d2 < min_d2:
+            min_d2 = d2
+        if ((ay > py) != (by > py)) and (px < ax + (py - ay) * (bx - ax) / ((by - ay) or 1e-12)):
+            inside = not inside
+        j = i
+    d = math.sqrt(min_d2)
+    return -d if inside else d
 
 
 def blend(dst: tuple[float, float, float], src: tuple[float, float, float], alpha: float) -> tuple[float, float, float]:
@@ -43,46 +135,26 @@ def blend(dst: tuple[float, float, float], src: tuple[float, float, float], alph
 
 def sample_logo_pixel(nx: float, ny: float, px_scale: float) -> tuple[float, float, float, float]:
     """Sample single sub-pixel in normalized [-0.5, 0.5] coordinates."""
-    # Large full-bleed squircle matching Google/GitHub desktop icon fill proportions
-    squircle_dist = sd_rounded_box(nx, ny, 0.47, 0.47, 0.145)
+    squircle_dist = sd_rounded_box(nx, ny, 0.495, 0.495, 0.245)
     outer_alpha = max(0.0, min(1.0, 0.5 - squircle_dist * px_scale))
     if outer_alpha <= 0.0:
         return (0.0, 0.0, 0.0, 0.0)
 
-    depth = max(0.0, 1.0 - (nx * nx + ny * ny) * 2.0) * 5.0
-    col = (13.0 + depth, 14.0 + depth, 18.0 + depth)
+    col = (17.0, 19.0, 25.0)
+    pad = 2.0 / px_scale
 
-    border_band = abs(squircle_dist + 0.014) - 0.009
-    border_a = max(0.0, min(1.0, 0.5 - border_band * px_scale))
-    if border_a > 0.0:
-        col = blend(col, (46.0, 50.0, 62.0), border_a)
+    # Subtle architectural obsidian hairline rim (#262b38)
+    rim_alpha = max(0.0, min(1.0, 0.5 - abs(squircle_dist + 0.015) * px_scale)) * 0.85
+    if rim_alpha > 0.0:
+        col = blend(col, (38.0, 43.0, 56.0), rim_alpha)
 
-    # Bold open-book spread filling center canvas (matching assets/bookvibe-logo.svg)
-    d_book = min(
-        seg_dist(nx, ny, -0.328, -0.234, 0.0, -0.140),
-        seg_dist(nx, ny, 0.328, -0.234, 0.0, -0.140),
-        seg_dist(nx, ny, -0.328, 0.172, 0.0, 0.266),
-        seg_dist(nx, ny, 0.328, 0.172, 0.0, 0.266),
-        seg_dist(nx, ny, -0.328, -0.234, -0.328, 0.172),
-        seg_dist(nx, ny, 0.328, -0.234, 0.328, 0.172),
-        seg_dist(nx, ny, 0.0, -0.140, 0.0, 0.266),
-    )
-    book_stroke = max(0.026, 1.15 / px_scale)
-    book_a = max(0.0, min(1.0, 0.5 - (d_book - book_stroke) * px_scale))
-    if book_a > 0.0:
-        col = blend(col, (242.0, 239.0, 232.0), book_a)
-
-    # Ruled page lines
-    d_rules = min(
-        seg_dist(nx, ny, -0.226, -0.078, -0.090, -0.039),
-        seg_dist(nx, ny, -0.226, 0.039, -0.090, 0.078),
-        seg_dist(nx, ny, 0.090, -0.039, 0.226, -0.078),
-        seg_dist(nx, ny, 0.090, 0.078, 0.226, 0.039),
-    )
-    rule_stroke = max(0.018, 0.9 / px_scale)
-    rule_a = max(0.0, min(1.0, 0.5 - (d_rules - rule_stroke) * px_scale))
-    if rule_a > 0.0:
-        col = blend(col, (140.0, 146.0, 159.0), rule_a)
+    for pts, (min_x, min_y, max_x, max_y), layer_col in LAYERS:
+        if nx < min_x - pad or nx > max_x + pad or ny < min_y - pad or ny > max_y + pad:
+            continue
+        sd = sd_polygon(nx, ny, pts)
+        alpha = max(0.0, min(1.0, 0.5 - sd * px_scale))
+        if alpha > 0.0:
+            col = blend(col, layer_col, alpha)
 
     return (col[0], col[1], col[2], outer_alpha * 255.0)
 
@@ -181,7 +253,7 @@ def main() -> None:
         for name, data in files:
             with open(os.path.join(target_dir, name), "wb") as fh:
                 fh.write(data)
-    print(f"Generated enlarged Bookvibe minimalist icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
+    print(f"Generated modern Bookvibe layered open-folio icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
 
 
 if __name__ == "__main__":

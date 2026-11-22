@@ -56,6 +56,8 @@ export function createStarterBookProject(): BookProject {
       chapterNumeralStyle: 'roman',
       runningHeader: true,
       includeFrontMatter: true,
+      includeTableOfContents: true,
+      includePageNumbers: true,
     },
     parts: [
       {

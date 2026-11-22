@@ -70,8 +70,9 @@ button {
 .bv-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) 30px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
+  height: 100dvh;
   width: 100%;
   max-width: 100vw;
   overflow: hidden;
@@ -1307,6 +1308,7 @@ button {
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
+  min-height: 30px;
   width: 100%;
   max-width: 100%;
   overflow: hidden;
@@ -1466,9 +1468,11 @@ button {
 
 .bv-graph-svg {
   position: absolute;
-  inset: 0;
-  width: 2400px;
-  height: 1600px;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
   pointer-events: none;
 }
 
@@ -1518,6 +1522,71 @@ button {
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+}
+
+.bv-graph-layout.is-props-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bv-graph-props-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.bv-graph-floating-props {
+  position: absolute;
+  z-index: 25;
+  width: 288px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(11, 12, 16, 0.96);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bv-graph-reopen-props {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  background: rgba(11, 12, 16, 0.92);
+  border-color: var(--border-strong);
+}
+
+.bv-book-page-footer {
+  margin-top: 22px;
+  padding-top: 10px;
+  text-align: center;
+  font-size: 10.5px;
+  color: #6b685f;
+  font-variant-numeric: tabular-nums;
+}
+
+.bv-book-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.bv-book-toc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.bv-book-toc-dots {
+  flex: 1;
+  border-bottom: 1px dotted #9b9588;
+  height: 0;
 }
 
 /* --- Book Cover Studio --- */
@@ -2658,28 +2727,35 @@ select.bv-select,
   color: var(--text-secondary);
 }
 
-.bv-tour-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 920;
-  pointer-events: none;
-  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
-  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.65));
+.bv-splash-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
-.bv-tour-spotlight {
+.bv-tour-outline {
   position: fixed;
   top: 0;
   left: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 8px;
   border: 1.5px solid var(--accent-ivory);
-  background: rgba(232, 226, 213, 0.14);
+  background: rgba(232, 226, 213, 0.04);
+  box-shadow:
+    0 0 0 1px rgba(8, 8, 10, 0.7),
+    0 0 22px rgba(232, 226, 213, 0.22);
   z-index: 915;
   pointer-events: none;
-  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease;
+  opacity: 0;
+  transition:
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
 }
 
 .bv-tour-card {
@@ -2687,8 +2763,8 @@ select.bv-select,
   right: 20px;
   bottom: 44px;
   z-index: 925;
-  width: min(350px, calc(100vw - 32px));
-  padding: 14px 16px;
+  width: min(330px, calc(100vw - 32px));
+  padding: 12px 14px;
   border-radius: 8px;
   background: #101218;
   border: 1px solid var(--border-strong);
@@ -2701,8 +2777,7 @@ select.bv-select,
 @media (prefers-reduced-motion: reduce) {
   .bv-splash-overlay,
   .bv-splash-emblem,
-  .bv-tour-cursor,
-  .bv-tour-spotlight {
+  .bv-tour-outline {
     transition: none !important;
   }
 }
@@ -2722,5 +2797,208 @@ select.bv-select,
   }
   .bv-export-format-select {
     max-width: 88px;
+  }
+}
+
+/* --- Website Mode Desktop-Only Section Indicators --- */
+
+.bv-desktop-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #101218;
+  border: 1px solid rgba(199, 169, 123, 0.42);
+}
+
+.bv-desktop-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.bv-runtime-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(199, 169, 123, 0.45);
+  color: var(--accent-amber);
+  white-space: nowrap;
+}
+
+.bv-desktop-only-section {
+  opacity: 0.48;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- Mobile & Phone Responsive Layout (bookvibe.jhonrey.com) --- */
+
+@media (max-width: 680px) {
+  .bv-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 6px 10px;
+  }
+  .bv-brand {
+    flex: 1 1 100%;
+    order: 1;
+    gap: 6px;
+  }
+  .bv-logo-mark {
+    width: 24px;
+    height: 24px;
+  }
+  .bv-logo-mark svg {
+    width: 24px;
+    height: 24px;
+  }
+  .bv-book-title-input {
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13.5px;
+    padding: 3px 6px;
+  }
+  .bv-topbar-actions {
+    order: 2;
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 4px;
+    padding-top: 5px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .bv-topbar-actions::-webkit-scrollbar {
+    display: none;
+  }
+  .bv-topbar-center {
+    order: 3;
+    flex: 1 1 100%;
+    width: 100%;
+    justify-content: center;
+    padding-top: 5px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .bv-topbar-center .lg-bar {
+    padding: 3px;
+    border-radius: 13px;
+  }
+  .bv-topbar-center .lg-layer-base {
+    gap: 2px;
+  }
+  .bv-topbar-center .lg-host.lg-icon-only .lg-btn {
+    padding: 5px 9px;
+    min-width: 30px;
+  }
+  .bv-subbar {
+    padding: 6px 10px;
+    gap: 5px;
+  }
+  .bv-paper-scroll {
+    padding: 10px 8px 40px;
+  }
+  .bv-paper-sheet {
+    padding: 16px 14px 48px;
+    gap: 10px;
+  }
+  .bv-scene-heading {
+    font-size: 23px;
+  }
+  .bv-prose-textarea {
+    font-size: max(16px, var(--bv-editor-size, 16px));
+    min-height: 360px;
+  }
+  .bv-scroll-view {
+    padding: 12px 12px 36px;
+  }
+  .bv-cork-grid {
+    grid-template-columns: 1fr;
+  }
+  .bv-bible-layout,
+  .bv-typeset-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(160px, 34dvh) minmax(0, 1fr);
+  }
+  .bv-typeset-controls,
+  .bv-bible-detail {
+    padding: 12px;
+  }
+  .bv-typeset-preview-stage,
+  .bv-cover-stage {
+    padding: 12px 10px;
+  }
+  .bv-book-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    padding: 20px 16px !important;
+  }
+  .bv-graph-canvas-wrap {
+    touch-action: none;
+  }
+  .bv-graph-floating-props {
+    width: min(288px, calc(100vw - 24px));
+    left: 12px !important;
+  }
+  .bv-statusbar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 5px 10px calc(5px + env(safe-area-inset-bottom));
+    font-size: 10.5px;
+  }
+  .bv-status-left {
+    flex: 1 1 100%;
+  }
+  .bv-status-right {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .bv-modal-backdrop {
+    padding: 8px;
+  }
+  .bv-modal {
+    max-height: 92dvh;
+    border-radius: 8px;
+  }
+  .bv-modal-body {
+    padding: 12px;
+  }
+  .bv-help-control-grid,
+  .bv-help-icon-grid {
+    grid-template-columns: 1fr;
+  }
+  .bv-tour-card {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: 58px;
+  }
+}
+
+@media (max-width: 480px) {
+  .bv-save-indicator {
+    display: none;
+  }
+  .bv-field-row {
+    grid-template-columns: 1fr;
+  }
+  .bv-export-format-select {
+    max-width: 68px;
   }
 }

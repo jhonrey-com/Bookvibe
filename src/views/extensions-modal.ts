@@ -1,5 +1,5 @@
 import type { AppActions, ExtensionsModalTab } from '../core/app-context';
-import { getOsExtensionStatus, registerOsExtensions } from '../core/bridge';
+import { getOsExtensionStatus, isTauriRuntime, registerOsExtensions } from '../core/bridge';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
 import { installFontPackFromExtension } from '../core/fonts';
 import {
@@ -653,9 +653,42 @@ export async function showExtensionsModal(
     }
 
     // Tab 3: Official File Extensions & OS Registration
+    const desktopMode = isTauriRuntime();
+    if (!desktopMode) {
+      contentArea.appendChild(
+        el(
+          'div',
+          { className: 'bv-desktop-banner' },
+          el(
+            'div',
+            { className: 'bv-desktop-banner-head' },
+            el('span', { className: 'bv-panel-title', text: 'OS File-Type Registration — Desktop App Only' }),
+            el('span', { className: 'bv-runtime-pill', text: 'Desktop Executable Only' }),
+          ),
+          el('p', {
+            className: 'bv-label',
+            text: 'Registering .bookvibe and companion extensions with Windows Explorer, macOS Finder, or Linux MIME requires the native desktop installer. Exporting and opening files works directly in browser mode.',
+          }),
+          el('a', {
+            className: 'bv-btn bv-btn-primary',
+            text: 'Download Desktop App',
+            attrs: {
+              href: 'https://github.com/jhonrey-com/Bookvibe/releases/latest',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            },
+          }),
+        ),
+      );
+    }
+
     const statusBanner = el(
       'div',
-      { className: 'bv-list-card', style: { background: 'var(--bg-bar)' } },
+      {
+        className: `bv-list-card${!desktopMode ? ' bv-desktop-only-section' : ''}`,
+        style: { background: 'var(--bg-bar)' },
+        attrs: { 'aria-disabled': !desktopMode },
+      },
       el(
         'div',
         {},
@@ -671,7 +704,7 @@ export async function showExtensionsModal(
         'button',
         {
           className: 'bv-btn bv-btn-primary',
-          attrs: { type: 'button' },
+          attrs: { type: 'button', disabled: !desktopMode },
           on: {
             click: async () => {
               osReport = await registerOsExtensions();
@@ -685,7 +718,7 @@ export async function showExtensionsModal(
           },
         },
         icon('check', 14),
-        'Register in OS Shell',
+        desktopMode ? 'Register in OS Shell' : 'Desktop Only',
       ),
     );
 
@@ -714,7 +747,7 @@ export async function showExtensionsModal(
             { style: { whiteSpace: 'nowrap' } },
             el('span', {
               className: 'bv-mono-tag',
-              text: isOk ? 'Registered' : 'Spec Ready',
+              text: isOk ? 'Registered' : desktopMode ? 'Ready to Register' : 'Desktop Only',
               style: { color: isOk ? 'var(--accent-emerald)' : 'var(--accent-amber)' },
             }),
           ),

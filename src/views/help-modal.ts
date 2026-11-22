@@ -370,7 +370,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
             el('span', { className: 'bv-panel-title', text: 'Desktop & Direct Web Execution' }),
             el('p', {
               className: 'bv-label',
-              text: 'Bookvibe runs locally in native frameless desktop windows on Windows, macOS, and Linux, or directly inside your browser on GitHub Pages without installations or logins.',
+              text: 'Bookvibe runs locally in native frameless desktop windows on Windows, macOS, and Linux, or directly inside your browser at https://bookvibe.jhonrey.com/ without logins. Remember to export .bookvibe files locally in browser mode so work stays backed up.',
             }),
             el(
               'div',

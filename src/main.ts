@@ -24,7 +24,7 @@ import {
   toggleMaximizeDesktopWindow,
 } from './core/bridge';
 import { renderCoverToPngDataUrl, renderFullWrapToPngDataUrl } from './core/cover';
-import { EXPORT_FORMAT_OPTIONS } from './core/export';
+import { buildPrintableBookHtml, EXPORT_FORMAT_OPTIONS } from './core/export';
 import {
   applyOpenedExtensionFile,
   extractExtensionFromFilename,
@@ -511,12 +511,39 @@ const actions: AppActions = {
   },
 
   printTypeset() {
-    if (state.activeView !== 'typeset' || state.typesetSubTab !== 'interior') {
-      state.activeView = 'typeset';
-      state.typesetSubTab = 'interior';
-      renderActiveView();
-    }
-    requestAnimationFrame(() => window.print());
+    const html = buildPrintableBookHtml(state.project);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const frame = document.createElement('iframe');
+    frame.style.position = 'fixed';
+    frame.style.right = '-9999px';
+    frame.style.bottom = '0';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    frame.setAttribute('aria-hidden', 'true');
+
+    const cleanup = () => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    };
+
+    frame.onload = () => {
+      try {
+        const cw = frame.contentWindow;
+        if (!cw) {
+          cleanup();
+          return;
+        }
+        cw.focus();
+        cw.print();
+        window.setTimeout(cleanup, 120000);
+      } catch {
+        cleanup();
+      }
+    };
+    frame.src = url;
+    document.body.appendChild(frame);
   },
 
   createSnapshot(label?: string) {
@@ -566,7 +593,13 @@ function buildShell(root: HTMLElement): void {
   saveStatusEl = el('span', {
     className: 'bv-save-indicator',
     text: state.saveStatusLabel,
-    tooltip: TOOLTIP_CATALOG.saveStatus,
+    tooltip: isTauriRuntime()
+      ? TOOLTIP_CATALOG.saveStatus
+      : {
+          ...TOOLTIP_CATALOG.saveStatus,
+          short:
+            'Auto-saved in this browser. Export a .bookvibe file to back up locally (desktop apps auto-save to disk).',
+        },
   });
 
   binderToggleBtn = el(
@@ -576,7 +609,12 @@ function buildShell(root: HTMLElement): void {
       tooltip: TOOLTIP_CATALOG.toggleBinder,
       attrs: { type: 'button', 'aria-label': 'Toggle Manuscript Binder' },
       on: {
-        click: () => actions.setState({ showBinder: !state.showBinder }, false),
+        click: () => {
+          const nextShow = !state.showBinder;
+          const patch: Partial<AppState> = { showBinder: nextShow };
+          if (nextShow && window.innerWidth <= 960) patch.showInspector = false;
+          actions.setState(patch, false);
+        },
       },
     },
     icon('panel-left', 15),
@@ -627,7 +665,12 @@ function buildShell(root: HTMLElement): void {
       tooltip: TOOLTIP_CATALOG.toggleInspector,
       attrs: { type: 'button', 'aria-label': 'Toggle Scene Inspector' },
       on: {
-        click: () => actions.setState({ showInspector: !state.showInspector }, false),
+        click: () => {
+          const nextShow = !state.showInspector;
+          const patch: Partial<AppState> = { showInspector: nextShow };
+          if (nextShow && window.innerWidth <= 960) patch.showBinder = false;
+          actions.setState(patch, false);
+        },
       },
     },
     icon('panel-right', 15),
@@ -729,7 +772,13 @@ function buildShell(root: HTMLElement): void {
         'button',
         {
           className: 'bv-btn bv-btn-icon',
-          tooltip: TOOLTIP_CATALOG.collaborate,
+          tooltip: isTauriRuntime()
+            ? TOOLTIP_CATALOG.collaborate
+            : {
+                ...TOOLTIP_CATALOG.collaborate,
+                short:
+                  'Credits & .bookvibe merge work here; Same-Wi-Fi LAN & OS Bluetooth wizard require the desktop app.',
+              },
           attrs: { type: 'button', 'aria-label': 'Collaborate Offline' },
           on: { click: () => actions.openCollabModal() },
         },

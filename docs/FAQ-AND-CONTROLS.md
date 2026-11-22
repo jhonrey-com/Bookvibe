@@ -7,7 +7,7 @@ Plain guide to every button, dropdown, slider, lever switch, section, and workfl
 ## 1. Frequently Asked Questions
 
 ### How do I run Bookvibe without installing anything?
-Open the live web studio hosted via GitHub Pages at **`https://jhonrey-com.github.io/Bookvibe/`**. It runs completely client-side in your browser (`localStorage`), works offline once loaded, and lets you open/export `.bookvibe`, `.epub`, `.md`, `.html`, `.txt`, and `.bv*` files directly.
+Open the live web studio at **`https://bookvibe.jhonrey.com/`**. No account or login is needed—everything runs directly in your browser. Click **Save** before closing so your `.bookvibe` file is saved safely on your computer rather than only inside temporary browser storage.
 
 ### How do I install Bookvibe as a desktop app?
 Download the installer for your OS from **`https://github.com/jhonrey-com/Bookvibe/releases/latest`**:
@@ -15,7 +15,10 @@ Download the installer for your OS from **`https://github.com/jhonrey-com/Bookvi
 - **macOS:** Universal `.dmg` (Apple Silicon & Intel)
 - **Linux:** `.AppImage` or `.deb`
 
-Desktop builds use a custom frameless obsidian titlebar and automatically support double-clicking `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, and `.bvstyle` files plus local Wi-Fi PIN sync.
+Desktop installers automatically save projects to disk on your device, use a custom frameless obsidian titlebar, and register `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, and `.bvstyle` double-click associations plus local Wi-Fi PIN sync.
+
+### What works in the browser (`https://bookvibe.jhonrey.com/`) vs. desktop executables?
+Writing, proofreading, Corkboard, Outline, Story Bible, Story Graph, Typeset & Cover Studio, mobile layout, EPUB/Markdown/HTML/Print PDF export, co-author credits, and importing/exporting `.bookvibe` files all work directly in desktop and mobile browsers. Features that require direct operating-system APIs — **Same-Wi-Fi LAN TCP Sync**, launching **Windows Bluetooth File Transfer (`fsquirt.exe`) / macOS Bluetooth File Exchange / Linux `bluetooth-sendto`**, **OS double-click file-type registration**, and **automatic background saving to disk** — require installing a native desktop binary and are clearly marked **Desktop Executable Only** in browser mode.
 
 ### Does Bookvibe send my manuscript to any server or AI service?
 No. Bookvibe has no telemetry, no cloud database, and no generative AI code. Your manuscripts, pen-name signatures, Author Keys, and custom device fonts remain on your computer.
@@ -40,7 +43,7 @@ Located along the bottom edge of the workspace:
 
 ## 3. Top Header Bar & Frameless Desktop Controls
 
-- **Top-Left Transparent Bookvibe Emblem:** Displays the minimal monochrome open-book emblem directly on the top header strip with zero surrounding border box. On desktop builds, drag empty topbar space to move the window or double-click to maximize/restore.
+- **Top-Left Transparent Bookvibe Emblem:** Displays the sculpted layered open-folio Bookvibe emblem directly on the top header strip with zero surrounding border box. On desktop builds, drag empty topbar space to move the window or double-click to maximize/restore.
 - **Manuscript Binder Toggle (left panel icon):** Shows or hides the Parts, Chapters, and Scenes tree on the left (slides in as an overlay drawer on tablets and smaller windows).
 - **Book Title Input & `Saved` Indicator:** Renames the active book inline; fixed-width `Saving...` / `Saved` readout never shifts buttons horizontally.
 - **Center Studio Switcher (Liquid Glass Pill Bar):**

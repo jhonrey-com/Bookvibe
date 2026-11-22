@@ -37,6 +37,10 @@ let edgeRouting: GraphEdgeStyle = 'curved';
 let snapToGrid = true;
 let showEdgeLabels = true;
 let graphSearchQuery = '';
+let propsCollapsed = false;
+let propsDetached = false;
+let propsFloatX = 24;
+let propsFloatY = 24;
 
 function withGraph(
   actions: AppActions,
@@ -331,13 +335,27 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-mini-btn',
         text: 'Fit',
-        tooltip: { title: 'Fit Canvas View', short: 'Reset zoom and pan to show all nodes.' },
+        tooltip: { title: 'Fit Canvas View', short: 'Center and scale viewport across all placed nodes.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
-            panX = 0;
-            panY = 0;
-            zoomScale = 1;
+            if (visibleNodes.length === 0) {
+              panX = 0;
+              panY = 0;
+              zoomScale = 1;
+            } else {
+              const minX = Math.min(...visibleNodes.map((n) => n.x)) - 48;
+              const maxX = Math.max(...visibleNodes.map((n) => n.x + 210)) + 48;
+              const minY = Math.min(...visibleNodes.map((n) => n.y)) - 48;
+              const maxY = Math.max(...visibleNodes.map((n) => n.y + 110)) + 48;
+              const cw = Math.max(480, canvasWrap.clientWidth);
+              const ch = Math.max(360, canvasWrap.clientHeight);
+              const bw = Math.max(240, maxX - minX);
+              const bh = Math.max(200, maxY - minY);
+              zoomScale = Math.max(0.45, Math.min(1.15, Number(Math.min(cw / bw, ch / bh).toFixed(2))));
+              panX = Math.round((cw - bw * zoomScale) / 2 - minX * zoomScale);
+              panY = Math.round((ch - bh * zoomScale) / 2 - minY * zoomScale);
+            }
             renderGraphView(container, actions);
           },
         },
@@ -398,9 +416,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
 
   const svg = svgEl('svg', {
     class: 'bv-graph-svg',
-    width: 2400,
-    height: 1600,
-    viewBox: '0 0 2400 1600',
+    width: 1,
+    height: 1,
   });
   const defs = svgEl('defs');
   const marker = svgEl('marker', {
@@ -556,6 +573,120 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   let panOriginX = 0;
   let panOriginY = 0;
 
+  let activeWinMove: ((ev: PointerEvent) => void) | null = null;
+  let activeWinUp: ((ev: PointerEvent) => void) | null = null;
+
+  const detachGlobalDrag = () => {
+    if (activeWinMove) {
+      window.removeEventListener('pointermove', activeWinMove);
+      activeWinMove = null;
+    }
+    if (activeWinUp) {
+      window.removeEventListener('pointerup', activeWinUp);
+      window.removeEventListener('pointercancel', activeWinUp);
+      activeWinUp = null;
+    }
+  };
+
+  const attachGlobalDrag = () => {
+    detachGlobalDrag();
+    activeWinMove = (ev: PointerEvent) => {
+      if (!canvasWrap.isConnected) {
+        detachGlobalDrag();
+        return;
+      }
+      handlePointerMove(ev);
+    };
+    activeWinUp = (ev: PointerEvent) => {
+      detachGlobalDrag();
+      if (!canvasWrap.isConnected) return;
+      handlePointerUp(ev);
+    };
+    window.addEventListener('pointermove', activeWinMove);
+    window.addEventListener('pointerup', activeWinUp);
+    window.addEventListener('pointercancel', activeWinUp);
+  };
+
+  const handlePointerMove = (e: PointerEvent) => {
+    if (portDragSourceId) {
+      const srcNode = nodeMap.get(portDragSourceId);
+      if (!srcNode) return;
+      const wrapRect = canvasWrap.getBoundingClientRect();
+      const curX = (e.clientX - wrapRect.left - panX) / zoomScale;
+      const curY = (e.clientY - wrapRect.top - panY) / zoomScale;
+      const box = nodeCardBox(srcNode, nodeCards.get(srcNode.id));
+      const sx = srcNode.x + box.w / 2;
+      const sy = srcNode.y + box.h / 2;
+      rubberLine.setAttribute('d', `M ${sx} ${sy} L ${curX.toFixed(1)} ${curY.toFixed(1)}`);
+      return;
+    }
+
+    if (draggingNodeId) {
+      movedNode = true;
+      let nx = Math.round(e.clientX / zoomScale - dragOffsetX);
+      let ny = Math.round(e.clientY / zoomScale - dragOffsetY);
+      if (snapToGrid) {
+        nx = Math.round(nx / 24) * 24;
+        ny = Math.round(ny / 24) * 24;
+      }
+      const targetCard = nodeCards.get(draggingNodeId);
+      if (targetCard) {
+        targetCard.style.left = `${nx}px`;
+        targetCard.style.top = `${ny}px`;
+      }
+      const nodeRef = nodeMap.get(draggingNodeId);
+      if (nodeRef) {
+        nodeRef.x = nx;
+        nodeRef.y = ny;
+      }
+      // Live connector update every pointer frame during drag!
+      updateConnectedEdgesLive(draggingNodeId);
+    } else if (panning) {
+      panX = Math.round(panOriginX + (e.clientX - panStartClientX));
+      panY = Math.round(panOriginY + (e.clientY - panStartClientY));
+      viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+      syncCanvasGrid();
+    }
+  };
+
+  const handlePointerUp = (e: PointerEvent) => {
+    if (portDragSourceId) {
+      const srcId = portDragSourceId;
+      portDragSourceId = null;
+      rubberLine.setAttribute('visibility', 'hidden');
+      const dropTargetEl = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>(
+        '.bv-graph-node',
+      );
+      const targetId = dropTargetEl?.dataset.nodeId;
+      if (targetId && targetId !== srcId) {
+        let createdEdgeId = '';
+        withGraph(actions, (g) => {
+          const res = addGraphEdge(g, srcId, targetId, 'connects to');
+          createdEdgeId = res.edge?.id ?? '';
+          return res.graph;
+        }, false);
+        selectedEdgeId = createdEdgeId;
+        actions.setState({ activeGraphNodeId: '' }, true);
+      }
+      return;
+    }
+
+    if (draggingNodeId) {
+      const id = draggingNodeId;
+      draggingNodeId = null;
+      if (movedNode) {
+        const moved = nodeMap.get(id);
+        if (moved) {
+          withGraph(actions, (g) => updateGraphNode(g, id, { x: moved.x, y: moved.y }));
+        }
+      } else {
+        selectedEdgeId = '';
+        actions.setState({ activeGraphNodeId: id }, true);
+      }
+    }
+    panning = false;
+  };
+
   for (const node of visibleNodes) {
     const isSelected = node.id === state.activeGraphNodeId;
     const isSource = connectMode && node.id === connectSourceId;
@@ -577,6 +708,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
             const sy = node.y + box.h / 2;
             rubberLine.setAttribute('d', `M ${sx} ${sy} L ${sx} ${sy}`);
             rubberLine.setAttribute('visibility', 'visible');
+            attachGlobalDrag();
           },
         },
       });
@@ -647,6 +779,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
             movedNode = false;
             dragOffsetX = e.clientX / zoomScale - node.x;
             dragOffsetY = e.clientY / zoomScale - node.y;
+            attachGlobalDrag();
           },
           dblclick: (e) => {
             e.stopPropagation();
@@ -673,16 +806,27 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     viewport.appendChild(card);
   }
 
+  const syncCanvasGrid = () => {
+    const step = Math.max(8, Math.round(24 * zoomScale));
+    canvasWrap.style.backgroundPosition = `${panX}px ${panY}px`;
+    canvasWrap.style.backgroundSize = `${step}px ${step}px`;
+  };
+
   const canvasWrap = el(
     'div',
     {
       className: 'bv-graph-canvas-wrap',
+      style: {
+        backgroundPosition: `${panX}px ${panY}px`,
+        backgroundSize: `${Math.max(8, Math.round(24 * zoomScale))}px ${Math.max(8, Math.round(24 * zoomScale))}px`,
+      },
       on: {
         wheel: (e) => {
           e.preventDefault();
           const step = e.deltaY < 0 ? 0.08 : -0.08;
           zoomScale = Math.max(0.45, Math.min(1.8, Number((zoomScale + step).toFixed(2))));
           viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+          syncCanvasGrid();
         },
         pointerdown: (e) => {
           if (e.button !== 0) return;
@@ -691,93 +835,106 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
           panStartClientY = e.clientY;
           panOriginX = panX;
           panOriginY = panY;
-        },
-        pointermove: (e) => {
-          if (portDragSourceId) {
-            const srcNode = nodeMap.get(portDragSourceId);
-            if (!srcNode) return;
-            const wrapRect = canvasWrap.getBoundingClientRect();
-            const curX = (e.clientX - wrapRect.left - panX) / zoomScale;
-            const curY = (e.clientY - wrapRect.top - panY) / zoomScale;
-            const box = nodeCardBox(srcNode, nodeCards.get(srcNode.id));
-            const sx = srcNode.x + box.w / 2;
-            const sy = srcNode.y + box.h / 2;
-            rubberLine.setAttribute('d', `M ${sx} ${sy} L ${curX.toFixed(1)} ${curY.toFixed(1)}`);
-            return;
-          }
-
-          if (draggingNodeId) {
-            movedNode = true;
-            let nx = Math.max(12, Math.round(e.clientX / zoomScale - dragOffsetX));
-            let ny = Math.max(12, Math.round(e.clientY / zoomScale - dragOffsetY));
-            if (snapToGrid) {
-              nx = Math.max(12, Math.round(nx / 24) * 24);
-              ny = Math.max(12, Math.round(ny / 24) * 24);
-            }
-            const targetCard = nodeCards.get(draggingNodeId);
-            if (targetCard) {
-              targetCard.style.left = `${nx}px`;
-              targetCard.style.top = `${ny}px`;
-            }
-            const nodeRef = nodeMap.get(draggingNodeId);
-            if (nodeRef) {
-              nodeRef.x = nx;
-              nodeRef.y = ny;
-            }
-            // Live connector update every pointer frame during drag!
-            updateConnectedEdgesLive(draggingNodeId);
-          } else if (panning) {
-            panX = Math.round(panOriginX + (e.clientX - panStartClientX));
-            panY = Math.round(panOriginY + (e.clientY - panStartClientY));
-            viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
-          }
-        },
-        pointerup: (e) => {
-          if (portDragSourceId) {
-            const srcId = portDragSourceId;
-            portDragSourceId = null;
-            rubberLine.setAttribute('visibility', 'hidden');
-            const dropTargetEl = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>(
-              '.bv-graph-node',
-            );
-            const targetId = dropTargetEl?.dataset.nodeId;
-            if (targetId && targetId !== srcId) {
-              let createdEdgeId = '';
-              withGraph(actions, (g) => {
-                const res = addGraphEdge(g, srcId, targetId, 'connects to');
-                createdEdgeId = res.edge?.id ?? '';
-                return res.graph;
-              }, false);
-              selectedEdgeId = createdEdgeId;
-              actions.setState({ activeGraphNodeId: '' }, true);
-            }
-            return;
-          }
-
-          if (draggingNodeId) {
-            const id = draggingNodeId;
-            draggingNodeId = null;
-            if (movedNode) {
-              const moved = nodeMap.get(id);
-              if (moved) {
-                withGraph(actions, (g) => updateGraphNode(g, id, { x: moved.x, y: moved.y }));
-              }
-            } else {
-              selectedEdgeId = '';
-              actions.setState({ activeGraphNodeId: id }, true);
-            }
-          }
-          panning = false;
+          attachGlobalDrag();
         },
       },
     },
     viewport,
   );
 
-  // Right Sidebar for selected Node or Edge
-  const sidebar = el('aside', { className: 'bv-graph-sidebar' });
+  // Properties panel (dockable on right, detachable into floating panel, or collapsible)
+  const propsPanel = el('aside', {
+    className: propsDetached ? 'bv-graph-floating-props' : 'bv-graph-sidebar',
+    style: propsDetached ? { left: `${propsFloatX}px`, top: `${propsFloatY}px` } : undefined,
+    on: {
+      pointerdown: (e) => {
+        if (propsDetached) e.stopPropagation();
+      },
+    },
+  });
   const selectedNode = graph.nodes.find((n) => n.id === state.activeGraphNodeId);
   const selectedEdge = graph.edges.find((e) => e.id === selectedEdgeId);
+
+  const panelTitleText = selectedNode
+    ? 'Node Properties'
+    : selectedEdge
+      ? 'Connection Properties'
+      : 'Story Graph';
+
+  const makePropsHeader = () => {
+    const hdr = el(
+      'div',
+      {
+        className: 'bv-graph-props-head',
+        style: propsDetached ? { cursor: 'grab' } : undefined,
+      },
+      el('span', { className: 'bv-panel-title', text: panelTitleText }),
+      el(
+        'div',
+        { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
+        el('button', {
+          className: 'bv-mini-btn',
+          text: propsDetached ? 'Dock' : 'Detach',
+          tooltip: {
+            title: propsDetached ? 'Dock Properties Sidebar' : 'Detach Floating Properties',
+            short: propsDetached
+              ? 'Snap Node Properties back onto the right sidebar.'
+              : 'Pop Node Properties out as a draggable floating card.',
+          },
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              propsDetached = !propsDetached;
+              propsCollapsed = false;
+              renderGraphView(container, actions);
+            },
+          },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: '−',
+          tooltip: { title: 'Collapse Properties', short: 'Hide Node Properties to expand infinite graph canvas.' },
+          attrs: { type: 'button', 'aria-label': 'Collapse properties panel' },
+          on: {
+            click: () => {
+              propsCollapsed = true;
+              renderGraphView(container, actions);
+            },
+          },
+        }),
+      ),
+    );
+
+    if (propsDetached) {
+      let draggingPanel = false;
+      let startX = 0;
+      let startY = 0;
+      let origX = propsFloatX;
+      let origY = propsFloatY;
+      hdr.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement | null)?.closest('button')) return;
+        e.stopPropagation();
+        draggingPanel = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        origX = propsFloatX;
+        origY = propsFloatY;
+        hdr.setPointerCapture(e.pointerId);
+      });
+      hdr.addEventListener('pointermove', (e) => {
+        if (!draggingPanel) return;
+        propsFloatX = Math.max(8, Math.min(Math.max(120, canvasWrap.clientWidth - 296), origX + (e.clientX - startX)));
+        propsFloatY = Math.max(8, Math.min(Math.max(120, canvasWrap.clientHeight - 240), origY + (e.clientY - startY)));
+        propsPanel.style.left = `${propsFloatX}px`;
+        propsPanel.style.top = `${propsFloatY}px`;
+      });
+      hdr.addEventListener('pointerup', () => {
+        draggingPanel = false;
+      });
+    }
+
+    return hdr;
+  };
 
   if (selectedNode) {
     const labelIn = el('input', {
@@ -887,8 +1044,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
           })
         : null;
 
-    sidebar.append(
-      el('span', { className: 'bv-panel-title', text: 'Node Properties' }),
+    propsPanel.append(
+      makePropsHeader(),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Title' }), labelIn),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Interchange Type' }), kindSel),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Subtitle / Role' }), subIn),
@@ -898,8 +1055,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         text: `${connectedEdges.length} connection(s)`,
       }),
     );
-    if (promoteBtn) sidebar.appendChild(promoteBtn);
-    sidebar.append(
+    if (promoteBtn) propsPanel.appendChild(promoteBtn);
+    propsPanel.append(
       el('button', {
         className: 'bv-btn',
         text: 'Connect From This Node',
@@ -956,8 +1113,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('option', { text: 'Dashed Line', attrs: { value: 'dashed', selected: selectedEdge.style === 'dashed' } }),
     );
 
-    sidebar.append(
-      el('span', { className: 'bv-panel-title', text: 'Connection Properties' }),
+    propsPanel.append(
+      makePropsHeader(),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Relationship Label' }), edgeLabelIn),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Line Style' }), styleSel),
       el('button', {
@@ -986,11 +1143,11 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       ),
     );
   } else {
-    sidebar.append(
-      el('span', { className: 'bv-panel-title', text: 'Story Graph' }),
+    propsPanel.append(
+      makePropsHeader(),
       el('p', {
         className: 'bv-label',
-        text: 'Drag any card and connecting lines follow live. Drag from a port dot on the edge of a card onto another card to link them. Double-click a linked Scene or Bible node to open it.',
+        text: 'Infinite canvas: drag cards anywhere (including negative coordinates) and lines follow live. Drag any ● port dot onto another card to link.',
       }),
       el('div', {
         className: 'bv-mono-tag',
@@ -999,6 +1156,31 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     );
   }
 
-  const layout = el('div', { className: 'bv-graph-layout' }, canvasWrap, sidebar);
+  if (propsCollapsed) {
+    canvasWrap.appendChild(
+      el('button', {
+        className: 'bv-mini-btn bv-graph-reopen-props',
+        text: 'Show Properties',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            propsCollapsed = false;
+            renderGraphView(container, actions);
+          },
+        },
+      }),
+    );
+  } else if (propsDetached) {
+    canvasWrap.appendChild(propsPanel);
+  }
+
+  const layout = el(
+    'div',
+    {
+      className: `bv-graph-layout${propsCollapsed || propsDetached ? ' is-props-collapsed' : ''}`,
+    },
+    canvasWrap,
+    !propsCollapsed && !propsDetached ? propsPanel : null,
+  );
   container.append(subbar, layout);
 }

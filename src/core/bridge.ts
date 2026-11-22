@@ -295,6 +295,14 @@ export async function getOsExtensionStatus(): Promise<AssociationReport> {
 
 // --- Offline Desktop-to-Desktop Collaboration (Same Wi-Fi LAN & Bluetooth / Nearby Share) ---
 
+export interface BluetoothShareOptions {
+  filePath?: string;
+  mode?: 'send' | 'receive';
+  filename?: string;
+  payload?: string;
+  title?: string;
+}
+
 export async function startLanSyncHost(
   bookJson: string,
   hostName: string,
@@ -303,22 +311,27 @@ export async function startLanSyncHost(
   if (!isTauriRuntime()) {
     throw new Error('Direct Wi-Fi LAN hosting requires the native desktop executable.');
   }
-  return tauriInvoke<LanSessionInfo>('start_lan_sync_host', {
+  return tauriInvoke<LanSessionInfo>('start_lan_sync_host_cmd', {
     bookJson,
     hostName,
     port: port ?? null,
   });
 }
 
+export async function updateLanSyncHostBook(bookJson: string): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  return tauriInvoke<boolean>('update_lan_sync_host_book_cmd', { bookJson });
+}
+
 export async function stopLanSyncHost(): Promise<void> {
   if (!isTauriRuntime()) return;
-  await tauriInvoke('stop_lan_sync_host');
+  await tauriInvoke('stop_lan_sync_host_cmd');
 }
 
 export async function getLanSyncStatus(): Promise<LanSessionInfo | null> {
   if (!isTauriRuntime()) return null;
   try {
-    return await tauriInvoke<LanSessionInfo | null>('get_lan_sync_status');
+    return await tauriInvoke<LanSessionInfo | null>('get_lan_sync_status_cmd');
   } catch {
     return null;
   }
@@ -326,14 +339,14 @@ export async function getLanSyncStatus(): Promise<LanSessionInfo | null> {
 
 export async function pollLanIncomingSync(): Promise<string | null> {
   if (!isTauriRuntime()) return null;
-  return tauriInvoke<string | null>('poll_lan_incoming_sync');
+  return tauriInvoke<string | null>('poll_lan_incoming_sync_cmd');
 }
 
 export async function pullFromLanPeer(peerAddr: string, pin: string): Promise<string> {
   if (!isTauriRuntime()) {
     throw new Error('LAN peer sync requires the native desktop executable.');
   }
-  return tauriInvoke<string>('pull_book_from_lan_peer', { peerAddr, pin });
+  return tauriInvoke<string>('pull_book_from_lan_peer_cmd', { peerAddr: peerAddr.trim(), pin: pin.trim() });
 }
 
 export async function pushToLanPeer(
@@ -344,14 +357,53 @@ export async function pushToLanPeer(
   if (!isTauriRuntime()) {
     throw new Error('LAN peer sync requires the native desktop executable.');
   }
-  return tauriInvoke<string>('push_book_to_lan_peer', { peerAddr, pin, bookJson });
+  return tauriInvoke<string>('push_book_to_lan_peer_cmd', {
+    peerAddr: peerAddr.trim(),
+    pin: pin.trim(),
+    bookJson,
+  });
 }
 
-export async function launchBluetoothShare(filePath?: string): Promise<string> {
-  if (!isTauriRuntime()) {
-    return 'Save the .bookvibe package and send it via Bluetooth, AirDrop, or Nearby Share.';
+export async function launchBluetoothShare(options?: BluetoothShareOptions): Promise<string> {
+  const mode = options?.mode ?? 'send';
+  if (isTauriRuntime()) {
+    return tauriInvoke<string>('launch_os_bluetooth_share_cmd', {
+      filePath: options?.filePath ?? null,
+      mode,
+    });
   }
-  return tauriInvoke<string>('launch_os_bluetooth_share', { filePath: filePath ?? null });
+
+  if (mode === 'receive') {
+    return 'Receive the .bookvibe file via your device Bluetooth or Nearby Share, then click Pick & Merge Peer File.';
+  }
+
+  if (options?.payload && options?.filename) {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      const shareFile = new File([options.payload], options.filename, {
+        type: 'application/json',
+      });
+      const canShareFiles =
+        typeof navigator.canShare === 'function' && navigator.canShare({ files: [shareFile] });
+      if (canShareFiles) {
+        try {
+          await navigator.share({
+            title: options.title ?? 'Bookvibe Book Package',
+            text: 'Bookvibe .bookvibe revision package',
+            files: [shareFile],
+          });
+          return 'Opened system share sheet for Bluetooth / Nearby Share / AirDrop.';
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return 'Share dialog closed.';
+          }
+        }
+      }
+    }
+    triggerBrowserDownload(options.filename, options.payload, 'application/json');
+    return 'Downloaded .bookvibe file. Send it via your device Bluetooth, AirDrop, or Nearby Share (or install the Bookvibe desktop app to open Bluetooth File Transfer directly).';
+  }
+
+  return 'Save the .bookvibe package and send it via Bluetooth, AirDrop, or Nearby Share.';
 }
 
 export async function minimizeDesktopWindow(): Promise<void> {

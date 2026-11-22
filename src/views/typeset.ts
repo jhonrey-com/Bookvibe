@@ -3,8 +3,7 @@ import { COLLABORATOR_ROLE_LABELS } from '../core/collab';
 import {
   TRIM_SPECS,
   applySmartTypography,
-  convertSceneProseToParagraphs,
-  formatChapterLabel,
+  computeBookPagination,
 } from '../core/export';
 import { getAllAvailableFontChoices, resolveEffectiveFontCss } from '../core/fonts';
 import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
@@ -27,8 +26,14 @@ import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 import { renderCoverStudio } from './cover';
 
 let activeTypesetGlass: LiquidGlassControl<TypesetSubTab> | null = null;
+let savedControlsScrollTop = 0;
+let savedStageScrollTop = 0;
 
 function updateTypography(actions: AppActions, patch: Partial<TypographyConfig>): void {
+  const ctrl = document.querySelector('.bv-typeset-controls') as HTMLElement | null;
+  const stage = document.querySelector('.bv-typeset-preview-stage') as HTMLElement | null;
+  if (ctrl) savedControlsScrollTop = ctrl.scrollTop;
+  if (stage) savedStageScrollTop = stage.scrollTop;
   actions.mutateProject((prev) => ({
     ...prev,
     typography: { ...prev.typography, ...patch },
@@ -57,6 +62,11 @@ function appendInlineStyledText(target: HTMLElement, text: string): void {
 }
 
 export function renderTypesetView(container: HTMLElement, actions: AppActions): void {
+  const prevCtrl = container.querySelector('.bv-typeset-controls') as HTMLElement | null;
+  const prevStage = container.querySelector('.bv-typeset-preview-stage') as HTMLElement | null;
+  if (prevCtrl) savedControlsScrollTop = prevCtrl.scrollTop;
+  if (prevStage) savedStageScrollTop = prevStage.scrollTop;
+
   if (activeTypesetGlass) {
     activeTypesetGlass.destroy();
     activeTypesetGlass = null;
@@ -230,6 +240,21 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
     attrs: { type: 'checkbox', role: 'switch', checked: typo.runningHeader },
     on: { change: () => updateTypography(actions, { runningHeader: headerToggle.checked }) },
   });
+  const frontMatterToggle = el('input', {
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.includeFrontMatter !== false },
+    on: { change: () => updateTypography(actions, { includeFrontMatter: frontMatterToggle.checked }) },
+  });
+  const tocToggle = el('input', {
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.includeTableOfContents !== false },
+    on: { change: () => updateTypography(actions, { includeTableOfContents: tocToggle.checked }) },
+  });
+  const pageNumsToggle = el('input', {
+    className: 'bv-lever',
+    attrs: { type: 'checkbox', role: 'switch', checked: typo.includePageNumbers !== false },
+    on: { change: () => updateTypography(actions, { includePageNumbers: pageNumsToggle.checked }) },
+  });
 
   const fontSizeInput = el('input', {
     attrs: { type: 'range', min: 9, max: 14, step: 0.5, value: typo.fontSizePt },
@@ -307,9 +332,27 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
       ),
       el(
         'label',
-        { style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' } },
+        { className: 'bv-check-row' },
         headerToggle,
-        'Running Page Headers',
+        el('span', { text: 'Show Pen Name & Title Header on Chapters' }),
+      ),
+      el(
+        'label',
+        { className: 'bv-check-row' },
+        tocToggle,
+        el('span', { text: 'Include Table of Contents' }),
+      ),
+      el(
+        'label',
+        { className: 'bv-check-row' },
+        pageNumsToggle,
+        el('span', { text: 'Show Book Page Numbers' }),
+      ),
+      el(
+        'label',
+        { className: 'bv-check-row' },
+        frontMatterToggle,
+        el('span', { text: 'Include Title & Copyright Page' }),
       ),
     ),
     el(
@@ -327,107 +370,163 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
   );
 
   const stage = el('div', { className: 'bv-typeset-preview-stage' });
-  const trimSpec = TRIM_SPECS[typo.trimSize];
+  const trimSpec = TRIM_SPECS[typo.trimSize] ?? TRIM_SPECS['6x9'];
   const fontCss = resolveEffectiveFontCss(typo.fontFamily, typo.customFontFamily);
   const pageWidthPx = Math.round(trimSpec.widthIn * 92);
+  const pageMinHeightPx = Math.round(trimSpec.heightIn * 92);
+  const showPageNums = typo.includePageNumbers !== false;
+  const paginated = computeBookPagination(project);
 
-  if (typo.includeFrontMatter) {
-    const creditsRows = (project.collaborators ?? []).map((c) =>
-      el('p', {
-        text: `${COLLABORATOR_ROLE_LABELS[c.role]}: ${c.creditLine}`,
-        style: { margin: '2px 0', fontSize: '10.5px', color: '#615d54' },
-      }),
-    );
+  for (const sheet of paginated.pages) {
+    if (sheet.kind === 'front-matter') {
+      const creditsRows = (project.collaborators ?? []).map((c) =>
+        el('p', {
+          text: `${COLLABORATOR_ROLE_LABELS[c.role]}: ${c.creditLine}`,
+          style: { margin: '2px 0', fontSize: '10.5px', color: '#615d54' },
+        }),
+      );
 
-    const titlePage = el(
-      'article',
-      {
-        className: 'bv-book-page',
-        style: {
-          maxWidth: `min(100%, ${pageWidthPx}px)`,
-          fontFamily: fontCss,
-          textAlign: 'center',
-          minHeight: `${Math.round(trimSpec.heightIn * 78)}px`,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
+      const titlePage = el(
+        'article',
+        {
+          className: 'bv-book-page',
+          style: {
+            maxWidth: `min(100%, ${pageWidthPx}px)`,
+            fontFamily: fontCss,
+            textAlign: 'center',
+            minHeight: `${pageMinHeightPx}px`,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          },
         },
-      },
-      el(
-        'div',
-        { style: { marginTop: '72px' } },
-        el('h1', {
-          text: typo.smartTypography ? applySmartTypography(project.title) : project.title,
-          style: { fontSize: '30px', fontWeight: '500', margin: '0 0 8px' },
-        }),
-        el('p', {
-          text: typo.smartTypography ? applySmartTypography(project.subtitle) : project.subtitle,
-          style: { fontStyle: 'italic', color: '#4d4940', margin: '0 0 36px', fontSize: '15px' },
-        }),
-        el('p', {
-          text: penName,
-          style: { letterSpacing: '0.16em', textTransform: 'uppercase', fontSize: '12px' },
-        }),
-        identity.signatureSvgDataUrl
-          ? el('img', {
-              attrs: { src: identity.signatureSvgDataUrl, alt: 'Signature' },
-              style: { height: '32px', marginTop: '14px', filter: 'invert(1)' },
-            })
-          : identity.signatureText
+        el(
+          'div',
+          { style: { marginTop: '72px' } },
+          el('h1', {
+            text: typo.smartTypography ? applySmartTypography(project.title) : project.title,
+            style: { fontSize: '30px', fontWeight: '500', margin: '0 0 8px' },
+          }),
+          el('p', {
+            text: typo.smartTypography ? applySmartTypography(project.subtitle) : project.subtitle,
+            style: { fontStyle: 'italic', color: '#4d4940', margin: '0 0 36px', fontSize: '15px' },
+          }),
+          el('p', {
+            text: penName,
+            style: { letterSpacing: '0.16em', textTransform: 'uppercase', fontSize: '12px' },
+          }),
+          identity.signatureSvgDataUrl
+            ? el('img', {
+                attrs: { src: identity.signatureSvgDataUrl, alt: 'Signature' },
+                style: { height: '32px', marginTop: '14px', filter: 'invert(1)' },
+              })
+            : identity.signatureText
+              ? el('p', {
+                  text: identity.signatureText,
+                  style: { fontStyle: 'italic', color: '#5c5850', marginTop: '12px' },
+                })
+              : null,
+        ),
+        el(
+          'div',
+          { style: { fontSize: '11px', color: '#615d54' } },
+          project.dedication ? el('p', { text: project.dedication, style: { fontStyle: 'italic' } }) : null,
+          el('p', { text: project.copyrightNotice }),
+          ...creditsRows,
+          identity.authorKeyId
             ? el('p', {
-                text: identity.signatureText,
-                style: { fontStyle: 'italic', color: '#5c5850', marginTop: '12px' },
+                text: `Author Key ${identity.authorKeyId}${identity.manuscriptDigest ? ` · Seal ${identity.manuscriptDigest.slice(0, 12)}…` : ''}`,
+                style: { fontSize: '9.5px', letterSpacing: '0.06em', opacity: '0.8' },
               })
             : null,
-      ),
-      el(
-        'div',
-        { style: { fontSize: '11px', color: '#615d54' } },
-        project.dedication ? el('p', { text: project.dedication, style: { fontStyle: 'italic' } }) : null,
-        el('p', { text: project.copyrightNotice }),
-        ...creditsRows,
-        identity.authorKeyId
-          ? el('p', {
-              text: `Author Key ${identity.authorKeyId}${identity.manuscriptDigest ? ` · Seal ${identity.manuscriptDigest.slice(0, 12)}…` : ''}`,
-              style: { fontSize: '9.5px', letterSpacing: '0.06em', opacity: '0.8' },
-            })
-          : null,
-      ),
-    );
-    stage.appendChild(titlePage);
-  }
+          showPageNums ? el('div', { className: 'bv-book-page-footer', text: String(sheet.pageNumber) }) : null,
+        ),
+      );
+      stage.appendChild(titlePage);
+      continue;
+    }
 
-  let chapNum = 0;
-  for (const part of project.parts) {
-    for (const chapter of part.chapters) {
-      chapNum++;
-      const chLabel = formatChapterLabel(chapNum, typo.chapterNumeralStyle);
-
-      const page = el('article', {
-        className: 'bv-book-page',
-        style: {
-          maxWidth: `min(100%, ${pageWidthPx}px)`,
-          fontFamily: fontCss,
-          fontSize: `${typo.fontSizePt}pt`,
-          lineHeight: String(typo.lineHeight),
-          padding: `${Math.round(typo.marginInches * 42)}px clamp(18px, 4vw, ${Math.round(typo.marginInches * 54)}px)`,
-        },
-      });
-
-      if (typo.runningHeader) {
-        page.appendChild(
+    if (sheet.kind === 'toc') {
+      const tocList = el('div', { className: 'bv-book-toc-list' });
+      for (const entry of paginated.tocEntries) {
+        tocList.appendChild(
           el(
             'div',
-            { className: 'bv-book-page-running' },
-            el('span', { text: penName }),
-            el('span', { text: project.title }),
+            { className: 'bv-book-toc-row' },
+            el('span', { text: `${entry.chapterLabel} — ${entry.chapterTitle}` }),
+            el('span', { className: 'bv-book-toc-dots' }),
+            el('span', { text: String(entry.pageNumber), style: { fontVariantNumeric: 'tabular-nums' } }),
           ),
         );
       }
 
-      page.append(
+      const tocPage = el(
+        'article',
+        {
+          className: 'bv-book-page',
+          style: {
+            maxWidth: `min(100%, ${pageWidthPx}px)`,
+            minHeight: `${pageMinHeightPx}px`,
+            fontFamily: fontCss,
+            fontSize: `${typo.fontSizePt}pt`,
+            lineHeight: String(typo.lineHeight),
+            padding: `${Math.round(typo.marginInches * 42)}px clamp(18px, 4vw, ${Math.round(typo.marginInches * 54)}px)`,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          },
+        },
+        el(
+          'div',
+          {},
+          el('div', {
+            text: 'Contents',
+            style: { textAlign: 'center', fontSize: '10.5px', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#5c5850', marginBottom: '6px' },
+          }),
+          el('h2', {
+            text: 'Table of Contents',
+            style: { textAlign: 'center', fontWeight: '500', fontSize: '23px', margin: '0 0 24px' },
+          }),
+          tocList,
+        ),
+        showPageNums ? el('div', { className: 'bv-book-page-footer', text: String(sheet.pageNumber) }) : el('div'),
+      );
+      stage.appendChild(tocPage);
+      continue;
+    }
+
+    const page = el('article', {
+      className: 'bv-book-page',
+      style: {
+        maxWidth: `min(100%, ${pageWidthPx}px)`,
+        minHeight: `${pageMinHeightPx}px`,
+        fontFamily: fontCss,
+        fontSize: `${typo.fontSizePt}pt`,
+        lineHeight: String(typo.lineHeight),
+        padding: `${Math.round(typo.marginInches * 42)}px clamp(18px, 4vw, ${Math.round(typo.marginInches * 54)}px)`,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+      },
+    });
+
+    const contentWrap = el('div');
+
+    if (typo.runningHeader) {
+      contentWrap.appendChild(
+        el(
+          'div',
+          { className: 'bv-book-page-running' },
+          el('span', { text: penName }),
+          el('span', { text: project.title }),
+        ),
+      );
+    }
+
+    if (sheet.isChapterStart) {
+      contentWrap.append(
         el('div', {
-          text: chLabel,
+          text: sheet.chapterLabel ?? '',
           style: {
             textAlign: 'center',
             fontSize: '10.5px',
@@ -438,66 +537,58 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
           },
         }),
         el('h2', {
-          text: typo.smartTypography ? applySmartTypography(chapter.title) : chapter.title,
+          text: sheet.chapterTitle ?? '',
           style: { textAlign: 'center', fontWeight: '500', fontSize: '23px', margin: '0 0 24px' },
         }),
       );
-
-      chapter.scenes.forEach((scene, sIdx) => {
-        if (sIdx > 0) {
-          page.appendChild(
-            el('p', {
-              text: '* * *',
-              style: { textAlign: 'center', letterSpacing: '0.35em', margin: '18px 0', color: '#5c5850' },
-            }),
-          );
-        }
-        const blocks = convertSceneProseToParagraphs(scene.content, typo.smartTypography);
-        let isChapterLead = sIdx === 0;
-        let isFlushAfterBreak = sIdx > 0;
-        for (const block of blocks) {
-          if (/^\*\s*\*\s*\*$/.test(block)) {
-            page.appendChild(
-              el('p', {
-                text: '* * *',
-                style: { textAlign: 'center', letterSpacing: '0.35em', margin: '18px 0', color: '#5c5850' },
-              }),
-            );
-            isFlushAfterBreak = true;
-            continue;
-          }
-          if (block.startsWith('> ')) {
-            const bq = el('blockquote', {
-              style: { fontStyle: 'italic', margin: '14px 24px', color: '#3b3832' },
-            });
-            appendInlineStyledText(bq, block.replace(/^>\s?/gm, ''));
-            page.appendChild(bq);
-            continue;
-          }
-          const startsWithLetter = /^\p{L}/u.test(block);
-          const applyDropCap = isChapterLead && typo.dropCaps && startsWithLetter;
-          const noIndent = isChapterLead || isFlushAfterBreak;
-          const p = el('p', {
-            className: applyDropCap ? 'bv-book-dropcap' : '',
-            style: {
-              margin: '0 0 6px',
-              textIndent: noIndent ? '0' : '1.4em',
-              textAlign: 'justify',
-            },
-          });
-          appendInlineStyledText(p, block);
-          isChapterLead = false;
-          isFlushAfterBreak = false;
-          page.appendChild(p);
-        }
-      });
-
-      stage.appendChild(page);
     }
+
+    for (const blk of sheet.blocks) {
+      if (blk.kind === 'scene-break') {
+        contentWrap.appendChild(
+          el('p', {
+            text: '* * *',
+            style: { textAlign: 'center', letterSpacing: '0.35em', margin: '18px 0', color: '#5c5850' },
+          }),
+        );
+        continue;
+      }
+      if (blk.kind === 'blockquote') {
+        const bq = el('blockquote', {
+          style: { fontStyle: 'italic', margin: '14px 24px', color: '#3b3832' },
+        });
+        appendInlineStyledText(bq, blk.text);
+        contentWrap.appendChild(bq);
+        continue;
+      }
+      const p = el('p', {
+        className: blk.dropCap ? 'bv-book-dropcap' : '',
+        style: {
+          margin: '0 0 6px',
+          textIndent: blk.indent ? '1.4em' : '0',
+          textAlign: 'justify',
+        },
+      });
+      appendInlineStyledText(p, blk.text);
+      contentWrap.appendChild(p);
+    }
+
+    page.append(
+      contentWrap,
+      showPageNums ? el('div', { className: 'bv-book-page-footer', text: String(sheet.pageNumber) }) : el('div'),
+    );
+    stage.appendChild(page);
   }
 
   const layout = el('div', { className: 'bv-typeset-layout' }, controls, stage);
   container.appendChild(layout);
+
+  controls.scrollTop = savedControlsScrollTop;
+  stage.scrollTop = savedStageScrollTop;
+  requestAnimationFrame(() => {
+    controls.scrollTop = savedControlsScrollTop;
+    stage.scrollTop = savedStageScrollTop;
+  });
 }
 
 function renderPublishReadinessTab(container: HTMLElement, actions: AppActions): void {
