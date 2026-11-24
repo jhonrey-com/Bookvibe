@@ -1,13 +1,13 @@
-# Contributing to Bookvibe
+# Contributing to Quillvibe
 
-Thank you for helping improve Bookvibe. Bookvibe is maintained in the open under `jhonrey-com/Bookvibe` so authors keep a dependable, offline-first studio without broken releases or surprise changes.
+Thank you for helping improve Quillvibe. Quillvibe is maintained in the open under `jhonrey-com/Quillvibe` so authors keep a dependable, offline-first studio without broken releases or surprise changes.
 
 ## Repository Branching & Protection Model
 
 The `main` branch reflects the tested source baseline. To keep the primary codebase clean and prevent accidental breakage:
 
-1. **Fork the repository** into your own GitHub account (`https://github.com/jhonrey-com/Bookvibe`).
-2. **Create a focused feature or fix branch** from `main` (never commit directly to `main`):
+1. **Fork the repository** into your own GitHub account (`https://github.com/jhonrey-com/Quillvibe`).
+2. **Create a focused feature or fix branch** from `main`:
    ```bash
    git checkout -b fix/story-graph-edge-snapping
    ```
@@ -27,7 +27,7 @@ npm run build
 When changing desktop Rust commands (`src-tauri/src/`), also run:
 
 ```bash
-cd src-tauri && cargo check
+cd src-tauri && cargo test
 ```
 
 ## Coding Conventions

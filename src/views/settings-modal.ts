@@ -31,7 +31,7 @@ export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'fonts', label: 'Typefaces & Fonts' },
   { id: 'editor', label: 'Workspace & Editor' },
-  { id: 'publishing', label: 'Publishing & Migration' },
+  { id: 'publishing', label: 'Publishing & Archive' },
   { id: 'developer', label: 'Developer Tools' },
 ];
 
@@ -310,23 +310,33 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         el('option', { text: 'Obsidian Dark Studio', attrs: { value: 'obsidian', selected: settings.appTheme === 'obsidian' } }),
       );
 
-      const tierSel = el(
-        'select',
-        {
-          className: 'bv-input',
-          id: 'bv-set-tier',
-          on: {
-            change: () => {
-              const toolTier = tierSel.value as ToolTier;
-              actions.updateSettings({ toolTier });
-              actions.setState({}, true);
-              renderBody();
+      const tierOptions: Array<{ id: ToolTier; title: string; desc: string }> = [
+        { id: 'basic', title: 'Basic', desc: 'Manuscript sheet & notes only.' },
+        { id: 'intermediate', title: 'Intermediate', desc: 'Adds Corkboard, Outline, Proofread, Typeset.' },
+        { id: 'advanced', title: 'Advanced', desc: 'Adds Story Bible, Graph, Pro Cover, Permissions.' },
+      ];
+      const tierCardsGrid = el(
+        'div',
+        { className: 'qv-tier-card-grid', id: 'bv-set-tier' },
+        ...tierOptions.map((opt) =>
+          el(
+            'button',
+            {
+              className: `qv-tier-card${settings.toolTier === opt.id ? ' is-active' : ''}`,
+              attrs: { type: 'button', 'aria-pressed': String(settings.toolTier === opt.id) },
+              on: {
+                click: () => {
+                  actions.updateSettings({ toolTier: opt.id });
+                  actions.setState({}, true);
+                  actions.notify(`Switched workspace level to ${opt.title}`);
+                  renderBody();
+                },
+              },
             },
-          },
-        },
-        el('option', { text: 'Basic — Calm Document & Notes (Word / Docs style)', attrs: { value: 'basic', selected: settings.toolTier === 'basic' } }),
-        el('option', { text: 'Intermediate — Author Planning, Proofread & Typeset', attrs: { value: 'intermediate', selected: settings.toolTier === 'intermediate' } }),
-        el('option', { text: 'Advanced — Full Publishing, Bible, Graph & Cover Studio', attrs: { value: 'advanced', selected: settings.toolTier === 'advanced' } }),
+            el('strong', { text: opt.title, style: { fontSize: '12.5px' } }),
+            el('span', { className: 'bv-label', text: opt.desc }),
+          ),
+        ),
       );
 
       const toolbarModeSel = el(
@@ -572,9 +582,9 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Complexity' }),
+            el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Level' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-theme' }, text: 'Application Theme' }), themeSel),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-tier' }, text: 'Active Tool Tier' }), tierSel),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Level (Moves Section Bar Cleanly)' }), tierCardsGrid),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-toolbar-mode' }, text: 'Toolbar Detail Mode' }), toolbarModeSel),
             el('div', { className: 'bv-field' }, fontSizeLabel, fontSizeSlider),
             el('div', { className: 'bv-field' }, lhLabel, lhSlider),
@@ -625,11 +635,18 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Immersive Fullscreen & Alarm Ringtones' }),
-            el('label', { className: 'bv-check-row' }, immClockChk, el('span', { text: 'Show live wall clock in Immersive Mode' })),
-            el('label', { className: 'bv-check-row' }, immTimerChk, el('span', { text: 'Show writing sprint timer in Immersive Mode' })),
-            el('label', { className: 'bv-check-row' }, immWordsChk, el('span', { text: 'Show word count progress in Immersive Mode' })),
-            el('label', { className: 'bv-check-row' }, immAlarmChk, el('span', { text: 'Show alarm clock pill in Immersive Mode' })),
+            el('span', {
+              className: 'bv-panel-title',
+              text: isTauriRuntime() ? 'Immersive Fullscreen & Alarm Ringtones' : 'Writing Sprint & Alarm Ringtones',
+            }),
+            ...(isTauriRuntime()
+              ? [
+                  el('label', { className: 'bv-check-row' }, immClockChk, el('span', { text: 'Show live wall clock in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immTimerChk, el('span', { text: 'Show writing sprint timer in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immWordsChk, el('span', { text: 'Show word count progress in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immAlarmChk, el('span', { text: 'Show alarm clock pill in Immersive Mode' })),
+                ]
+              : []),
             el(
               'div',
               { className: 'bv-field' },
@@ -721,6 +738,119 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         ),
       );
 
+      const publisherCompanyIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: pub.publisherCompany ?? '', placeholder: 'Publishing Company / Studio Legal Name' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), publisherCompany: publisherCompanyIn.value.trim() },
+            })),
+        },
+      });
+      const ebookIsbnIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: pub.ebookIsbn ?? '', placeholder: 'eBook ISBN (978-...)' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), ebookIsbn: ebookIsbnIn.value.trim() },
+            })),
+        },
+      });
+      const rightsTerritoryIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: pub.rightsTerritory ?? '', placeholder: 'e.g. World All Languages' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), rightsTerritory: rightsTerritoryIn.value.trim() },
+            })),
+        },
+      });
+      const commercialLicenseSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: {
+            change: () =>
+              actions.mutateProject((p) => ({
+                ...p,
+                publishing: { ...(p.publishing ?? pub), commercialLicense: commercialLicenseSel.value },
+              })),
+          },
+        },
+        ...[
+          'All Rights Reserved',
+          'Commercial Print & Digital License',
+          'Publishing House Exclusive',
+          'Creative Commons BY-NC-ND',
+        ].map((lic) =>
+          el('option', {
+            text: lic,
+            attrs: { value: lic, selected: (pub.commercialLicense || 'All Rights Reserved') === lic },
+          }),
+        ),
+      );
+      const bisacIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: pub.bisacCategory ?? '', placeholder: 'BISAC Code / Category (e.g. FIC009000)' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), bisacCategory: bisacIn.value.trim() },
+            })),
+        },
+      });
+      const embargoIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'date', value: pub.embargoDate ?? '' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), embargoDate: embargoIn.value },
+            })),
+        },
+      });
+      const arcWatermarkIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: pub.arcWatermarkText ?? '', placeholder: 'Advance Review Copy / Reviewer Watermark' },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), arcWatermarkText: arcWatermarkIn.value.trim() },
+            })),
+        },
+      });
+      const reqSignedSyncChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: Boolean(pub.enterpriseRequireSignedSync) },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), enterpriseRequireSignedSync: reqSignedSyncChk.checked },
+            })),
+        },
+      });
+      const reqPasswordExportChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: Boolean(pub.enterpriseRequirePasswordExport) },
+        on: {
+          change: () =>
+            actions.mutateProject((p) => ({
+              ...p,
+              publishing: { ...(p.publishing ?? pub), enterpriseRequirePasswordExport: reqPasswordExportChk.checked },
+            })),
+        },
+      });
+
       const migrateInput = el('input', {
         attrs: { type: 'file', accept: '.docx,.html,.htm,.rtf,.md,.markdown,.txt' },
         style: { display: 'none' },
@@ -745,16 +875,17 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         },
       });
 
-      bodyWrap.appendChild(
+      bodyWrap.append(
         el(
           'div',
           { className: 'bv-two-col' },
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Imprint & Commercial Catalog' }),
+            el('span', { className: 'bv-panel-title', text: 'Imprint, ISBN & Editorial Stage' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Imprint / Press Name' }), imprintIn),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'ISBN or Catalog ID' }), isbnIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Print ISBN or Catalog ID' }), isbnIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'eBook ISBN' }), ebookIsbnIn),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Edition Label' }), editionIn),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Editorial Pipeline Stage' }), stageSel),
             el(
@@ -784,21 +915,52 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Migrate From Other Writing Software' }),
-            el('p', {
-              className: 'bv-label',
-              text: 'Import manuscripts saved from Microsoft Word (.docx), Google Docs (Download as Web Page .html), Scrivener/Rich Text (.rtf), Markdown (.md), or Plain Text (.txt). Chapter headings split automatically.',
-            }),
+            el('span', { className: 'bv-panel-title', text: 'Commercial & Enterprise Publishing Options' }),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Publisher / Company Legal Entity' }), publisherCompanyIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Rights & Distribution Territory' }), rightsTerritoryIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Commercial Rights License' }), commercialLicenseSel),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'BISAC Category Code' }), bisacIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Press Embargo / Street Date' }), embargoIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Printable ARC / Proof Watermark' }), arcWatermarkIn),
+            el('label', { className: 'bv-check-row' }, reqSignedSyncChk, el('span', { text: 'Require valid Author Key signature on team sync' })),
+            el('label', { className: 'bv-check-row' }, reqPasswordExportChk, el('span', { text: 'Require password on every QVBX file export' })),
+          ),
+        ),
+        el(
+          'section',
+          { className: 'bv-cork-card', style: { marginTop: '12px' } },
+          el('span', { className: 'bv-panel-title', text: 'Import Manuscripts & Legacy Bookvibe Archives' }),
+          el('p', {
+            className: 'bv-label',
+            text: 'Import manuscripts from Word (.docx), Google Docs (.html), Rich Text (.rtf), Markdown (.md), Plain Text (.txt), or upgrade older .bookvibe / .bv* files into Quillvibe.',
+          }),
+          el(
+            'div',
+            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' } },
             el(
               'button',
               {
                 className: 'bv-btn bv-btn-primary',
                 attrs: { type: 'button' },
-                style: { marginTop: '6px' },
                 on: { click: () => migrateInput.click() },
               },
               icon('folder', 14),
               'Import .docx / .html / .rtf / .md / .txt…',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: () => {
+                    closeModal();
+                    void actions.importLegacyBookFile();
+                  },
+                },
+              },
+              icon('folder', 14),
+              'Import Legacy .bookvibe / .bv* Archive…',
             ),
             migrateInput,
           ),
@@ -838,7 +1000,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v1.3.0-beta', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.1.0', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -857,7 +1019,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '1.3.0-beta',
+                    version: '2.1.0',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,
@@ -870,7 +1032,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = 'bookvibe-diagnostics.json';
+                  a.download = 'quillvibe-diagnostics.json';
                   a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 2500);
                   actions.notify('Downloaded local diagnostics JSON');
@@ -904,7 +1066,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
     'div',
     {
       className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bookvibe Settings and Preferences' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Settings and Preferences' },
     },
     el(
       'div',

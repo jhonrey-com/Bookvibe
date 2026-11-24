@@ -124,20 +124,20 @@ export function renderBibleView(container: HTMLElement, actions: AppActions): vo
         'button',
         {
           className: 'bv-btn',
-          tooltip: { title: 'Import .bvbible', short: 'Merge characters, locations, and lore from a .bvbible file.' },
+          tooltip: { title: 'Import .qvbible', short: 'Merge characters, locations, and lore from a .qvbible file.' },
           attrs: { type: 'button' },
-          on: { click: () => void actions.openAnyBookvibeFile() },
+          on: { click: () => void actions.openAnyQuillvibeFile() },
         },
         icon('folder', 14),
-        'Import .bvbible',
+        'Import .qvbible',
       ),
       el(
         'button',
         {
           className: 'bv-btn',
-          tooltip: { title: 'Export .bvbible', short: 'Save this Story Bible database for reuse across series books.' },
+          tooltip: { title: 'Export .qvbible', short: 'Save this Story Bible database for reuse across series books.' },
           attrs: { type: 'button' },
-          on: { click: () => void actions.exportAsExtension('.bvbible') },
+          on: { click: () => void actions.exportAsExtension('.qvbible') },
         },
         icon('download', 14),
         'Export .bvbible',
@@ -426,7 +426,7 @@ function renderCustomImageAndFields(
         text: imageDataUrl ? 'Reference Image Attached' : 'Drop or Click to Attach Portrait / Map Image',
         style: { fontWeight: '500', fontSize: '12.5px' },
       }),
-      el('div', { className: 'bv-label', text: 'PNG, JPEG, or WebP stored locally inside .bookvibe / .bvbible' }),
+      el('div', { className: 'bv-label', text: 'PNG, JPEG, or WebP stored locally inside .quillvibe / .qvbible' }),
     ),
     imageDataUrl
       ? el('button', {

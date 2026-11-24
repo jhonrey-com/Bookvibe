@@ -3,7 +3,8 @@ import { safeJsonParse } from './extensions';
 import { newId } from './manuscript';
 import type { CustomFontEntry, FontFamilyId, InstalledExtension } from './types';
 
-const FONTS_STORAGE_KEY = 'bookvibe.customFonts.v1';
+const FONTS_STORAGE_KEY = 'quillvibe.customFonts.v2';
+const LEGACY_FONTS_STORAGE_KEY = 'bookvibe.customFonts.v1';
 let memoryCustomFonts: CustomFontEntry[] = [];
 
 export type DetectedFontFormat = 'ttf' | 'otf' | 'woff' | 'woff2';
@@ -62,7 +63,9 @@ async function registerFontFaceIfSupported(entry: CustomFontEntry): Promise<void
 export function loadCustomFonts(): CustomFontEntry[] {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
-      const raw = window.localStorage.getItem(FONTS_STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(FONTS_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_FONTS_STORAGE_KEY);
       if (raw) {
         const parsed = safeJsonParse<CustomFontEntry[]>(raw);
         if (Array.isArray(parsed)) {

@@ -1,34 +1,34 @@
-# Bookvibe Developer Guide: Building Extension Add-ons (`.bvext`)
+# Quillvibe Developer Guide: Building Extension Add-ons (`.qvext`)
 
-Bookvibe accepts external add-ons distributed as `.bvext` files. Every `.bvext` extension is a declarative JSON manifest verified before installation, isolated from network access and arbitrary OS execution, and gated behind explicit author permission prompts.
+Quillvibe accepts external add-ons distributed as `.qvext` (or legacy `.bvext`) files. Every extension is a declarative JSON manifest verified before installation, isolated from network access and arbitrary OS execution, and gated behind explicit author permission prompts.
 
 ---
 
 ## Security & Sandbox Boundaries
 
-Before an external `.bvext` loads, Bookvibe validates the JSON structure and displays every requested permission to the user. External add-ons cannot:
+Before an external `.qvext` loads, Quillvibe validates the JSON structure and displays every requested permission to the user. External add-ons cannot:
 
 - Execute arbitrary JavaScript (`eval`, `new Function`, or remote `<script>` loading)
 - Make outbound HTTP/HTTPS requests or phone home
 - Read arbitrary filesystem directories outside opened book documents
-- Modify system shell settings or author cryptographic private keys
+- Modify system shell settings or permanent pen-name Author Keys
 
 ---
 
 ## Manifest Schema Reference
 
-Save any valid extension with a `.bvext` suffix (UTF-8 JSON):
+Save any valid extension with a `.qvext` suffix (UTF-8 JSON):
 
 ```json
 {
-  "magic": "BOOKVIBE_EXT_V1",
+  "magic": "QUILLVIBE_EXT_V2",
   "id": "press.house-style-kit",
   "name": "House Editorial Kit",
   "version": "1.0.0",
   "author": "Your Name or Press",
   "description": "Applies house punctuation checks and provides classic publishing typography.",
   "kind": "external",
-  "dataUsageSummary": "Reads prose text inside the currently active scene when triggered; installs declared font stacks into local Bookvibe settings.",
+  "dataUsageSummary": "Reads prose text inside the currently active scene when triggered; installs declared font stacks into local Quillvibe settings.",
   "permissions": [
     "read:active-scene",
     "propose:proofread-marks",
@@ -69,8 +69,6 @@ Save any valid extension with a `.bvext` suffix (UTF-8 JSON):
 
 ## Supported Permission Scopes
 
-Declare only the permissions your add-on requires:
-
 | Permission | Scope Granted | Data Accessed |
 | :--- | :--- | :--- |
 | `read:active-scene` | Read text of open scene | Title & prose of currently selected scene |
@@ -83,34 +81,9 @@ Declare only the permissions your add-on requires:
 
 ---
 
-## Supported Built-in Capabilities in v1
-
-### 1. Regex Editorial Rules (`rules`)
-Each entry compiles a safe JavaScript regular expression capped against exponential backtracking. Matches appear inside **Manuscript -> Proofread Mode** rather than overwriting prose automatically.
-
-Supported `markKind` values: `comment`, `highlight`, `substitute`, `delete`, `insert`, `stet`.
-
-### 2. Snapshot-Backed Transforms (`transforms`)
-Allowed deterministic operations (`kind` field):
-- `smart-typography`
-- `collapse-double-spaces`
-- `trim-trailing-spaces`
-- `strip-straight-quotes`
-
-Bookvibe saves a snapshot automatically before applying any transform.
-
-### 3. Typeset & Paper Presets (`presets`)
-Each preset object may specify `trimSize` (`5x8`, `5.5x8.5`, `6x9`, `a5`), `fontFamily` (`garamond`, `baskerville`, `palatino`, `inter`), `fontSizePt`, `lineHeight`, `marginInches`, `dropCaps`, `smartTypography`, `runningHeader`, and `paperTheme`.
-
-### 4. Custom Font Packs (`fonts`)
-Provide `{ "id": "...", "family": "...", "cssStack": "...", "category": "serif", "dataUrl": "data:font/woff2;base64,..." }`.
-Data URLs are checked for `data:font/(ttf|otf|woff|woff2)` or safe font MIME prefixes before registering in `document.fonts`.
-
----
-
 ## Local Testing & Verification
 
-1. Open Bookvibe -> click the **Extensions** button in the top bar (or open **Settings -> Typefaces** for font packs).
-2. Switch to **External Sandbox** (`shield` icon) and click **Install .bvext File…**, or drag your `.bvext` file directly onto the Bookvibe window.
+1. Open Quillvibe -> click the **Extensions** button in the top bar (ensure Tool Level is **Advanced** in Settings).
+2. Switch to **External Sandbox** and click **Install .qvext File…**, or drag your `.qvext` file directly onto the Quillvibe window.
 3. Review the calculated **SHA-256 checksum** and permission toggles in the consent panel.
 4. Trigger your rule, transform, preset, or font pack installer and verify events in the **Extension Data Access Audit Log**.

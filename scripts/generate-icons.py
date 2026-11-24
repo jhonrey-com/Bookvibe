@@ -255,7 +255,7 @@ def main() -> None:
             ],
         ),
         (PUBLIC_DIR, [("favicon.ico", ico_bytes)]),
-        (ASSETS_DIR, [("quillvibe-icon-512.png", png_512), ("bookvibe-icon-512.png", png_512)]),
+        (ASSETS_DIR, [("quillvibe-icon-512.png", png_512)]),
     ]:
         for name, data in files:
             with open(os.path.join(target_dir, name), "wb") as fh:

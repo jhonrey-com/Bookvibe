@@ -3,7 +3,7 @@ import type {
   AlarmRingtoneId,
   AppThemeId,
   BookProject,
-  BookvibeSettings,
+  QuillvibeSettings,
   StudioViewId,
   ToolbarDisplayMode,
   ToolTier,
@@ -13,7 +13,7 @@ import type {
 const SETTINGS_STORAGE_KEY = 'quillvibe.settings.v2';
 const LEGACY_SETTINGS_KEY = 'bookvibe.settings.v1';
 
-export const DEFAULT_SETTINGS: BookvibeSettings = {
+export const DEFAULT_SETTINGS: QuillvibeSettings = {
   appTheme: 'ivory',
   toolTier: 'basic',
   toolbarDisplayMode: 'balanced',
@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: BookvibeSettings = {
   alarmVolume: 0.65,
 };
 
-let memorySettings: BookvibeSettings = { ...DEFAULT_SETTINGS };
+let memorySettings: QuillvibeSettings = { ...DEFAULT_SETTINGS };
 
 function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
   const n = Number(raw);
@@ -83,7 +83,7 @@ function normalizeAlarmRingtone(val: unknown): AlarmRingtoneId {
     : DEFAULT_SETTINGS.alarmRingtone;
 }
 
-export function sanitizeSettings(raw: Partial<BookvibeSettings>): BookvibeSettings {
+export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSettings {
   const volNum = Number(raw.alarmVolume);
   const cleanVol = Number.isFinite(volNum) ? Math.max(0.05, Math.min(1, volNum)) : DEFAULT_SETTINGS.alarmVolume;
   return {
@@ -115,14 +115,14 @@ export function sanitizeSettings(raw: Partial<BookvibeSettings>): BookvibeSettin
   };
 }
 
-export function loadSettings(): BookvibeSettings {
+export function loadSettings(): QuillvibeSettings {
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const raw =
         window.localStorage.getItem(SETTINGS_STORAGE_KEY) ??
         window.localStorage.getItem(LEGACY_SETTINGS_KEY);
       if (raw) {
-        memorySettings = sanitizeSettings(safeJsonParse<Partial<BookvibeSettings>>(raw));
+        memorySettings = sanitizeSettings(safeJsonParse<Partial<QuillvibeSettings>>(raw));
       }
     } catch {
       // Keep defaults on malformed store
@@ -131,7 +131,7 @@ export function loadSettings(): BookvibeSettings {
   return { ...memorySettings };
 }
 
-export function saveSettings(next: BookvibeSettings): BookvibeSettings {
+export function saveSettings(next: QuillvibeSettings): QuillvibeSettings {
   memorySettings = sanitizeSettings(next);
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -178,7 +178,7 @@ export function resolveSectionDisplayName(
  * Formats the browser tab or native desktop window/taskbar title based on user preference.
  */
 export function formatAppWindowTitle(
-  settings: Pick<BookvibeSettings, 'windowTitleMode' | 'windowTitleCustom'>,
+  settings: Pick<QuillvibeSettings, 'windowTitleMode' | 'windowTitleCustom'>,
   project: Pick<BookProject, 'title' | 'author' | 'authorIdentity'>,
   activeView: StudioViewId,
   typesetSubTab: 'interior' | 'cover' | 'publish' = 'interior',
@@ -211,7 +211,7 @@ export function formatAppWindowTitle(
   }
 }
 
-export function applySettingsToDocument(settings: BookvibeSettings): void {
+export function applySettingsToDocument(settings: QuillvibeSettings): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.dataset.theme = settings.appTheme;

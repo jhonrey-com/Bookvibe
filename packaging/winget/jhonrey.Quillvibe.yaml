@@ -1,0 +1,23 @@
+PackageIdentifier: jhonrey.Quillvibe
+PackageVersion: 2.1.0
+PackageLocale: en-US
+Publisher: jhonrey.com
+PublisherUrl: https://github.com/jhonrey-com/Quillvibe
+PackageName: Quillvibe
+PackageUrl: https://github.com/jhonrey-com/Quillvibe
+License: MIT
+ShortDescription: Desktop book writing, proofreading, worldbuilding, cover studio, and typesetting app.
+Moniker: quillvibe
+Tags:
+  - book-writing
+  - markdown
+  - epub
+  - proofreading
+  - typesetting
+Installers:
+  - Architecture: x64
+    InstallerType: wix
+    InstallerUrl: https://github.com/jhonrey-com/Quillvibe/releases/download/v2.1.0/Quillvibe_2.1.0_x64_en-US.msi
+    InstallerSha256: BD5D9473E480A9930D0E783D80F7E853F19D920B3C1146BC6D976CD228459358
+ManifestType: singleton
+ManifestVersion: 1.6.0

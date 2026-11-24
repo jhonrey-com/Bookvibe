@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="assets/banners/bookvibe-header.svg" alt="Quillvibe — Open-source book writing, proofreading, worldbuilding, cover studio, and typesetting workspace" width="100%" />
+  <img src="assets/banners/quillvibe-header.svg" alt="Quillvibe — Open-source book writing, proofreading, worldbuilding, cover studio, and typesetting app" width="100%" />
 </p>
 
-**Quillvibe** *(formerly Bookvibe)* is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with right-click proofreading marks, manage story bibles and relationship graphs, install custom fonts, design layered print covers, and export release-ready books from one local workspace. It starts in a calm **Ivory Light** theme with **Basic / Intermediate / Advanced** tool tiers, runs offline with zero AI features and zero account sign-ins, stores work in `.quillvibe` UTF-8 files (while reading legacy `.bookvibe` archives cleanly), and syncs drafts directly over Wi-Fi or Bluetooth.
+**Quillvibe** is a cross-platform book writing app built so writers can draft notes, organize manuscripts, edit with right-click proofreading marks, manage story bibles and relationship graphs, install custom fonts, design layered print covers, and export release-ready books from one local workspace. It starts in **Ivory Light** with **Basic / Intermediate / Advanced** tool levels in Settings, runs offline with zero AI features and zero account sign-ins, stores work in protected `QVBX` binary files (`.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`), supports importing legacy `.bookvibe` files, and syncs drafts over Wi-Fi, Bluetooth, or self-hosted HTTPS servers.
 
-> **Try Quillvibe Now in Your Browser (`/start` Onboarding):** **[Launch `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)** *(moving to `quillvibe.app`)*  
+> **Open Quillvibe in Your Browser (`/start` Welcome & `/course` Academy):** **[Launch `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)**  
 > *Browser tip:* Click **Save** anytime to export a `.quillvibe` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
 > **Desktop Releases (`v2.0.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
-> **Project Wiki & Roadmap:** **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`bookvibe@jhonrey.com`)
+> **Project Wiki & Roadmap:** **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`quillvibe@jhonrey.com`)
 
 <p align="center">
-  <img src="assets/banners/bookvibe-workspace.svg" alt="Bookvibe five-stage studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline LAN Sync, Typeset & Full Cover Wrap" width="100%" />
+  <img src="assets/banners/quillvibe-workspace.svg" alt="Quillvibe studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline Sync, Typeset & Full Cover Wrap" width="100%" />
 </p>
 
 ---
@@ -18,60 +18,62 @@
 ## Table of Contents
 
 1. [Why Keep Everything in One Workspace](#1-why-keep-everything-in-one-workspace)
-2. [How to Install, Run in Browser & Launch Bookvibe](#2-how-to-install-run-in-browser--launch-bookvibe)
-3. [Guides by Writing Level (Basic, Intermediate, Commercial)](#3-guides-by-writing-level-basic-intermediate-commercial)
+2. [How to Install, Run in Browser & Launch Quillvibe](#2-how-to-install-run-in-browser--launch-quillvibe)
+3. [Guides by Writing Level (Basic, Intermediate, Advanced)](#3-guides-by-writing-level-basic-intermediate-advanced)
 4. [All Studio Workspaces, Bottom Sprint Controls & Icon Legend](#4-all-studio-workspaces-bottom-sprint-controls--icon-legend)
-5. [Custom Fonts, Cover Wrap Studio & Migration](#5-custom-fonts-cover-wrap-studio--migration)
-6. [File Formats & Double-Click Support](#6-file-formats--double-click-support)
+5. [Custom Fonts, Cover Studio & Migration](#5-custom-fonts-cover-studio--migration)
+6. [Protected File Formats, Password Locks & Author Keys](#6-protected-file-formats-password-locks--author-keys)
 7. [Extensions, Permissions & Developer Add-ons](#7-extensions-permissions--developer-add-ons)
 8. [Keyboard Shortcuts](#8-keyboard-shortcuts)
-9. [FAQ, Controls Reference & Contributing](#9-faq-controls-reference--contributing)
+9. [FAQ, Security & Contributing](#9-faq-security--contributing)
 
 ---
 
 ## 1. Why Keep Everything in One Workspace
 
-Many writers split work across five programs: a text editor for Markdown notes, spreadsheets for outlines, whiteboard apps for plot graphs, image editors for covers, and conversion scripts for EPUB files. Bookvibe replaces that chain with integrated tools sharing one local project file:
+Many writers split work across five programs: a text editor for Markdown notes, spreadsheets for outlines, whiteboard apps for plot graphs, image editors for covers, and conversion scripts for EPUB files. Quillvibe replaces that chain with integrated tools sharing one local project:
 
-- **Zero setup & zero lock-in**: Open an example or blank project right away. Every `.bookvibe` file is plain UTF-8 JSON with human-readable scenes and a public format schema.
+- **Zero setup & zero accounts**: Open an example or blank project right away. Every `.quillvibe` file is saved in a protected `QVBX` binary container that only Quillvibe decodes, with optional password locking and tamper detection.
 - **Works cleanly for small notes or multi-volume books**: Treat it as a quiet Markdown scratchpad (`Ctrl+B`, `Ctrl+I`, `.md` export) or manage an entire catalog under separate pen names.
 - **Real proofreading workflow**: Instead of overwriting prose blindly, apply 15 copyediting marks on the page, toggle *Clean Preview*, and accept edits with automatic snapshot backups.
-- **Commercial publishing basics built in**: Configure imprint metadata, ISBN, editorial stage, custom device fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), full jacket cover wraps (front, spine, back, and flaps), and ECDSA Author Key signatures.
+- **Commercial publishing basics built in**: Configure publisher company, print and eBook ISBN-13, commercial rights, custom device fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), full jacket cover wraps (front, spine, back, and flaps), and permanent pen-name Author Keys.
 
 ---
 
-## 2. How to Install, Run in Browser & Launch Bookvibe
+## 2. How to Install, Run in Browser & Launch Quillvibe
 
 ### Option A: Open Immediately in Any Browser (No Login Required)
-Visit **[https://bookvibe.jhonrey.com/](https://bookvibe.jhonrey.com/)** to write, organize Story Bibles, proofread, design covers, and export `.bookvibe` / `.epub` / `.md` files right in your browser. Click **Save** locally whenever finishing a browser session so your `.bookvibe` archive is stored safely outside browser cache.
+Visit **[https://quillvibe.jhonrey.com/](https://quillvibe.jhonrey.com/)** to write, organize Story Bibles, proofread, design covers, and export `.quillvibe` / `.epub` / `.md` files right in your browser. Click **Save** locally whenever finishing a browser session so your `.quillvibe` file is stored safely outside browser cache.
 
 ### Option B: Desktop Installers (Frameless Native App with Local Auto-Save)
-Download from **[GitHub Releases (`v1.3.1`)](https://github.com/jhonrey-com/Bookvibe/releases/latest)** (uses a custom frameless obsidian titlebar with drag/minimize/maximize/close instead of default OS bars and saves directly to your disk):
+Download from **[GitHub Releases (`v2.0.0`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (uses a custom frameless titlebar with drag/minimize/maximize/close and saves directly to disk):
 - **Windows:** `.msi` or `.exe`
 - **macOS:** Universal `.dmg` (Apple Silicon & Intel)
 - **Linux:** `.AppImage` or `.deb`
+
+Desktop builds also add `F11` Immersive Fullscreen mode, multi-window book editing, Same-Wi-Fi PIN sync, OS Bluetooth transfer, and double-click opening for `.quillvibe` / `.qv*` files.
 
 ### Option C: Terminal Installers
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/jhonrey-com/Quillvibe/main/scripts/install.ps1 | iex
 ```
-*(Or Winget manifest `packaging/winget/jhonrey.Bookvibe.yaml`.)*
+*(Or Winget manifest `packaging/winget/jhonrey.Quillvibe.yaml`.)*
 
 **macOS & Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Quillvibe/main/scripts/install.sh | sh
 ```
-*(Or Homebrew Cask via `packaging/homebrew/bookvibe.rb`.)*
+*(Or Homebrew Cask via `packaging/homebrew/quillvibe.rb`.)*
 
 ### Option D: One-Click Repo Launchers & Source Build
-- **Windows / macOS / Linux repo launchers:** `Start-Bookvibe.bat`, `Start-Bookvibe.command`, or `./start-bookvibe.sh`
+- **Windows / macOS / Linux repo launchers:** `Start-Quillvibe.bat`, `Start-Quillvibe.command`, or `./start-quillvibe.sh`
 - Requirements from source: Node.js 20+ (and Rust toolchain for `npm run tauri:build`)
 
 ```bash
-git clone https://github.com/jhonrey-com/Bookvibe.git
-cd Bookvibe
+git clone https://github.com/jhonrey-com/Quillvibe.git
+cd Quillvibe
 npm install
 
 # Start browser UI preview at http://localhost:1420
@@ -84,92 +86,52 @@ npm run tauri:build
 
 ---
 
-## 3. Guides by Writing Level (Basic, Intermediate, Commercial)
+## 3. Guides by Writing Level (Basic, Intermediate, Advanced)
 
 ### Level 1 — Basic: Quick Notes, Journal Scenes & Markdown Builder
-You do not need chapters, story bibles, or cover art just to take notes or draft essays.
-1. Open Bookvibe. On your first visit, a short splash transition leads into an optional pointer tour you can follow step by step or skip in one click (`Skip All` / `Skip Section`).
-2. Click inside **Manuscript** (`Draft` mode) and type directly on **Obsidian**, **Parchment**, or **Ivory** paper.
-3. Use `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `H2`, blockquote `❝`, or `* * *` buttons to format clean Markdown.
-4. Change the topbar Save format dropdown to **`.md` (Markdown)** or **`.bvscene` (Single Scene)** and click Save (`Ctrl+S` in non-editor views exports directly; in Editor `Ctrl+S` captures a revision snapshot).
-5. Drag any `.md` or `.txt` note onto the window to start a structured project from plain text.
+1. Open Quillvibe. The Welcome view lets you start a blank book, explore the sample book, open a `.quillvibe` file, or take the full Academy course at `/course`.
+2. Click inside **Manuscript** (`Draft` mode) and type directly on **Ivory**, **Parchment**, or **Obsidian** paper.
+3. Use `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `H2`, blockquote `❝`, `* * *`, or right-click directly on the page to format Markdown.
+4. Change the topbar Save format dropdown to **`.md` (Markdown)** or **`.qvscene` (Single Scene)** and click Save (`Ctrl+S` in non-editor views exports directly; in Editor `Ctrl+S` captures a revision snapshot).
 
 ### Level 2 — Intermediate: Series Worldbuilding, Proofing & Live Story Graph
-When stories expand beyond a single draft:
-1. **Parts, Chapters & Scenes**: Manage hierarchy in the left **Binder** drawer, split long scenes at the cursor (`split-scene`), and track word targets per scene and sprint session.
-2. **Corkboard & Outline**: Switch to **Corkboard** to rearrange index cards between chapters or **Outline** to filter scenes by status, POV character, timeline, or reading minutes.
-3. **Story Bible**: Keep structured cards for Characters, Locations, Lore, plus your own custom categories (Magic Rules, Ships, Historical Eras). Drag images into cards and add custom key/value traits.
-4. **Live Story Graph**:
-   - Drag any card and connected lines and labels move live with it.
-   - Hover a card to reveal edge **Port Dots** (`●`), then drag a dot onto another card to wire a link in one gesture.
-   - Switch right inside the graph toolbar between **Compact**, **Standard**, and **Detailed** card density, **Curved / Step / Straight** line routing, **Columns / Radial / Flow** layouts, 24px **Grid Snap**, search highlighting, and clean **SVG export**.
-5. **Proofread Mode**: Select any sentence on the proof sheet to strike out (`₰`), propose insertions (`∧`), replace words (`⇄`), transpose neighbors (`tr`), mark *let stand* (`stet`), or leave author queries (`AQ`). Toggle **Clean Preview** before accepting changes.
+Change **Workspace Tool Level** in **Settings -> Workspace & Editor** to unlock Corkboard, Outline, Proofread Mode, and Interior Print Typesetting.
+- **Proofread Mode**: Highlight any sentence and right-click to apply 15 copyediting marks (`₰`, `∧`, `⇄`, `tr`, `stet`, `AQ`, and more), toggle **Clean Preview**, and accept edits with automatic snapshot backups.
 
-### Level 3 — Professional: Multi-Book Catalog, Custom Fonts, Migration & Press Releases
-For independent publishers, co-author teams, and full print production:
-1. **Multi-Book Library & ECDSA Author Keys**: Click **Library** in the topbar to keep multiple manuscripts, switch active projects, set per-book **Pen Names**, draw ink **Signatures**, and sign editions locally with an ECDSA P-256 **Author Key**.
-2. **Migrate From Word & Google Docs**: Open **Settings -> Publishing & Migration** (or drop a file on the window) to import `.docx` (Word), `.html` (Google Docs Web Export), `.rtf`, `.md`, or `.txt` manuscripts cleanly into Bookvibe chapters.
-3. **Co-Authors & Offline LAN / Bluetooth Sync**: Add credited editors, proofreaders, and co-authors in **Collaborate**. Exchange revisions over the same router with a 6-digit PIN LAN session or save/merge signed `.bookvibe` packages over Bluetooth with zero internet connection.
-4. **Editorial Handoff Report**: Export a clean Markdown **Editorial Handoff Sheet** summarizing ISBN, imprint, stage, open proof marks, chapter word counts, and collaborator credits.
+### Level 3 — Advanced: Cover Studio, Permanent Author Keys, Permissions & Commercial Publishing
+1. **Multi-Book Library & Forever Pen-Name Author Keys**: Open **Library** to keep multiple manuscripts, draw ink signatures, and lock a permanent ECDSA P-256 **Author Key** (`QVK-...`) to each pen name.
+2. **Collaborator Restrictions**: Open **Collaborate** to assign Co-Author, Proofreader, Line Editor, Typesetter, Publisher, or Beta Reader roles with per-person edit/export restrictions. Nobody can alter the book's locked Author Key.
+3. **Migrate From Word, Google Docs & Legacy `.bookvibe`**: Open **Settings -> Publishing, Commercial & Migration** to import `.docx`, `.html`, `.rtf`, `.md`, `.txt`, or legacy `.bookvibe`/`.bv*` files.
 
 ---
 
 ## 4. All Studio Workspaces, Bottom Sprint Controls & Icon Legend
 
-Every toolbar button and section tab in Bookvibe uses its own dedicated icon so controls never look ambiguous. Press `F1` or click **Help (`?`)** inside the app to search every slider, lever, dropdown, icon, and section live, or read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)**.
-
-### Bottom Status Bar & Sprint Controls
-- **Metrics Ledger (Bottom Left):** Scene words/characters, Chapter words, Book progress against target, estimated print pages (`~250` w/p), and reading time.
-- **Sprint Duration (`15m` / `25m` / `45m`, Bottom Right):** Selects timed sprint minutes, resets the countdown, and zeroes session word delta (`+0w`).
-- **`Start` / `Pause` (Bottom Right):** Starts or freezes the countdown while counting newly drafted words.
-- **`Reset` (Bottom Right):** Clears any running sprint back to the full chosen interval and zeroes `+0w`.
-
-### Top Header Controls
-- **Binder (`panel-left`)**: Toggle left manuscript tree (overlays cleanly on tablet/narrow windows).
-- **Library (`library`)**: Switch books, edit pen names, draw signatures, and manage Author Keys.
-- **Collaborate (`collab`)**: Manage co-authors, proofreaders, LAN PIN sync, and Bluetooth file exchange.
-- **Open (`folder`)**: Open Bookvibe files (`.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, `.bvstyle`) or `.bvext` add-ons.
-- **Save + Extension Selector (`save`)**: Export immediately in the selected file format.
-- **Extensions (`extensions`)**: Enable integrated toolkits, install `.bvext` files with explicit permission review, view audit logs, or register OS shell extensions.
-- **Settings (`settings`)**: Install custom fonts, customize editor spacing/density, set Imprint/ISBN/Stage, import `.docx`/Google Docs, and inspect developer info.
-- **Help (`help`)**: Open built-in Icon Legend, beginner-to-pro guides, and replay first-visit animated tours.
-- **Inspector (`panel-right`)**: Toggle right-hand Scene Inspector across every view without losing cursor position.
-
-### Main View Switcher & Sub-Tabs
-- **Manuscript (`quill`)**: Houses **Draft (`draft-sheet`)**, **Proofread (`proofread`)**, **Split View (`split`)**, and **Revision Diff (`diff`)**.
-- **Corkboard (`corkboard`)** · **Outline (`outline`)** · **Story Bible (`bible`)** · **Story Graph (`graph`)**
-- **Typeset & Cover (`typeset`)**: Houses **Interior Typeset (`page-margins`)**, **Cover Studio (`cover`)**, and **Publish & Author Seal (`seal`)**.
+Press `F1` or click **Help (`?`)** inside the app to search every slider, lever, dropdown, icon, and section live, or read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)**.
 
 ---
 
-## 5. Custom Fonts, Cover Wrap Studio & Migration
+## 5. Custom Fonts, Cover Studio & Migration
 
-### Installing Device & Extension Fonts
-Open **Settings -> Typefaces & Fonts**:
-- Drag-and-drop or browse local **`.ttf`**, **`.otf`**, **`.woff`**, or **`.woff2`** files from your computer (verified by binary magic-byte inspection).
-- Use **Pick Installed OS Font** in supported Chromium/desktop contexts, or install curated font packs via `.bvext` extensions.
-- Apply installed fonts separately to your **Draft paper sheet**, your paginated **Book Interior Typeset** (plus HTML/EPUB exports), and your **Cover typography**.
-
-### Front, Back, Spine & Dust Jacket Cover Studio
-Open **Typeset & Cover -> Cover Studio**:
-- Switch between **Front**, **Back**, **Spine**, **Full Print Wrap**, and **Dust Jacket (with Flaps)**.
-- Drop sanitized **`.svg` artwork** (including Canva/Illustrator exports with scripts stripped automatically) or transparent **`.png` / `.webp`** graphics directly onto any cover face, plus one-click built-in book ornaments.
-- Adjust position by dragging, resize/rotate/fade layers in the Layer Inspector, toggle the back-cover ISBN barcode box, and export **1200×1920 Front Cover PNG** or **Full Print Wrap PNG**.
+- **Settings -> Typefaces & Fonts**: Install `.ttf`, `.otf`, `.woff`, or `.woff2` fonts for Draft sheets, Interior Typeset, and Covers.
+- **Studio -> Book Cover Studio**: Design Front, Back, Spine, and Dust Jacket Flaps with vector shapes, multi-layer text, gradients, filters, grid snap, smart alignment guides, and PNG/EPUB export.
 
 ---
 
-## 6. File Formats & Double-Click Support
+## 6. Protected File Formats, Password Locks & Author Keys
 
-Every Bookvibe document wraps readable JSON in `"magic": "BOOKVIBE_V1"` paired with matching MIME types (`packaging/bookvibe-mime.xml`, Windows `.reg` helpers, macOS UTIs in `src-tauri/Info.plist`):
+Every native Quillvibe file uses the binary `QVBX` container with AES-GCM encryption, SHA-256 integrity sealing, Author Key verification, and active-content/malware scanning. You can also export a **Password-Locked `.quillvibe`** file for sensitive drafts.
 
-| Extension | Role | Double-Click Action |
+| Extension | Role | Double-Click Action (Desktop App) |
 | :--- | :--- | :--- |
-| **`.bookvibe`** | Complete Book Archive | Opens entire manuscript, Story Bible, Graph, cover wrap, marks, snapshots, and public key seal. |
-| **`.bvibe`** | Compact Project Alias | Identical schema to `.bookvibe` with a shorter filename extension. |
-| **`.bvbook`** | Manuscript Package | Opens manuscript parts, chapters, scenes, front matter, credits, and cover without worldbuilding DBs. |
-| **`.bvbible`** | Story Bible Database | Merges Characters, Locations, Lore, and Custom Categories into the open book or starts a series companion. |
-| **`.bvscene`** | Single Scene Draft | Opens or imports one scene along with snapshots and proofreading marks. |
-| **`.bvstyle`** | Typeset & Paper Style | Applies trim size, font stack, drop caps, smart quotes, margins, and paper theme cleanly. |
+| **`.quillvibe`** | Complete Book Archive | Opens manuscript, Story Bible, Graph, cover wrap, marks, snapshots, and Author Key seal. |
+| **`.qvibe`** | Compact Project Alias | Short-extension alias equivalent to `.quillvibe`. |
+| **`.qvbook`** | Manuscript Package | Opens manuscript parts, chapters, scenes, front matter, credits, and cover. |
+| **`.qvbible`** | Story Bible Database | Merges Characters, Locations, Lore, and Custom Categories into the active book. |
+| **`.qvscene`** | Single Scene Draft | Opens or imports one scene along with snapshots and proofreading marks. |
+| **`.qvstyle`** | Typeset & Paper Style | Applies trim size, font stack, drop caps, smart quotes, margins, and paper theme. |
+
+Legacy `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, and `.bvstyle` files are **not** registered for double-click opening; import them explicitly via **Settings -> Publishing, Commercial & Migration -> Import** or the Welcome screen import button.
 
 More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-REGISTRATION.md) and [docs/GUIDE.md](docs/GUIDE.md).
 
@@ -177,12 +139,7 @@ More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-R
 
 ## 7. Extensions, Permissions & Developer Add-ons
 
-Bookvibe distinguishes between **Integrated** toolkits shipped with the app and external **`.bvext`** community add-ons:
-- Integrated modules include Editorial Proofing, Typographic Punctuation Cleanup, Readability & Pacing Ledger, Print Trim Presets, and Editorial Font Packs.
-- External `.bvext` add-ons are declarative JSON manifests validated with SHA-256 fingerprints, sandboxed against network calls or filesystem access, and gated behind checkbox consent (`read:active-scene`, `propose:proofread-marks`, `apply:text-transform`, `read:manuscript`, `read:bible`, `add:export-preset`, `add:font-pack`).
-- Every extension invocation is recorded in the local **Data Access Audit Log**.
-
-Developers building new add-ons can read the full specification in **[docs/DEVELOPER-EXTENSIONS.md](docs/DEVELOPER-EXTENSIONS.md)**.
+Quillvibe separates **Integrated** toolkits from external **`.qvext`** (and legacy `.bvext`) community add-ons. External manifests are declarative JSON validated with SHA-256 fingerprints, sandboxed against network calls or filesystem access, and gated behind checkbox consent. Read **[docs/DEVELOPER-EXTENSIONS.md](docs/DEVELOPER-EXTENSIONS.md)**.
 
 ---
 
@@ -191,23 +148,21 @@ Developers building new add-ons can read the full specification in **[docs/DEVEL
 | Keys | Command |
 | :--- | :--- |
 | `Ctrl / Cmd + S` | Save Revision Snapshot in Manuscript view; export default format in other views |
-| `Ctrl / Cmd + O` | Open any `.bookvibe`, `.bv*`, or `.bvext` file |
+| `Ctrl / Cmd + O` | Open any `.quillvibe`, `.qv*`, or `.qvext` file |
 | `Ctrl / Cmd + B` / `I` | Bold / Italic Markdown wrapping around selection |
 | `Ctrl / Cmd + Shift + F` | Toggle Zen Focus mode |
+| `F11` *(Desktop App)* | Toggle Immersive Fullscreen HUD with live clock, sprint timer, word count, and alarm |
 | `F1` | Open the Help manual & Icon Legend |
-| `Esc` | Close modal overlays, exit active walkthrough tour, or exit Zen Focus |
+| `Esc` | Close modal overlays, context menus, active walkthrough tour, or exit Zen Focus |
 
 ---
 
-## 9. FAQ, Security, Wiki Roadmap & Contributing
+## 9. FAQ, Security & Contributing
 
-- **Complete UI & FAQ Reference:** Read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)** for full answers on every slider, lever, dropdown (`15m`/`25m`/`45m`), sprint `Start` / `Reset`, custom fonts, cover design, and offline sync.
-- **Project Overview & Public Roadmap:** Browse the **[Bookvibe GitHub Wiki](https://github.com/jhonrey-com/Bookvibe/wiki)** for milestone planning and design notes.
-- **Security & Vulnerability Reporting:** See **[SECURITY.md](SECURITY.md)** or email **bookvibe@jhonrey.com** directly (all reports are handled and answered by the maintainer from `contact@jhonrey.com`).
-- **Contributions:** Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** before submitting pull requests:
-  - **Fork & branch first**: Keep commits off `main` in forks; work in dedicated topic branches.
-  - **Run local checks**: Ensure `npm run typecheck`, `npm test`, and `npm run build` succeed cleanly after your last edit.
-  - **Build provenance**: Bookvibe packages and sample documents embed quiet origin verification marks belonging to **`jhonrey.com`** (`bookvibe@jhonrey.com`). Forks retain MIT rights while cleanly preserving upstream attribution.
+- **Complete UI & FAQ Reference:** Read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)**.
+- **Project Overview & Public Roadmap:** Browse the **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)**.
+- **Security & Vulnerability Reporting:** See **[SECURITY.md](SECURITY.md)** or email **quillvibe@jhonrey.com**.
+- **Contributions:** Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening pull requests.
 
 ## License
 

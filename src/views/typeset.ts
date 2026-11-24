@@ -15,8 +15,10 @@ import {
 import { normalizeProjectDefaults } from '../core/library';
 import { getAllScenes, getProjectWordCount } from '../core/manuscript';
 import type {
+  BookPublishingMeta,
   ChapterNumeralStyle,
   FontFamilyId,
+  QuillvibeExtension,
   TrimSize,
   TypographyConfig,
 } from '../core/types';
@@ -299,7 +301,7 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
           style: { justifyContent: 'center', padding: '6px' },
           tooltip: { title: `${item.name} (${item.extension})`, short: item.purpose },
           attrs: { type: 'button' },
-          on: { click: () => void actions.exportAsExtension(item.extension) },
+          on: { click: () => void actions.exportAsExtension(item.extension as QuillvibeExtension) },
         },
         item.extension,
       ),
@@ -632,6 +634,9 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
   );
   const wordCount = getProjectWordCount(project);
 
+  const pubMeta: Partial<BookPublishingMeta> = project.publishing ?? {};
+  const isKeyLocked = Boolean(identity.authorKeyId);
+
   const checks = [
     {
       label: 'Book Title & Pen Name Configured',
@@ -646,11 +651,19 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         : `Template: ${project.cover?.template}`,
     },
     {
-      label: 'Author Key & Manuscript Seal',
+      label: 'Permanent Author Key & Manuscript Seal',
       ok: Boolean(identity.authorKeyId && identity.manuscriptDigest),
       detail: identity.manuscriptDigest
-        ? `${identity.authorKeyId} (Signed ${new Date(identity.lastSignedAt).toLocaleDateString()})`
-        : 'Generate & sign to lock edition digest',
+        ? `${identity.authorKeyId} locked forever (Signed ${new Date(identity.lastSignedAt).toLocaleDateString()})`
+        : 'Create permanent pen-name key & sign to lock edition digest',
+    },
+    {
+      label: 'Commercial / Publisher Release Info',
+      ok: Boolean(pubMeta.publisherCompany?.trim() || pubMeta.isbn?.trim() || pubMeta.rightsTerritory?.trim()),
+      detail:
+        pubMeta.publisherCompany?.trim() || pubMeta.isbn?.trim()
+          ? `${pubMeta.publisherCompany || pubMeta.imprintName || 'Independent'} · ${pubMeta.rightsTerritory || 'World Rights'}`
+          : 'Configure Publisher, ISBN & Rights in Settings -> Publishing & Archive',
     },
     {
       label: 'Proofread Marks & Notes Resolved',
@@ -669,15 +682,17 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
 
   const penIn = el('input', {
     className: 'bv-input',
-    attrs: { type: 'text', value: identity.penName },
+    attrs: { type: 'text', value: identity.penName, ...(isKeyLocked ? { readonly: '' } : {}) },
     on: {
-      change: () =>
+      change: () => {
+        if (isKeyLocked) return;
         actions.mutateProject((p) => {
           const next = normalizeProjectDefaults(p);
           next.author = penIn.value;
           next.authorIdentity!.penName = penIn.value;
           return next;
-        }),
+        });
+      },
     },
   });
 
@@ -694,6 +709,75 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
     },
   });
 
+  const openPasswordExportPrompt = () => {
+    const pwIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'password', placeholder: 'Enter export password…', autocomplete: 'off' },
+    });
+    const close = () => bd.remove();
+    const confirm = () => {
+      const pw = pwIn.value;
+      close();
+      if (!pw.trim()) {
+        actions.notify('Password cannot be empty.');
+        return;
+      }
+      void actions.exportAsExtension('.quillvibe', { password: pw });
+    };
+    const bd = el(
+      'div',
+      {
+        className: 'bv-modal-backdrop',
+        on: {
+          click: (e) => {
+            if (e.target === bd) close();
+          },
+        },
+      },
+      el(
+        'div',
+        { className: 'bv-modal', style: { maxWidth: '420px' }, attrs: { role: 'dialog', 'aria-modal': 'true' } },
+        el(
+          'div',
+          { className: 'bv-panel-head' },
+          el('span', { className: 'bv-panel-title', text: 'Set Password for Protected .quillvibe' }),
+          el('button', { className: 'bv-mini-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
+        ),
+        el(
+          'div',
+          { className: 'bv-modal-body' },
+          el('p', {
+            className: 'bv-label',
+            text: 'Only Quillvibe can open this exported file with this password. Modifying bytes externally damages the file permanently.',
+          }),
+          pwIn,
+          el(
+            'div',
+            { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px' } },
+            el('button', { className: 'bv-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
+            el('button', {
+              className: 'bv-btn bv-btn-primary',
+              text: 'Export Password-Locked .quillvibe',
+              attrs: { type: 'button' },
+              on: { click: confirm },
+            }),
+          ),
+        ),
+      ),
+    );
+    pwIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirm();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    });
+    document.body.appendChild(bd);
+    requestAnimationFrame(() => pwIn.focus());
+  };
+
   const wrap = el(
     'div',
     { className: 'bv-scroll-view', style: { maxWidth: '920px', margin: '0 auto', width: '100%' } },
@@ -707,33 +791,54 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         el('span', { className: 'bv-panel-title', text: 'Pen Name & Author Key' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Pen Name' }), penIn),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Signature Line' }), sigIn),
-        el('div', {
-          className: 'bv-mono-tag',
-          text: `Key ID: ${identity.authorKeyId || 'Not generated'}`,
-        }),
+        el(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+          el('div', {
+            className: 'bv-mono-tag',
+            text: `Key ID: ${identity.authorKeyId || 'Not generated'}`,
+          }),
+          ...(isKeyLocked
+            ? [el('span', { className: 'qv-key-locked-pill', text: 'Locked Forever' })]
+            : []),
+        ),
+        ...(isKeyLocked
+          ? [
+              el('p', {
+                className: 'bv-label',
+                text: `Author Key is permanently bound to “${identity.penName || 'Author'}” and cannot be replaced.`,
+              }),
+            ]
+          : []),
         el(
           'div',
           { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
-          el(
-            'button',
-            {
-              className: 'bv-btn',
-              attrs: { type: 'button' },
-              on: {
-                click: async () => {
-                  const pair = await generateAuthorKeyPair();
-                  actions.mutateProject((prev) => {
-                    const next = normalizeProjectDefaults(prev);
-                    next.authorIdentity = { ...ensureAuthorIdentity(next), ...pair };
-                    return next;
-                  });
-                  actions.notify(`Generated Author Key ${pair.authorKeyId}`);
-                },
-              },
-            },
-            icon('key', 14),
-            'New Author Key',
-          ),
+          ...(!isKeyLocked
+            ? [
+                el(
+                  'button',
+                  {
+                    className: 'bv-btn',
+                    attrs: { type: 'button' },
+                    on: {
+                      click: async () => {
+                        const penName = penIn.value.trim() || 'Author';
+                        const pair = await generateAuthorKeyPair(penName);
+                        actions.mutateProject((prev) => {
+                          const next = normalizeProjectDefaults(prev);
+                          next.author = penName;
+                          next.authorIdentity = { ...ensureAuthorIdentity(next), penName, ...pair };
+                          return next;
+                        });
+                        actions.notify(`Bound permanent Author Key ${pair.authorKeyId} to ${penName}`);
+                      },
+                    },
+                  },
+                  icon('key', 14),
+                  'Create Permanent Author Key',
+                ),
+              ]
+            : []),
           el(
             'button',
             {
@@ -840,6 +945,16 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
           },
           icon('save', 14),
           'Signed .quillvibe Archive',
+        ),
+        el(
+          'button',
+          {
+            className: 'bv-btn',
+            attrs: { type: 'button' },
+            on: { click: openPasswordExportPrompt },
+          },
+          icon('key', 14),
+          'Password-Locked .quillvibe…',
         ),
       ),
     ),

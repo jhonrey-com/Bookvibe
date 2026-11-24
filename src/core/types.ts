@@ -20,7 +20,22 @@ export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom'
 
 export type AlarmRingtoneId = 'warm-chime' | 'brass-bell' | 'wood-marimba' | 'harbor-gong' | 'acoustic-arp';
 
-export type CollaboratorRole = 'co-author' | 'proofreader' | 'editor' | 'beta-reader';
+export type CollaboratorRole =
+  | 'co-author'
+  | 'proofreader'
+  | 'editor'
+  | 'typesetter'
+  | 'publisher'
+  | 'beta-reader';
+
+export interface CollaboratorPermissions {
+  canEditProse: boolean;
+  canProofreadOnly: boolean;
+  canEditBibleAndGraph: boolean;
+  canEditCoverAndTypeset: boolean;
+  canExportFiles: boolean;
+  canManageCollaborators: boolean;
+}
 
 export type GraphNodeKind = 'character' | 'location' | 'lore' | 'plot' | 'scene' | 'custom';
 
@@ -41,13 +56,15 @@ export type EditorialStage =
   | 'proofread'
   | 'print-ready';
 
-export type BookvibeExtension =
+export type QuillvibeExtension =
   | '.quillvibe'
   | '.qvibe'
   | '.qvbook'
   | '.qvbible'
   | '.qvscene'
-  | '.qvstyle'
+  | '.qvstyle';
+
+export type LegacyImportExtension =
   | '.bookvibe'
   | '.bvibe'
   | '.bvbook'
@@ -55,7 +72,9 @@ export type BookvibeExtension =
   | '.bvscene'
   | '.bvstyle';
 
-export type ExportFormatId = BookvibeExtension | '.epub' | '.md' | '.html' | '.txt';
+export type AnyQuillvibeOrLegacyExtension = QuillvibeExtension | LegacyImportExtension;
+
+export type ExportFormatId = QuillvibeExtension | '.epub' | '.md' | '.html' | '.txt';
 
 export type ProofreadMarkKind =
   | 'delete'
@@ -139,8 +158,8 @@ export interface CustomFontEntry {
   addedAt: string;
 }
 
-export interface BookvibePluginManifest {
-  magic: 'BOOKVIBE_EXT_V1';
+export interface QuillvibePluginManifest {
+  magic: 'QUILLVIBE_EXT_V2' | 'BOOKVIBE_EXT_V1';
   id: string;
   name: string;
   version: string;
@@ -157,7 +176,7 @@ export interface BookvibePluginManifest {
 }
 
 export interface InstalledExtension {
-  manifest: BookvibePluginManifest;
+  manifest: QuillvibePluginManifest;
   source: 'integrated' | 'external';
   enabled: boolean;
   grantedPermissions: ExtensionPermission[];
@@ -175,7 +194,7 @@ export interface ExtensionAuditEntry {
   timestamp: string;
 }
 
-export interface BookvibeSettings {
+export interface QuillvibeSettings {
   appTheme: AppThemeId;
   toolTier: ToolTier;
   toolbarDisplayMode: ToolbarDisplayMode;
@@ -202,8 +221,6 @@ export interface BookvibeSettings {
   alarmRingtone: AlarmRingtoneId;
   alarmVolume: number;
 }
-
-export type QuillvibeSettings = BookvibeSettings;
 
 export interface SceneSnapshot {
   id: string;
@@ -344,6 +361,9 @@ export interface AuthorIdentity {
   lastSignedAt: string;
   manuscriptDigest: string;
   provenanceMark?: string;
+  keyLockedForever?: boolean;
+  keyCreatedAt?: string;
+  keyFingerprint?: string;
 }
 
 export interface Collaborator {
@@ -355,6 +375,7 @@ export interface Collaborator {
   authorKeyId: string;
   color: string;
   addedAt: string;
+  permissions?: CollaboratorPermissions;
 }
 
 export interface StoryGraphNode {
@@ -518,6 +539,15 @@ export interface BookPublishingMeta {
   isbn: string;
   editionNumber: string;
   editorialStage: EditorialStage;
+  publisherCompany?: string;
+  ebookIsbn?: string;
+  rightsTerritory?: string;
+  commercialLicense?: string;
+  bisacCategory?: string;
+  embargoDate?: string;
+  arcWatermarkText?: string;
+  enterpriseRequireSignedSync?: boolean;
+  enterpriseRequirePasswordExport?: boolean;
 }
 
 export interface BookProject {
@@ -556,10 +586,10 @@ export interface LanSessionInfo {
   incomingCount: number;
 }
 
-export interface BookvibeEnvelope<T = unknown> {
+export interface QuillvibeEnvelope<T = unknown> {
   magic: 'QUILLVIBE_V2' | 'BOOKVIBE_V1';
   formatVersion: string;
-  extension: BookvibeExtension;
+  extension: AnyQuillvibeOrLegacyExtension;
   mimeType: string;
   uti: string;
   exportedAt: string;
@@ -567,7 +597,7 @@ export interface BookvibeEnvelope<T = unknown> {
   payload: T;
 }
 
-export interface BookvibeManuscriptPayload {
+export interface QuillvibeManuscriptPayload {
   title: string;
   subtitle: string;
   author: string;
@@ -582,7 +612,7 @@ export interface BookvibeManuscriptPayload {
   publishing?: BookPublishingMeta;
 }
 
-export interface BookvibeBiblePayload {
+export interface QuillvibeBiblePayload {
   seriesName: string;
   characters: CharacterEntry[];
   locations: LocationEntry[];
@@ -591,13 +621,13 @@ export interface BookvibeBiblePayload {
   customEntries?: CustomBibleEntry[];
 }
 
-export interface BookvibeScenePayload {
+export interface QuillvibeScenePayload {
   bookTitle: string;
   chapterTitle: string;
   scene: SceneNode;
 }
 
-export interface BookvibeStylePayload {
+export interface QuillvibeStylePayload {
   presetName: string;
   paperTheme: PaperTheme;
   typography: TypographyConfig;
@@ -608,6 +638,9 @@ export interface OpenedFileResult {
   filename: string;
   extension: string;
   content: string;
+  contentBase64?: string;
+  bytes?: Uint8Array;
+  isBinary?: boolean;
 }
 
 export interface ExtensionAssocStatus {

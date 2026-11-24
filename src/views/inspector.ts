@@ -40,12 +40,12 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
             'button',
             {
               className: 'bv-mini-btn',
-              tooltip: { title: 'Export .bvscene', short: 'Save this scene alone as a double-clickable .bvscene file.' },
+              tooltip: { title: 'Export .qvscene', short: 'Save this scene alone as a protected .qvscene file.' },
               attrs: { type: 'button' },
-              on: { click: () => void actions.exportAsExtension('.bvscene', { sceneId: ctx.scene.id }) },
+              on: { click: () => void actions.exportAsExtension('.qvscene', { sceneId: ctx.scene.id }) },
             },
             icon('file', 11),
-            '.bvscene',
+            '.qvscene',
           )
         : null,
     ),

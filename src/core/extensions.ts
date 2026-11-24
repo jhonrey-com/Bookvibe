@@ -1,20 +1,31 @@
-import { stripPrivateAuthorSecrets } from './identity';
+import {
+  base64ToUint8Array,
+  decodeQuillvibeBinary,
+  encodeQuillvibeBinary,
+  isQvbxBinary,
+  QuillvibeCodecError,
+  scanPayloadForThreats,
+  type EncodeQvbxOptions,
+} from './codec';
+import { stripPrivateAuthorSecrets, verifyProjectAuthorKeyIntegrity } from './identity';
 import { normalizeProjectDefaults } from './library';
 import { countWords, findSceneContext, newId } from './manuscript';
 import { getPublisherProvenance } from './provenance';
 import type {
+  AnyQuillvibeOrLegacyExtension,
   BookProject,
-  BookvibeBiblePayload,
-  BookvibeEnvelope,
-  BookvibeExtension,
-  BookvibeManuscriptPayload,
-  BookvibeScenePayload,
-  BookvibeStylePayload,
+  LegacyImportExtension,
+  QuillvibeBiblePayload,
+  QuillvibeEnvelope,
+  QuillvibeExtension,
+  QuillvibeManuscriptPayload,
+  QuillvibeScenePayload,
+  QuillvibeStylePayload,
   StudioViewId,
 } from './types';
 
 export interface ExtensionDefinition {
-  extension: BookvibeExtension;
+  extension: AnyQuillvibeOrLegacyExtension;
   bareExtension: string;
   name: string;
   shortLabel: string;
@@ -25,8 +36,8 @@ export interface ExtensionDefinition {
 }
 
 export const QUILLVIBE_MAGIC = 'QUILLVIBE_V2' as const;
-export const BOOKVIBE_MAGIC = 'BOOKVIBE_V1' as const;
-export const BOOKVIBE_FORMAT_VERSION = '2.0.0' as const;
+export const LEGACY_BOOKVIBE_MAGIC = 'BOOKVIBE_V1' as const;
+export const QUILLVIBE_FORMAT_VERSION = '2.0.0' as const;
 
 export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
   {
@@ -34,27 +45,27 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
     bareExtension: 'quillvibe',
     name: 'Quillvibe Master Project',
     shortLabel: 'Master Project',
-    mimeType: 'application/vnd.quillvibe.project+json',
+    mimeType: 'application/vnd.quillvibe.project',
     uti: 'app.quillvibe.project',
     progId: 'Quillvibe.Project.2',
-    purpose: 'Full book project: manuscript, snapshots, story bible, graph, cover, and typography.',
+    purpose: 'Protected QVBX archive: manuscript, snapshots, story bible, graph, cover, and typography.',
   },
   {
     extension: '.qvibe',
     bareExtension: 'qvibe',
     name: 'Quillvibe Compact Project',
     shortLabel: 'Compact Project',
-    mimeType: 'application/vnd.quillvibe.project+json',
+    mimeType: 'application/vnd.quillvibe.project',
     uti: 'app.quillvibe.compact-project',
     progId: 'Quillvibe.CompactProject.2',
-    purpose: 'Short-alias project container equivalent to .quillvibe.',
+    purpose: 'Short-alias protected QVBX project container equivalent to .quillvibe.',
   },
   {
     extension: '.qvbook',
     bareExtension: 'qvbook',
     name: 'Quillvibe Manuscript Package',
     shortLabel: 'Manuscript',
-    mimeType: 'application/vnd.quillvibe.manuscript+json',
+    mimeType: 'application/vnd.quillvibe.manuscript',
     uti: 'app.quillvibe.manuscript',
     progId: 'Quillvibe.Manuscript.2',
     purpose: 'Portable manuscript hierarchy (Parts, Chapters, Scenes), credits, and front matter.',
@@ -64,7 +75,7 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
     bareExtension: 'qvbible',
     name: 'Quillvibe Story Bible DB',
     shortLabel: 'Story Bible',
-    mimeType: 'application/vnd.quillvibe.bible+json',
+    mimeType: 'application/vnd.quillvibe.bible',
     uti: 'app.quillvibe.bible',
     progId: 'Quillvibe.Bible.2',
     purpose: 'Shareable worldbuilding database (Characters, Locations, Lore, Custom Categories).',
@@ -74,7 +85,7 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
     bareExtension: 'qvscene',
     name: 'Quillvibe Standalone Scene',
     shortLabel: 'Scene Draft',
-    mimeType: 'application/vnd.quillvibe.scene+json',
+    mimeType: 'application/vnd.quillvibe.scene',
     uti: 'app.quillvibe.scene',
     progId: 'Quillvibe.Scene.2',
     purpose: 'Individual scene draft, annotations, and snapshots for isolated drafting or sharing.',
@@ -84,91 +95,115 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
     bareExtension: 'qvstyle',
     name: 'Quillvibe Typeset Preset',
     shortLabel: 'Typeset Style',
-    mimeType: 'application/vnd.quillvibe.style+json',
+    mimeType: 'application/vnd.quillvibe.style',
     uti: 'app.quillvibe.style',
     progId: 'Quillvibe.Style.2',
     purpose: 'Shareable book layout preset (trim size, margins, serif typeface, drop caps).',
   },
 ] as const;
 
-export const BOOKVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
+/**
+ * Legacy import-only definitions. These extensions are never exported or opened via double-click.
+ */
+export const LEGACY_IMPORT_EXTENSIONS: readonly ExtensionDefinition[] = [
   {
     extension: '.bookvibe',
     bareExtension: 'bookvibe',
-    name: 'Bookvibe Master Project',
-    shortLabel: 'Master Project',
+    name: 'Legacy Master Archive',
+    shortLabel: 'Legacy Project',
     mimeType: 'application/vnd.bookvibe.project+json',
     uti: 'org.bookvibe.project',
-    progId: 'Bookvibe.Project.1',
-    purpose: 'Full book project: manuscript, snapshots, story bible, graph, cover, and typography.',
+    progId: 'Legacy.Project.1',
+    purpose: 'Legacy import-only project archive.',
   },
   {
     extension: '.bvibe',
     bareExtension: 'bvibe',
-    name: 'Bookvibe Compact Project',
-    shortLabel: 'Compact Project',
+    name: 'Legacy Compact Archive',
+    shortLabel: 'Legacy Compact',
     mimeType: 'application/vnd.bookvibe.project+json',
     uti: 'org.bookvibe.compact-project',
-    progId: 'Bookvibe.CompactProject.1',
-    purpose: 'Short-alias project container equivalent to .bookvibe.',
+    progId: 'Legacy.CompactProject.1',
+    purpose: 'Legacy import-only compact project archive.',
   },
   {
     extension: '.bvbook',
     bareExtension: 'bvbook',
-    name: 'Bookvibe Manuscript Package',
-    shortLabel: 'Manuscript',
+    name: 'Legacy Manuscript Archive',
+    shortLabel: 'Legacy Manuscript',
     mimeType: 'application/vnd.bookvibe.manuscript+json',
     uti: 'org.bookvibe.manuscript',
-    progId: 'Bookvibe.Manuscript.1',
-    purpose: 'Portable manuscript hierarchy (Parts, Chapters, Scenes), credits, and front matter.',
+    progId: 'Legacy.Manuscript.1',
+    purpose: 'Legacy import-only manuscript archive.',
   },
   {
     extension: '.bvbible',
     bareExtension: 'bvbible',
-    name: 'Bookvibe Story Bible DB',
-    shortLabel: 'Story Bible',
+    name: 'Legacy Story Bible Archive',
+    shortLabel: 'Legacy Bible',
     mimeType: 'application/vnd.bookvibe.bible+json',
     uti: 'org.bookvibe.bible',
-    progId: 'Bookvibe.Bible.1',
-    purpose: 'Shareable worldbuilding database (Characters, Locations, Lore, Custom Categories).',
+    progId: 'Legacy.Bible.1',
+    purpose: 'Legacy import-only Story Bible archive.',
   },
   {
     extension: '.bvscene',
     bareExtension: 'bvscene',
-    name: 'Bookvibe Standalone Scene',
-    shortLabel: 'Scene Draft',
+    name: 'Legacy Scene Draft Archive',
+    shortLabel: 'Legacy Scene',
     mimeType: 'application/vnd.bookvibe.scene+json',
     uti: 'org.bookvibe.scene',
-    progId: 'Bookvibe.Scene.1',
-    purpose: 'Individual scene draft, annotations, and snapshots for isolated drafting or sharing.',
+    progId: 'Legacy.Scene.1',
+    purpose: 'Legacy import-only scene draft archive.',
   },
   {
     extension: '.bvstyle',
     bareExtension: 'bvstyle',
-    name: 'Bookvibe Typeset Preset',
-    shortLabel: 'Typeset Style',
+    name: 'Legacy Typeset Preset Archive',
+    shortLabel: 'Legacy Style',
     mimeType: 'application/vnd.bookvibe.style+json',
     uti: 'org.bookvibe.style',
-    progId: 'Bookvibe.Style.1',
-    purpose: 'Shareable book layout preset (trim size, margins, serif typeface, drop caps).',
+    progId: 'Legacy.Style.1',
+    purpose: 'Legacy import-only typeset preset.',
   },
 ] as const;
 
-export const ALL_OFFICIAL_EXTENSIONS: readonly ExtensionDefinition[] = [
-  ...QUILLVIBE_EXTENSIONS,
-  ...BOOKVIBE_EXTENSIONS,
-];
+export const ALL_OFFICIAL_EXTENSIONS: readonly ExtensionDefinition[] = QUILLVIBE_EXTENSIONS;
 
 export function getExtensionDefinition(ext: string): ExtensionDefinition | undefined {
   const normalized = ext.trim().toLowerCase();
   const withDot = normalized.startsWith('.') ? normalized : `.${normalized}`;
-  return ALL_OFFICIAL_EXTENSIONS.find((item) => item.extension === withDot);
+  return QUILLVIBE_EXTENSIONS.find((item) => item.extension === withDot);
 }
 
-export function extractExtensionFromFilename(filename: string): BookvibeExtension | null {
+export function getAnyImportableExtensionDefinition(ext: string): ExtensionDefinition | undefined {
+  const normalized = ext.trim().toLowerCase();
+  const withDot = normalized.startsWith('.') ? normalized : `.${normalized}`;
+  return (
+    QUILLVIBE_EXTENSIONS.find((item) => item.extension === withDot) ??
+    LEGACY_IMPORT_EXTENSIONS.find((item) => item.extension === withDot)
+  );
+}
+
+export function isLegacyImportExtension(ext: string): ext is LegacyImportExtension {
+  const normalized = ext.trim().toLowerCase();
+  const withDot = normalized.startsWith('.') ? normalized : `.${normalized}`;
+  return LEGACY_IMPORT_EXTENSIONS.some((item) => item.extension === withDot);
+}
+
+export function extractExtensionFromFilename(filename: string): QuillvibeExtension | null {
   const dot = filename.lastIndexOf('.');
   if (dot < 0) return null;
   const def = getExtensionDefinition(filename.slice(dot));
+  return def ? (def.extension as QuillvibeExtension) : null;
+}
+
+export function extractAnyImportableExtensionFromFilename(
+  filename: string,
+): AnyQuillvibeOrLegacyExtension | null {
+  const dot = filename.lastIndexOf('.');
+  if (dot < 0) return null;
+  const def = getAnyImportableExtensionDefinition(filename.slice(dot));
   return def ? def.extension : null;
 }
 
@@ -184,14 +219,14 @@ export function safeJsonParse<T = unknown>(raw: string): T {
   }) as T;
 }
 
-export function serializeExtensionFile(
-  extension: BookvibeExtension,
+export function buildQuillvibeEnvelope(
+  extension: QuillvibeExtension,
   rawProject: BookProject,
   options?: { sceneId?: string; presetName?: string; seriesName?: string },
-): string {
+): QuillvibeEnvelope {
   const def = getExtensionDefinition(extension);
   if (!def) {
-    throw new Error(`Unsupported Bookvibe extension: ${extension}`);
+    throw new Error(`Unsupported Quillvibe extension: ${extension}`);
   }
 
   // Always strip local private signing keys before emitting portable export files
@@ -200,15 +235,12 @@ export function serializeExtensionFile(
 
   switch (extension) {
     case '.quillvibe':
-    case '.qvibe':
-    case '.bookvibe':
-    case '.bvibe': {
+    case '.qvibe': {
       payload = project;
       break;
     }
-    case '.qvbook':
-    case '.bvbook': {
-      const manuscriptPayload: BookvibeManuscriptPayload = {
+    case '.qvbook': {
+      const manuscriptPayload: QuillvibeManuscriptPayload = {
         title: project.title,
         subtitle: project.subtitle,
         author: project.author,
@@ -220,13 +252,13 @@ export function serializeExtensionFile(
         authorIdentity: project.authorIdentity,
         collaborators: project.collaborators,
         cover: project.cover,
+        publishing: project.publishing,
       };
       payload = manuscriptPayload;
       break;
     }
-    case '.qvbible':
-    case '.bvbible': {
-      const biblePayload: BookvibeBiblePayload = {
+    case '.qvbible': {
+      const biblePayload: QuillvibeBiblePayload = {
         seriesName: options?.seriesName?.trim() || project.title,
         characters: project.bible.characters,
         locations: project.bible.locations,
@@ -237,8 +269,7 @@ export function serializeExtensionFile(
       payload = biblePayload;
       break;
     }
-    case '.qvscene':
-    case '.bvscene': {
+    case '.qvscene': {
       const ctx = options?.sceneId
         ? findSceneContext(project, options.sceneId)
         : undefined;
@@ -247,7 +278,7 @@ export function serializeExtensionFile(
       if (!scene) {
         throw new Error('No scene available to export as standalone scene.');
       }
-      const scenePayload: BookvibeScenePayload = {
+      const scenePayload: QuillvibeScenePayload = {
         bookTitle: project.title,
         chapterTitle: ctx?.chapter.title ?? project.parts[0]?.chapters[0]?.title ?? 'Draft',
         scene,
@@ -255,9 +286,8 @@ export function serializeExtensionFile(
       payload = scenePayload;
       break;
     }
-    case '.qvstyle':
-    case '.bvstyle': {
-      const stylePayload: BookvibeStylePayload = {
+    case '.qvstyle': {
+      const stylePayload: QuillvibeStylePayload = {
         presetName:
           options?.presetName?.trim() ||
           `${project.title} (${project.typography.trimSize})`,
@@ -269,9 +299,9 @@ export function serializeExtensionFile(
     }
   }
 
-  const envelope: BookvibeEnvelope = {
-    magic: extension.startsWith('.q') ? QUILLVIBE_MAGIC : BOOKVIBE_MAGIC,
-    formatVersion: BOOKVIBE_FORMAT_VERSION,
+  return {
+    magic: QUILLVIBE_MAGIC,
+    formatVersion: QUILLVIBE_FORMAT_VERSION,
     extension,
     mimeType: def.mimeType,
     uti: def.uti,
@@ -279,48 +309,72 @@ export function serializeExtensionFile(
     provenanceMark: getPublisherProvenance(rawProject.id).mark,
     payload,
   };
+}
 
+export function serializeExtensionFile(
+  extension: QuillvibeExtension,
+  rawProject: BookProject,
+  options?: { sceneId?: string; presetName?: string; seriesName?: string },
+): string {
+  const envelope = buildQuillvibeEnvelope(extension, rawProject, options);
   return JSON.stringify(envelope, null, 2);
 }
 
-export type ParsedBookvibeFile =
+export async function serializeQuillvibeBinary(
+  extension: QuillvibeExtension,
+  rawProject: BookProject,
+  options?: {
+    sceneId?: string;
+    presetName?: string;
+    seriesName?: string;
+    password?: string;
+  },
+): Promise<Uint8Array> {
+  const envelope = buildQuillvibeEnvelope(extension, rawProject, options);
+  const includesAuthorIdentity =
+    extension === '.quillvibe' || extension === '.qvibe' || extension === '.qvbook';
+  const encodeOpts: EncodeQvbxOptions = {
+    password: options?.password,
+    sealAuthorKeyId: includesAuthorIdentity ? rawProject.authorIdentity?.authorKeyId : undefined,
+    enforceRestrictions: Boolean(rawProject.collaborators && rawProject.collaborators.length > 0),
+  };
+  return encodeQuillvibeBinary(envelope, encodeOpts);
+}
+
+export type ParsedQuillvibeFile =
   | { extension: '.quillvibe' | '.qvibe' | '.bookvibe' | '.bvibe'; payload: BookProject }
-  | { extension: '.qvbook' | '.bvbook'; payload: BookvibeManuscriptPayload }
-  | { extension: '.qvbible' | '.bvbible'; payload: BookvibeBiblePayload }
-  | { extension: '.qvscene' | '.bvscene'; payload: BookvibeScenePayload }
-  | { extension: '.qvstyle' | '.bvstyle'; payload: BookvibeStylePayload };
+  | { extension: '.qvbook' | '.bvbook'; payload: QuillvibeManuscriptPayload }
+  | { extension: '.qvbible' | '.bvbible'; payload: QuillvibeBiblePayload }
+  | { extension: '.qvscene' | '.bvscene'; payload: QuillvibeScenePayload }
+  | { extension: '.qvstyle' | '.bvstyle'; payload: QuillvibeStylePayload };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function parseExtensionFile(rawJson: string, filenameHint?: string): ParsedBookvibeFile {
-  let parsed: unknown;
-  try {
-    parsed = safeJsonParse(rawJson);
-  } catch {
-    throw new Error('Selected file is not valid JSON.');
-  }
+function validateDecodedEnvelope(
+  parsed: Record<string, unknown>,
+  filenameHint?: string,
+): ParsedQuillvibeFile {
+  scanPayloadForThreats(parsed);
 
-  if (!isRecord(parsed)) {
-    throw new Error('Invalid Quillvibe file root object.');
-  }
-
-  if (parsed.magic !== QUILLVIBE_MAGIC && parsed.magic !== BOOKVIBE_MAGIC) {
+  if (parsed.magic !== QUILLVIBE_MAGIC && parsed.magic !== LEGACY_BOOKVIBE_MAGIC) {
     if (Array.isArray(parsed.parts) && isRecord(parsed.bible) && typeof parsed.title === 'string') {
       return {
         extension: '.quillvibe',
         payload: normalizeProjectDefaults(parsed as unknown as BookProject),
       };
     }
-    throw new Error('Missing QUILLVIBE_V2 / BOOKVIBE_V1 format header.');
+    throw new Error('Missing Quillvibe format header.');
   }
 
   const declaredExt =
     typeof parsed.extension === 'string'
-      ? getExtensionDefinition(parsed.extension)?.extension
+      ? getAnyImportableExtensionDefinition(parsed.extension)?.extension
       : undefined;
-  const hintExt = filenameHint ? extractExtensionFromFilename(filenameHint) ?? undefined : undefined;
+  const hintExt = filenameHint
+    ? extractAnyImportableExtensionFromFilename(filenameHint) ?? undefined
+    : undefined;
   const extension = declaredExt ?? hintExt;
 
   if (!extension) {
@@ -350,7 +404,7 @@ export function parseExtensionFile(rawJson: string, filenameHint?: string): Pars
       if (!Array.isArray(payload.parts)) {
         throw new Error('Manuscript payload must include a parts array.');
       }
-      return { extension, payload: payload as unknown as BookvibeManuscriptPayload };
+      return { extension, payload: payload as unknown as QuillvibeManuscriptPayload };
     }
     case '.qvbible':
     case '.bvbible': {
@@ -361,23 +415,98 @@ export function parseExtensionFile(rawJson: string, filenameHint?: string): Pars
       ) {
         throw new Error('Story Bible payload requires characters, locations, and lore arrays.');
       }
-      return { extension, payload: payload as unknown as BookvibeBiblePayload };
+      return { extension, payload: payload as unknown as QuillvibeBiblePayload };
     }
     case '.qvscene':
     case '.bvscene': {
       if (!isRecord(payload.scene) || typeof payload.scene.content !== 'string') {
         throw new Error('Scene payload requires a valid scene object.');
       }
-      return { extension, payload: payload as unknown as BookvibeScenePayload };
+      return { extension, payload: payload as unknown as QuillvibeScenePayload };
     }
     case '.qvstyle':
     case '.bvstyle': {
       if (!isRecord(payload.typography)) {
         throw new Error('Typeset style payload requires a typography object.');
       }
-      return { extension, payload: payload as unknown as BookvibeStylePayload };
+      return { extension, payload: payload as unknown as QuillvibeStylePayload };
     }
   }
+}
+
+export function parseExtensionFile(rawJson: string, filenameHint?: string): ParsedQuillvibeFile {
+  let parsed: unknown;
+  try {
+    parsed = safeJsonParse(rawJson);
+  } catch {
+    throw new Error('Selected file is not valid Quillvibe data.');
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error('Invalid Quillvibe file root object.');
+  }
+
+  return validateDecodedEnvelope(parsed, filenameHint);
+}
+
+export interface DecodedQuillvibeResult {
+  parsed: ParsedQuillvibeFile;
+  isProtectedBinary: boolean;
+  isLegacyImport: boolean;
+}
+
+export async function parseQuillvibeInput(
+  input: Uint8Array | string,
+  options?: { filenameHint?: string; password?: string; base64Encoded?: boolean },
+): Promise<DecodedQuillvibeResult> {
+  let bytes: Uint8Array | null = null;
+  let text = '';
+
+  if (input instanceof Uint8Array) {
+    if (isQvbxBinary(input)) {
+      bytes = input;
+    } else {
+      text = new TextDecoder().decode(input);
+    }
+  } else if (options?.base64Encoded) {
+    const raw = base64ToUint8Array(input);
+    if (isQvbxBinary(raw)) {
+      bytes = raw;
+    } else {
+      text = new TextDecoder().decode(raw);
+    }
+  } else {
+    text = input;
+  }
+
+  let parsed: ParsedQuillvibeFile;
+  let isProtectedBinary = false;
+
+  if (bytes) {
+    isProtectedBinary = true;
+    const envelope = await decodeQuillvibeBinary(bytes, options?.password);
+    parsed = validateDecodedEnvelope(envelope as unknown as Record<string, unknown>, options?.filenameHint);
+  } else {
+    parsed = parseExtensionFile(text, options?.filenameHint);
+  }
+
+  if (
+    parsed.extension === '.quillvibe' ||
+    parsed.extension === '.qvibe' ||
+    parsed.extension === '.bookvibe' ||
+    parsed.extension === '.bvibe'
+  ) {
+    const keyCheck = await verifyProjectAuthorKeyIntegrity(parsed.payload);
+    if (!keyCheck.ok) {
+      throw new QuillvibeCodecError(
+        'AUTHOR_KEY_TAMPERED',
+        keyCheck.reason || 'Author Key validation failed.',
+      );
+    }
+  }
+
+  const isLegacyImport = isLegacyImportExtension(parsed.extension);
+  return { parsed, isProtectedBinary, isLegacyImport };
 }
 
 export interface AppliedExtensionResult {
@@ -402,7 +531,7 @@ function mergeByNameOrId<T extends { id: string; name: string }>(existing: T[], 
 }
 
 export function applyOpenedExtensionFile(
-  parsed: ParsedBookvibeFile,
+  parsed: ParsedQuillvibeFile,
   currentProject: BookProject,
 ): AppliedExtensionResult {
   switch (parsed.extension) {
@@ -416,7 +545,9 @@ export function applyOpenedExtensionFile(
         project: next,
         focusView: 'editor',
         focusSceneId: firstScene,
-        summaryMessage: `Opened ${parsed.extension} project “${next.title}”`,
+        summaryMessage: isLegacyImportExtension(parsed.extension)
+          ? `Imported legacy ${parsed.extension} project “${next.title}” into Quillvibe`
+          : `Opened ${parsed.extension} project “${next.title}”`,
       };
     }
 
@@ -435,6 +566,7 @@ export function applyOpenedExtensionFile(
         authorIdentity: parsed.payload.authorIdentity ?? currentProject.authorIdentity,
         collaborators: parsed.payload.collaborators ?? currentProject.collaborators,
         cover: parsed.payload.cover ?? currentProject.cover,
+        publishing: parsed.payload.publishing ?? currentProject.publishing,
       });
       const firstScene = next.parts[0]?.chapters[0]?.scenes[0]?.id;
       return {

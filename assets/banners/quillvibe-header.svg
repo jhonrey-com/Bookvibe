@@ -2,10 +2,8 @@
   <rect width="1200" height="196" rx="8" fill="#0b0c10" />
   <rect x="0.5" y="0.5" width="1199" height="195" rx="7.5" stroke="#1b1e27" />
 
-  <!-- Bookvibe layered open-folio + page-wing app icon (1.5x scale of 64x64) -->
+  <!-- Quillvibe layered open-folio + page-wing app icon (1.5x scale of 64x64) -->
   <g transform="translate(56, 48) scale(1.5)">
-    <rect x="0" y="0" width="64" height="64" rx="16" fill="#111319" />
-    <rect x="1" y="1" width="62" height="62" rx="15" stroke="#262b38" stroke-width="1.2" />
     <path
       d="M11 27C11 24.4 13.1 22.8 15.6 23.4L32 27.6L48.4 23.4C50.9 22.8 53 24.4 53 27V43.2C53 45.8 51.1 47.9 48.5 48.6L34.6 52.3C32.9 52.8 31.1 52.8 29.4 52.3L15.5 48.6C12.9 47.9 11 45.8 11 43.2V27Z"
       fill="#7e6644"

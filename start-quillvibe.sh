@@ -5,8 +5,8 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 FILE_ARG="${1:-}"
-RELEASE_BIN="$DIR/src-tauri/target/release/bookvibe"
-DEBUG_BIN="$DIR/src-tauri/target/debug/bookvibe"
+RELEASE_BIN="$DIR/src-tauri/target/release/quillvibe"
+DEBUG_BIN="$DIR/src-tauri/target/debug/quillvibe"
 
 launch_with_arg() {
   local bin="$1"

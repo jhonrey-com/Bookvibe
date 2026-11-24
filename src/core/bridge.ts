@@ -1,4 +1,9 @@
-import { ALL_OFFICIAL_EXTENSIONS, getExtensionDefinition } from './extensions';
+import { uint8ArrayToBase64 } from './codec';
+import {
+  ALL_OFFICIAL_EXTENSIONS,
+  LEGACY_IMPORT_EXTENSIONS,
+  getExtensionDefinition,
+} from './extensions';
 import {
   buildEpubBlobBytes,
   buildEpubExportPayload,
@@ -9,10 +14,10 @@ import {
 import type {
   AssociationReport,
   BookProject,
-  BookvibeExtension,
   ExportFormatId,
   LanSessionInfo,
   OpenedFileResult,
+  QuillvibeExtension,
 } from './types';
 
 const LOCAL_STORAGE_KEY = 'quillvibe.activeProject.v2';
@@ -29,12 +34,6 @@ const VALID_EXPORT_FORMATS = new Set<string>([
   '.qvbible',
   '.qvscene',
   '.qvstyle',
-  '.bookvibe',
-  '.bvibe',
-  '.bvbook',
-  '.bvbible',
-  '.bvscene',
-  '.bvstyle',
   '.epub',
   '.md',
   '.html',
@@ -170,15 +169,37 @@ export async function persistLibrary(serializedLibraryJson: string): Promise<voi
   }
 }
 
-export async function openBookvibeFile(): Promise<OpenedFileResult | null> {
+async function readPickedBrowserFile(file: File): Promise<OpenedFileResult> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const dotIdx = file.name.lastIndexOf('.');
+  const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.quillvibe';
+  const isBinary =
+    bytes.length >= 4 &&
+    bytes[0] === 0x51 &&
+    bytes[1] === 0x56 &&
+    bytes[2] === 0x42 &&
+    bytes[3] === 0x58;
+
+  return {
+    path: file.name,
+    filename: file.name,
+    extension: ext,
+    content: isBinary ? '' : new TextDecoder().decode(bytes),
+    bytes,
+    isBinary,
+  };
+}
+
+export async function openQuillvibeFile(): Promise<OpenedFileResult | null> {
   if (isTauriRuntime()) {
-    return tauriInvoke<OpenedFileResult | null>('open_bookvibe_file_dialog');
+    return tauriInvoke<OpenedFileResult | null>('open_quillvibe_file_dialog');
   }
 
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = ALL_OFFICIAL_EXTENSIONS.map((item) => item.extension).join(',');
+    input.accept = [...ALL_OFFICIAL_EXTENSIONS.map((item) => item.extension), '.qvext', '.bvext'].join(',');
     input.addEventListener(
       'change',
       async () => {
@@ -187,15 +208,7 @@ export async function openBookvibeFile(): Promise<OpenedFileResult | null> {
           resolve(null);
           return;
         }
-        const content = await file.text();
-        const dotIdx = file.name.lastIndexOf('.');
-        const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.quillvibe';
-        resolve({
-          path: file.name,
-          filename: file.name,
-          extension: ext,
-          content,
-        });
+        resolve(await readPickedBrowserFile(file));
       },
       { once: true },
     );
@@ -203,9 +216,34 @@ export async function openBookvibeFile(): Promise<OpenedFileResult | null> {
   });
 }
 
-export async function saveBookvibeExtensionFile(
-  extension: BookvibeExtension,
-  serializedPayload: string,
+export async function importLegacyBookFile(): Promise<OpenedFileResult | null> {
+  if (isTauriRuntime()) {
+    return tauriInvoke<OpenedFileResult | null>('import_legacy_book_dialog');
+  }
+
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = LEGACY_IMPORT_EXTENSIONS.map((item) => item.extension).join(',');
+    input.addEventListener(
+      'change',
+      async () => {
+        const file = input.files?.[0];
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        resolve(await readPickedBrowserFile(file));
+      },
+      { once: true },
+    );
+    input.click();
+  });
+}
+
+export async function saveQuillvibeExtensionFile(
+  extension: QuillvibeExtension,
+  binaryPayload: Uint8Array,
   suggestedBaseName: string,
 ): Promise<string | null> {
   const def = getExtensionDefinition(extension);
@@ -213,15 +251,18 @@ export async function saveBookvibeExtensionFile(
   const fullName = `${base}${extension}`;
 
   if (isTauriRuntime()) {
-    return tauriInvoke<string | null>('save_bookvibe_file_dialog', {
-      payload: serializedPayload,
+    return tauriInvoke<string | null>('save_quillvibe_file_dialog', {
+      payload: null,
+      payloadBase64: uint8ArrayToBase64(binaryPayload),
       suggestedName: base,
       extension,
-      description: def?.name ?? 'Bookvibe File',
+      description: def?.name ?? 'Quillvibe File',
     });
   }
 
-  triggerBrowserDownload(fullName, serializedPayload, def?.mimeType ?? 'application/json');
+  const copy = new Uint8Array(binaryPayload.byteLength);
+  copy.set(binaryPayload);
+  triggerBrowserDownload(fullName, copy.buffer, def?.mimeType ?? 'application/octet-stream');
   return fullName;
 }
 
@@ -305,7 +346,7 @@ export async function getOsExtensionStatus(): Promise<AssociationReport> {
       uti: item.uti,
       progId: item.progId,
       registered: false,
-      detail: 'Ready in desktop runtime; drag-and-drop & file open active in browser preview',
+      detail: 'Desktop app registers OS double-click handlers automatically.',
     })),
   };
 }
@@ -316,7 +357,7 @@ export interface BluetoothShareOptions {
   filePath?: string;
   mode?: 'send' | 'receive';
   filename?: string;
-  payload?: string;
+  payloadBytes?: Uint8Array;
   title?: string;
 }
 
@@ -391,36 +432,17 @@ export async function launchBluetoothShare(options?: BluetoothShareOptions): Pro
   }
 
   if (mode === 'receive') {
-    return 'Receive the .quillvibe or .bookvibe file via your device Bluetooth or Nearby Share, then click Pick & Merge Peer File.';
+    return 'Receive the .quillvibe file via device Bluetooth or Nearby Share, then pick it with Open File.';
   }
 
-  if (options?.payload && options?.filename) {
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      const shareFile = new File([options.payload], options.filename, {
-        type: 'application/json',
-      });
-      const canShareFiles =
-        typeof navigator.canShare === 'function' && navigator.canShare({ files: [shareFile] });
-      if (canShareFiles) {
-        try {
-          await navigator.share({
-            title: options.title ?? 'Quillvibe Book Package',
-            text: 'Quillvibe .quillvibe revision package',
-            files: [shareFile],
-          });
-          return 'Opened system share sheet for Bluetooth / Nearby Share / AirDrop.';
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') {
-            return 'Share dialog closed.';
-          }
-        }
-      }
-    }
-    triggerBrowserDownload(options.filename, options.payload, 'application/json');
-    return 'Downloaded .quillvibe file. Send it via your device Bluetooth, AirDrop, or Nearby Share (or install the Quillvibe desktop app to open Bluetooth File Transfer directly).';
+  if (options?.payloadBytes && options?.filename) {
+    const copy = new Uint8Array(options.payloadBytes.byteLength);
+    copy.set(options.payloadBytes);
+    triggerBrowserDownload(options.filename, copy.buffer, 'application/octet-stream');
+    return 'Downloaded .quillvibe package.';
   }
 
-  return 'Save the .quillvibe package and send it via Bluetooth, AirDrop, or Nearby Share.';
+  return 'Save the .quillvibe package and share it via Bluetooth, AirDrop, or Nearby Share.';
 }
 
 export async function minimizeDesktopWindow(): Promise<void> {
@@ -466,65 +488,39 @@ export async function setDesktopWindowTitle(title: string): Promise<void> {
 }
 
 export async function setDesktopFullscreen(fullscreen: boolean): Promise<boolean> {
-  if (isTauriRuntime()) {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const win = getCurrentWindow();
-      await win.setFullscreen(fullscreen);
-      return await win.isFullscreen();
-    } catch {
-      return fullscreen;
-    }
+  if (!isTauriRuntime()) return false;
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const win = getCurrentWindow();
+    await win.setFullscreen(fullscreen);
+    return await win.isFullscreen();
+  } catch {
+    return fullscreen;
   }
-  if (typeof document !== 'undefined') {
-    try {
-      if (fullscreen && !document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-      } else if (!fullscreen && document.fullscreenElement) {
-        await document.exitFullscreen();
-      }
-      return Boolean(document.fullscreenElement);
-    } catch {
-      return fullscreen;
-    }
-  }
-  return fullscreen;
 }
 
 export async function isDesktopFullscreen(): Promise<boolean> {
-  if (isTauriRuntime()) {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      return await getCurrentWindow().isFullscreen();
-    } catch {
-      return false;
-    }
+  if (!isTauriRuntime()) return false;
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    return await getCurrentWindow().isFullscreen();
+  } catch {
+    return false;
   }
-  if (typeof document !== 'undefined') {
-    return Boolean(document.fullscreenElement);
-  }
-  return false;
 }
 
 export async function openBookInNewDesktopWindow(
   bookId?: string,
   title?: string,
 ): Promise<boolean> {
-  if (isTauriRuntime()) {
-    try {
-      await tauriInvoke<string>('open_book_in_new_window', {
-        bookId: bookId ?? null,
-        title: title ?? 'Quillvibe',
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  if (typeof window !== 'undefined') {
-    const params = bookId ? `?bookId=${encodeURIComponent(bookId)}` : '';
-    window.open(`/write${params}`, '_blank', 'noopener,noreferrer');
+  if (!isTauriRuntime()) return false;
+  try {
+    await tauriInvoke<string>('open_book_in_new_window', {
+      bookId: bookId ?? null,
+      title: title ?? 'Quillvibe',
+    });
     return true;
+  } catch {
+    return false;
   }
-  return false;
 }

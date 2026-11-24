@@ -66,7 +66,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Quillvibe v__VERSION__'
-          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb) with official Quillvibe file extensions (.quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle) and legacy .bookvibe/.bv* support. Also available directly in the browser at https://quillvibe.jhonrey.com/.'
+          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb) with official Quillvibe QVBX file extensions (.quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle). Also available directly in the browser at https://quillvibe.jhonrey.com/.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

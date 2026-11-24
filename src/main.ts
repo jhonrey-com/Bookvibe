@@ -10,6 +10,7 @@ import {
   exportBookAsPlainText,
   exportCoverPngDownload,
   getStartupOpenedFile,
+  importLegacyBookFile,
   isDesktopWindowMaximized,
   isTauriRuntime,
   loadDefaultExportFormat,
@@ -17,24 +18,29 @@ import {
   loadPersistedProject,
   minimizeDesktopWindow,
   openBookInNewDesktopWindow,
-  openBookvibeFile,
+  openQuillvibeFile,
   persistLibrary,
   persistProject,
-  saveBookvibeExtensionFile,
   saveDefaultExportFormat,
+  saveQuillvibeExtensionFile,
   setDesktopFullscreen,
   setDesktopWindowTitle,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
 } from './core/bridge';
+import { QuillvibeCodecError } from './core/codec';
+import { getActiveSessionPermissions } from './core/collab';
 import { renderCoverToPngDataUrl, renderFullWrapToPngDataUrl } from './core/cover';
 import { buildPrintableBookHtml, EXPORT_FORMAT_OPTIONS } from './core/export';
 import {
   applyOpenedExtensionFile,
+  extractAnyImportableExtensionFromFilename,
   extractExtensionFromFilename,
-  parseExtensionFile,
+  isLegacyImportExtension,
+  parseQuillvibeInput,
   safeJsonParse,
   serializeExtensionFile,
+  serializeQuillvibeBinary,
 } from './core/extensions';
 import { loadCustomFonts } from './core/fonts';
 import {
@@ -75,9 +81,9 @@ import type {
   AppThemeId,
   BookLibraryState,
   BookProject,
-  BookvibeExtension,
-  BookvibeSettings,
   ExportFormatId,
+  QuillvibeExtension,
+  QuillvibeSettings,
   StudioViewId,
   ToolTier,
 } from './core/types';
@@ -121,7 +127,7 @@ const state: AppState = {
   settings: loadSettings(),
   activeView: 'editor',
   activeSceneId: getAllScenes(starter)[0]?.scene.id ?? '',
-  defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.bookvibe',
+  defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.quillvibe',
   editorSubMode: 'draft',
   splitTargetKind: 'character',
   splitTargetId: starter.bible.characters[0]?.id ?? '',
@@ -149,12 +155,12 @@ let sprintInterval: number | null = null;
 let toastTimer: number | null = null;
 let immersiveHud: ImmersiveHudHandle | null = null;
 let alarmController: AlarmController | null = null;
-let immersiveBtnEl: HTMLButtonElement;
+let immersiveBtnEl: HTMLButtonElement | null = null;
 
 let headerNavGlass: LiquidGlassControl<StudioViewId> | null = null;
 let headerNavHostEl: HTMLDivElement;
 let mobileBottomNavEl: HTMLElement;
-let tierSelectEl: HTMLSelectElement;
+let tierPillBtnEl: HTMLButtonElement | null = null;
 let savedDrawerStateBeforeTypeset: { binder: boolean; inspector: boolean } | null = null;
 let lastRenderedTier: ToolTier = state.settings.toolTier;
 let shellEl: HTMLDivElement;
@@ -330,6 +336,9 @@ function rebuildHeaderNavControl(): void {
       },
     });
     headerNavHostEl.appendChild(headerNavGlass.element);
+    requestAnimationFrame(() => {
+      headerNavGlass?.sampleBackdrop(true);
+    });
   }
 
   // Update mobile bottom navigation buttons
@@ -356,8 +365,9 @@ function renderActiveView(): void {
   if (lastRenderedTier !== state.settings.toolTier) {
     rebuildHeaderNavControl();
   }
-  if (tierSelectEl && tierSelectEl.value !== state.settings.toolTier) {
-    tierSelectEl.value = state.settings.toolTier;
+  if (tierPillBtnEl) {
+    const tierLabel = state.settings.toolTier.charAt(0).toUpperCase() + state.settings.toolTier.slice(1);
+    tierPillBtnEl.textContent = `Level: ${tierLabel}`;
   }
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
@@ -405,8 +415,101 @@ function renderActiveView(): void {
   updateWordCountersOnly();
 }
 
-function handleOpenedContent(rawJson: string, filename: string): void {
-  if (filename.toLowerCase().endsWith('.bvext')) {
+function promptQuillvibePasswordModal(
+  filename: string,
+  titleText = 'Unlock Protected Quillvibe File',
+  hintText = `Enter the password set when “${filename}” was exported.`,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const passIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'password',
+        placeholder: 'Enter file password…',
+        autocomplete: 'off',
+      },
+    });
+    const close = (val: string | null) => {
+      backdrop.remove();
+      resolve(val);
+    };
+    const submit = () => close(passIn.value);
+
+    const backdrop = el(
+      'div',
+      {
+        className: 'bv-modal-backdrop',
+        id: 'qv-password-modal',
+        on: {
+          click: (e) => {
+            if (e.target === backdrop) close(null);
+          },
+        },
+      },
+      el(
+        'div',
+        {
+          className: 'bv-modal',
+          style: { maxWidth: '420px' },
+          attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': titleText },
+        },
+        el(
+          'div',
+          { className: 'bv-panel-head' },
+          el('span', { className: 'bv-panel-title', text: titleText }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: 'Cancel',
+            attrs: { type: 'button' },
+            on: { click: () => close(null) },
+          }),
+        ),
+        el(
+          'div',
+          { className: 'bv-modal-body' },
+          el('p', { className: 'bv-label', text: hintText }),
+          passIn,
+          el(
+            'div',
+            { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' } },
+            el('button', {
+              className: 'bv-btn',
+              text: 'Cancel',
+              attrs: { type: 'button' },
+              on: { click: () => close(null) },
+            }),
+            el('button', {
+              className: 'bv-btn bv-btn-primary',
+              text: 'Confirm',
+              attrs: { type: 'button' },
+              on: { click: submit },
+            }),
+          ),
+        ),
+      ),
+    );
+    passIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close(null);
+      }
+    });
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => passIn.focus());
+  });
+}
+
+async function handleOpenedFile(
+  input: Uint8Array | string,
+  filename: string,
+  options: { base64Encoded?: boolean; allowLegacy?: boolean; password?: string } = {},
+): Promise<void> {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.qvext') || lower.endsWith('.bvext')) {
+    const rawJson = typeof input === 'string' ? input : new TextDecoder().decode(input);
     void showExtensionsModal(actions, {
       initialTab: 'external',
       pendingExternalRawJson: rawJson,
@@ -414,9 +517,21 @@ function handleOpenedContent(rawJson: string, filename: string): void {
     return;
   }
 
+  const detectedExt = extractAnyImportableExtensionFromFilename(filename);
+  if (detectedExt && isLegacyImportExtension(detectedExt) && !options.allowLegacy) {
+    actions.notify(
+      `Legacy ${detectedExt} files no longer open automatically. Use Settings -> Publishing & Archive -> Import Legacy Archive.`,
+    );
+    return;
+  }
+
   try {
-    const parsed = parseExtensionFile(rawJson, filename);
-    const applied = applyOpenedExtensionFile(parsed, state.project);
+    const decoded = await parseQuillvibeInput(input, {
+      filenameHint: filename,
+      base64Encoded: options.base64Encoded,
+      password: options.password,
+    });
+    const applied = applyOpenedExtensionFile(decoded.parsed, state.project);
     state.project = applied.project;
     state.library = upsertBookInLibrary(state.library, state.project);
     state.activeView = applied.focusView;
@@ -429,8 +544,26 @@ function handleOpenedContent(rawJson: string, filename: string): void {
     renderActiveView();
     actions.notify(applied.summaryMessage);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unable to open Bookvibe file.';
-    actions.notify(`Open failed: ${message}`);
+    if (
+      err instanceof QuillvibeCodecError &&
+      (err.code === 'PASSWORD_REQUIRED' || err.code === 'WRONG_PASSWORD_OR_DAMAGED')
+    ) {
+      const retryNote =
+        err.code === 'WRONG_PASSWORD_OR_DAMAGED'
+          ? `Wrong password or damaged file for “${filename}”. Try your password again:`
+          : `Enter the password set when “${filename}” was exported.`;
+      const pw = await promptQuillvibePasswordModal(
+        filename,
+        err.code === 'WRONG_PASSWORD_OR_DAMAGED' ? 'Incorrect Password or Damaged File' : 'Password Required',
+        retryNote,
+      );
+      if (pw !== null && pw.length > 0) {
+        await handleOpenedFile(input, filename, { ...options, password: pw });
+      }
+      return;
+    }
+    const message = err instanceof Error ? err.message : 'Unable to open Quillvibe file.';
+    actions.notify(`Open blocked: ${message}`);
   }
 }
 
@@ -482,7 +615,7 @@ const actions: AppActions = {
     }
   },
 
-  updateSettings(patch: Partial<BookvibeSettings>) {
+  updateSettings(patch: Partial<QuillvibeSettings>) {
     const prevTheme = state.settings.appTheme;
     const prevTier = state.settings.toolTier;
     const prevToolbar = state.settings.toolbarDisplayMode;
@@ -575,6 +708,7 @@ const actions: AppActions = {
   },
 
   async toggleImmersiveMode(force?: boolean) {
+    if (!isTauriRuntime()) return;
     const target = force !== undefined ? force : !state.immersiveMode;
     const actual = await setDesktopFullscreen(target);
     state.immersiveMode = actual;
@@ -584,6 +718,7 @@ const actions: AppActions = {
   },
 
   async openNewWindow(bookId?: string) {
+    if (!isTauriRuntime()) return;
     const targetBook =
       (bookId && state.library.books.find((b) => b.id === bookId)) || state.project;
     schedulePersist();
@@ -666,20 +801,58 @@ const actions: AppActions = {
     return actions.exportAsExtension(fmt);
   },
 
-  async openAnyBookvibeFile() {
-    const opened = await openBookvibeFile();
+  async openAnyQuillvibeFile() {
+    const opened = await openQuillvibeFile();
     if (!opened) return;
-    handleOpenedContent(opened.content, opened.filename);
+    await handleOpenedFile(
+      opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
+      opened.filename,
+      { base64Encoded: Boolean(opened.isBinary), allowLegacy: false },
+    );
   },
 
-  async exportAsExtension(ext: BookvibeExtension, options?: { sceneId?: string }) {
+  async importLegacyBookFile() {
+    const opened = await importLegacyBookFile();
+    if (!opened) return;
+    await handleOpenedFile(
+      opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
+      opened.filename,
+      { base64Encoded: Boolean(opened.isBinary), allowLegacy: true },
+    );
+  },
+
+  async exportAsExtension(
+    ext: QuillvibeExtension,
+    options?: { sceneId?: string; password?: string },
+  ) {
     try {
-      const payload = serializeExtensionFile(ext, state.project, {
+      const perms = getActiveSessionPermissions(state.project);
+      if (!perms.canExportFiles) {
+        actions.notify('Exporting is disabled for your collaborator role.');
+        return;
+      }
+      let password = options?.password;
+      if (password === undefined && state.project.publishing?.enterpriseRequirePasswordExport) {
+        const entered = await promptQuillvibePasswordModal(
+          `${state.project.title || 'book'}${ext}`,
+          'Set Export Password',
+          'Your enterprise policy requires a password when exporting protected Quillvibe files.',
+        );
+        if (entered === null || !entered.trim()) {
+          actions.notify('Export cancelled: password required by enterprise policy.');
+          return;
+        }
+        password = entered;
+      }
+      const binary = await serializeQuillvibeBinary(ext, state.project, {
         sceneId: options?.sceneId ?? state.activeSceneId,
+        password,
       });
-      const saved = await saveBookvibeExtensionFile(ext, payload, state.project.title);
+      const saved = await saveQuillvibeExtensionFile(ext, binary, state.project.title);
       if (saved) {
-        actions.notify(`Saved ${ext} file`);
+        actions.notify(
+          password ? `Saved password-locked ${ext} file` : `Saved protected ${ext} file`,
+        );
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Export failed.';
@@ -862,25 +1035,6 @@ function buildShell(root: HTMLElement): void {
 
   headerNavHostEl = el('div', { className: 'bv-topbar-center' });
 
-  tierSelectEl = el(
-    'select',
-    {
-      className: 'bv-select qv-tier-select',
-      tooltip: TOOLTIP_CATALOG.tierSwitch,
-      attrs: { 'aria-label': 'Workspace Tool Tier' },
-      on: {
-        change: () => {
-          const tier = tierSelectEl.value as ToolTier;
-          actions.updateSettings({ toolTier: tier });
-          actions.notify(`Switched workspace to ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier`);
-        },
-      },
-    },
-    el('option', { text: 'Basic', attrs: { value: 'basic', selected: state.settings.toolTier === 'basic' } }),
-    el('option', { text: 'Intermediate', attrs: { value: 'intermediate', selected: state.settings.toolTier === 'intermediate' } }),
-    el('option', { text: 'Advanced', attrs: { value: 'advanced', selected: state.settings.toolTier === 'advanced' } }),
-  );
-
   exportFormatSelectEl = el(
     'select',
     {
@@ -927,7 +1081,7 @@ function buildShell(root: HTMLElement): void {
           'button',
           {
             className: 'bv-win-btn',
-            tooltip: { title: 'Minimize Window', short: 'Minimize Bookvibe to the taskbar or dock.' },
+            tooltip: { title: 'Minimize Window', short: 'Minimize Quillvibe to the taskbar or dock.' },
             attrs: { type: 'button', 'aria-label': 'Minimize window' },
             on: { click: () => void minimizeDesktopWindow() },
           },
@@ -955,7 +1109,7 @@ function buildShell(root: HTMLElement): void {
           'button',
           {
             className: 'bv-win-btn bv-win-btn-close',
-            tooltip: { title: 'Close Window', short: 'Exit Bookvibe desktop window.' },
+            tooltip: { title: 'Close Window', short: 'Exit Quillvibe desktop window.' },
             attrs: { type: 'button', 'aria-label': 'Close window' },
             on: { click: () => void closeDesktopWindow() },
           },
@@ -1001,7 +1155,6 @@ function buildShell(root: HTMLElement): void {
     el(
       'div',
       { className: 'bv-topbar-actions' },
-      tierSelectEl,
       el(
         'button',
         {
@@ -1029,26 +1182,30 @@ function buildShell(root: HTMLElement): void {
         },
         icon('course', 15),
       ),
-      el(
-        'button',
-        {
-          className: 'bv-btn bv-btn-icon',
-          tooltip: TOOLTIP_CATALOG.newWindowBtn,
-          attrs: { type: 'button', 'aria-label': 'Open Book in New Window' },
-          on: { click: () => void actions.openNewWindow() },
-        },
-        icon('window-new', 15),
-      ),
-      (immersiveBtnEl = el(
-        'button',
-        {
-          className: `bv-btn bv-btn-icon${state.immersiveMode ? ' is-active' : ''}`,
-          tooltip: TOOLTIP_CATALOG.immersiveBtn,
-          attrs: { type: 'button', 'aria-label': 'Toggle Immersive Fullscreen (F11)' },
-          on: { click: () => void actions.toggleImmersiveMode() },
-        },
-        icon('fullscreen', 15),
-      )),
+      ...(isTauriRuntime()
+        ? [
+            el(
+              'button',
+              {
+                className: 'bv-btn bv-btn-icon',
+                tooltip: TOOLTIP_CATALOG.newWindowBtn,
+                attrs: { type: 'button', 'aria-label': 'Open Book in New Window' },
+                on: { click: () => void actions.openNewWindow() },
+              },
+              icon('window-new', 15),
+            ),
+            (immersiveBtnEl = el(
+              'button',
+              {
+                className: `bv-btn bv-btn-icon${state.immersiveMode ? ' is-active' : ''}`,
+                tooltip: TOOLTIP_CATALOG.immersiveBtn,
+                attrs: { type: 'button', 'aria-label': 'Toggle Immersive Fullscreen (F11)' },
+                on: { click: () => void actions.toggleImmersiveMode() },
+              },
+              icon('fullscreen', 15),
+            )),
+          ]
+        : []),
       el(
         'button',
         {
@@ -1068,7 +1225,7 @@ function buildShell(root: HTMLElement): void {
             : {
                 ...TOOLTIP_CATALOG.collaborate,
                 short:
-                  'Credits & .quillvibe merge work here; Same-Wi-Fi LAN & OS Bluetooth wizard require the desktop app.',
+                  'Credits, collaborator permissions, .quillvibe merge & Website Sync work here; Wi-Fi LAN & Bluetooth require the desktop app.',
               },
           attrs: { type: 'button', 'aria-label': 'Collaborate Offline' },
           on: { click: () => actions.openCollabModal() },
@@ -1081,7 +1238,7 @@ function buildShell(root: HTMLElement): void {
           className: 'bv-btn bv-btn-icon',
           tooltip: TOOLTIP_CATALOG.openFile,
           attrs: { type: 'button', 'aria-label': 'Open Quillvibe File' },
-          on: { click: () => void actions.openAnyBookvibeFile() },
+          on: { click: () => void actions.openAnyQuillvibeFile() },
         },
         icon('folder', 15),
       ),
@@ -1305,10 +1462,20 @@ function buildShell(root: HTMLElement): void {
   immersiveHud?.destroy();
   immersiveHud = mountImmersiveHud(actions, alarmController, { toggleSprint, resetSprint });
 
+  const initialTierLabel =
+    state.settings.toolTier.charAt(0).toUpperCase() + state.settings.toolTier.slice(1);
+  tierPillBtnEl = el('button', {
+    className: 'bv-mini-btn qv-tier-pill',
+    text: `Level: ${initialTierLabel}`,
+    tooltip: TOOLTIP_CATALOG.tierSwitch,
+    attrs: { type: 'button', 'aria-label': 'Workspace Level Settings' },
+    on: { click: () => actions.openSettingsModal('editor') },
+  });
+
   const statusbar = el(
     'footer',
     { className: 'bv-statusbar' },
-    el('div', { className: 'bv-status-left' }, wordStatsEl),
+    el('div', { className: 'bv-status-left' }, wordStatsEl, tierPillBtnEl),
     el(
       'div',
       { className: 'bv-status-right' },
@@ -1364,11 +1531,15 @@ function buildShell(root: HTMLElement): void {
           icon: 'course',
           onSelect: () => actions.openCoursePage(),
         },
-        {
-          label: 'Toggle Immersive Fullscreen (F11)',
-          icon: 'fullscreen',
-          onSelect: () => void actions.toggleImmersiveMode(),
-        },
+        ...(isTauriRuntime()
+          ? [
+              {
+                label: 'Toggle Immersive Fullscreen (F11)',
+                icon: 'fullscreen' as const,
+                onSelect: () => void actions.toggleImmersiveMode(),
+              },
+            ]
+          : []),
         {
           label: 'Open Workspace Settings',
           icon: 'settings',
@@ -1419,11 +1590,11 @@ function wireGlobalShortcutsAndDrop(): void {
       }
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
-      void actions.openAnyBookvibeFile();
+      void actions.openAnyQuillvibeFile();
     } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       actions.setState({ zenMode: !state.zenMode }, true);
-    } else if (e.key === 'F11') {
+    } else if (e.key === 'F11' && isTauriRuntime()) {
       e.preventDefault();
       void actions.toggleImmersiveMode();
     } else if (e.key === 'F1') {
@@ -1474,7 +1645,7 @@ function wireGlobalShortcutsAndDrop(): void {
     if (!dropOverlay) {
       dropOverlay = el('div', {
         className: 'bv-drop-overlay',
-        text: 'Drop .quillvibe, .qv*, .bookvibe, .bv*, .bvext, or .docx / .md file',
+        text: 'Drop .quillvibe, .qv*, .qvext, or .docx / .md file',
       });
       document.body.appendChild(dropOverlay);
     }
@@ -1501,8 +1672,15 @@ function wireGlobalShortcutsAndDrop(): void {
     const file = e.dataTransfer?.files?.[0];
     if (!file) return;
     const lower = file.name.toLowerCase();
-    const isExtPlugin = lower.endsWith('.bvext');
+    const isExtPlugin = lower.endsWith('.qvext') || lower.endsWith('.bvext');
     const isMigrationFile = /\.(docx|html?|rtf|md|markdown|txt)$/i.test(lower);
+    const anyDetected = extractAnyImportableExtensionFromFilename(file.name);
+    if (anyDetected && isLegacyImportExtension(anyDetected)) {
+      actions.notify(
+        `Legacy ${anyDetected} files cannot open directly. Use Settings -> Publishing & Archive -> Import Legacy Archive.`,
+      );
+      return;
+    }
     if (!isExtPlugin && !extractExtensionFromFilename(file.name)) {
       if (isMigrationFile) {
         try {
@@ -1518,12 +1696,17 @@ function wireGlobalShortcutsAndDrop(): void {
         return;
       }
       actions.notify(
-        'Unsupported file. Drop a .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, .bvext, .docx, .html, or .md file.',
+        'Unsupported file. Drop a .quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle, .qvext, .docx, .html, or .md file.',
       );
       return;
     }
-    const text = await file.text();
-    handleOpenedContent(text, file.name);
+    if (isExtPlugin) {
+      const text = await file.text();
+      await handleOpenedFile(text, file.name, { base64Encoded: false, allowLegacy: false });
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await handleOpenedFile(bytes, file.name, { base64Encoded: false, allowLegacy: false });
   });
 }
 
@@ -1553,8 +1736,8 @@ async function bootstrap(): Promise<void> {
     const saved = await loadPersistedProject();
     if (saved) {
       try {
-        const parsed = parseExtensionFile(saved, 'saved.quillvibe');
-        const applied = applyOpenedExtensionFile(parsed, state.project);
+        const decoded = await parseQuillvibeInput(saved, { filenameHint: 'saved.quillvibe' });
+        const applied = applyOpenedExtensionFile(decoded.parsed, state.project);
         state.project = applied.project;
         state.library = upsertBookInLibrary(state.library, state.project);
       } catch {
@@ -1575,12 +1758,11 @@ async function bootstrap(): Promise<void> {
 
   if (startupFile) {
     try {
-      const parsed = parseExtensionFile(startupFile.content, startupFile.filename);
-      const applied = applyOpenedExtensionFile(parsed, state.project);
-      state.project = applied.project;
-      state.library = upsertBookInLibrary(state.library, state.project);
-      state.activeView = applied.focusView;
-      if (applied.focusSceneId) state.activeSceneId = applied.focusSceneId;
+      await handleOpenedFile(
+        startupFile.isBinary && startupFile.contentBase64 ? startupFile.contentBase64 : startupFile.content,
+        startupFile.filename,
+        { base64Encoded: Boolean(startupFile.isBinary), allowLegacy: false },
+      );
       state.saveStatusLabel = 'Saved';
     } catch {
       // Continue cleanly if startup file was malformed

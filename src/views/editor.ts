@@ -1,4 +1,5 @@
 import type { AppActions, EditorSubMode } from '../core/app-context';
+import { getActiveSessionPermissions } from '../core/collab';
 import {
   countWords,
   findSceneContext,
@@ -147,14 +148,18 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const allowAdvanced = isTierAtLeast(tier, 'advanced');
   const isProofMode = allowIntermediate && state.editorSubMode === 'proofread';
 
+  const sessionPerms = getActiveSessionPermissions(state.project);
+
   const proseTextarea = el('textarea', {
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
     attrs: {
       placeholder: 'Begin writing this scene…',
       spellcheck: 'true',
       'aria-label': 'Scene prose editor',
+      ...(sessionPerms.canEditProse ? {} : { readonly: '' }),
     },
   });
+  proseTextarea.readOnly = !sessionPerms.canEditProse;
   proseTextarea.value = scene.content;
 
   const syncTextareaHeight = () => {
@@ -586,11 +591,28 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     return;
   }
 
+  const readOnlyBanner = !sessionPerms.canEditProse
+    ? el(
+        'div',
+        { className: 'qv-readonly-banner', attrs: { role: 'status' } },
+        el('span', {
+          text: 'Prose editing is locked for your current collaborator role. You can read or add proofread marks and notes.',
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Switch to Proofread Mode',
+          attrs: { type: 'button' },
+          on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
+        }),
+      )
+    : null;
+
   const paperSheet = el(
     'div',
     { className: 'bv-paper-sheet' },
     paperFloatNav,
     sceneHeading,
+    ...(readOnlyBanner ? [readOnlyBanner] : []),
     proseTextarea,
   );
 

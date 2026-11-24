@@ -5,15 +5,17 @@ import { countWords, findSceneContext, newId } from './manuscript';
 import { addProofreadMark } from './proofread';
 import type {
   BookProject,
-  BookvibePluginManifest,
   ExtensionAuditEntry,
   ExtensionPermission,
   InstalledExtension,
   ProofreadMarkKind,
+  QuillvibePluginManifest,
 } from './types';
 
-const EXTENSIONS_STORAGE_KEY = 'bookvibe.extensions.v1';
-const AUDIT_STORAGE_KEY = 'bookvibe.extensionAudit.v1';
+const EXTENSIONS_STORAGE_KEY = 'quillvibe.extensions.v2';
+const LEGACY_EXTENSIONS_STORAGE_KEY = 'bookvibe.extensions.v1';
+const AUDIT_STORAGE_KEY = 'quillvibe.extensionAudit.v2';
+const LEGACY_AUDIT_STORAGE_KEY = 'bookvibe.extensionAudit.v1';
 let memoryAuditLog: ExtensionAuditEntry[] = [];
 let memoryExternalExtensions: InstalledExtension[] = [];
 
@@ -73,16 +75,16 @@ export const SANDBOX_BLOCKED_CAPABILITIES: readonly string[] = [
   'No Filesystem Access: extensions cannot browse folders, read disk files, or modify OS registry settings.',
   'No Author Keys or Secrets: cryptographic Author Keys (privateKeyJwk) are stripped before any extension sees book data.',
   'No Cross-Book Access: other books in your Library stay isolated and invisible.',
-  'No Script Execution: Bookvibe rejects executable JavaScript; .bvext packages contain declarative JSON rules and presets only.',
+  'No Script Execution: Quillvibe rejects executable JavaScript; .qvext packages contain declarative JSON rules and presets only.',
 ];
 
-export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
+export const INTEGRATED_EXTENSIONS: readonly QuillvibePluginManifest[] = [
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'core.editorial-proofing',
     name: 'Editorial Proofing Toolkit',
-    version: '1.2.0',
-    author: 'Bookvibe Integrated',
+    version: '2.0.0',
+    author: 'Quillvibe Integrated',
     description: 'Scans the active scene offline for repeated words, spacing flaws, and weak filter verbs.',
     kind: 'integrated',
     permissions: ['read:active-scene', 'propose:proofread-marks'],
@@ -126,11 +128,11 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
     ],
   },
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'core.typo-cleanup',
     name: 'Typographic Punctuation Cleanup',
-    version: '1.2.0',
-    author: 'Bookvibe Integrated',
+    version: '2.0.0',
+    author: 'Quillvibe Integrated',
     description: 'Converts straight quotes, double hyphens, ellipses, and stray spacing with snapshot backup.',
     kind: 'integrated',
     permissions: ['read:active-scene', 'apply:text-transform'],
@@ -158,11 +160,11 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
     ],
   },
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'core.readability-ledger',
     name: 'Readability & Pacing Ledger',
-    version: '1.2.0',
-    author: 'Bookvibe Integrated',
+    version: '2.0.0',
+    author: 'Quillvibe Integrated',
     description: 'Calculates sentence length, dialogue ratio, paragraph spread, and Flesch-Kincaid grade locally.',
     kind: 'integrated',
     permissions: ['read:active-scene'],
@@ -171,11 +173,11 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
     metricsReport: 'readability',
   },
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'core.print-presets',
     name: 'Print Trim Preset Pack',
-    version: '1.2.0',
-    author: 'Bookvibe Integrated',
+    version: '2.0.0',
+    author: 'Quillvibe Integrated',
     description: 'Applies trade print geometry presets (Pocket 5×8, Trade 6×9, A5 Classic) in one click.',
     kind: 'integrated',
     permissions: ['add:export-preset'],
@@ -203,15 +205,15 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
     ],
   },
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'core.editorial-fonts',
     name: 'Editorial Typeface Pack',
-    version: '1.3.0',
-    author: 'Bookvibe Integrated',
+    version: '2.0.0',
+    author: 'Quillvibe Integrated',
     description: 'Registers classic editorial serif, monospace typewriter, and archival display font stacks offline.',
     kind: 'integrated',
     permissions: ['add:font-pack'],
-    dataUsageSummary: 'Adds curated offline CSS font stacks to Bookvibe Settings and Cover Studio. Reads zero manuscript text.',
+    dataUsageSummary: 'Adds curated offline CSS font stacks to Quillvibe Settings and Cover Studio. Reads zero manuscript text.',
     fonts: [
       {
         id: 'f-caslon',
@@ -237,7 +239,7 @@ export const INTEGRATED_EXTENSIONS: readonly BookvibePluginManifest[] = [
 
 export const SAMPLE_EXTERNAL_EXTENSION_JSON = JSON.stringify(
   {
-    magic: 'BOOKVIBE_EXT_V1',
+    magic: 'QUILLVIBE_EXT_V2',
     id: 'ext.uk-house-style',
     name: 'British House Style Proofing',
     version: '1.0.0',
@@ -285,7 +287,7 @@ export const SAMPLE_EXTERNAL_EXTENSION_JSON = JSON.stringify(
         note: 'British house spelling prefers "centre".',
       },
     ],
-  } satisfies BookvibePluginManifest,
+  } satisfies QuillvibePluginManifest,
   null,
   2,
 );
@@ -358,7 +360,7 @@ function assertCleanString(val: unknown, fieldName: string, maxLen = 240): strin
   return val.trim();
 }
 
-export function validateExternalExtensionManifest(rawJson: string): BookvibePluginManifest {
+export function validateExternalExtensionManifest(rawJson: string): QuillvibePluginManifest {
   let parsed: unknown;
   try {
     parsed = safeJsonParse(rawJson);
@@ -370,8 +372,8 @@ export function validateExternalExtensionManifest(rawJson: string): BookvibePlug
   }
 
   const obj = parsed as Record<string, unknown>;
-  if (obj.magic !== 'BOOKVIBE_EXT_V1') {
-    throw new Error('Missing required "magic": "BOOKVIBE_EXT_V1" header.');
+  if (obj.magic !== 'QUILLVIBE_EXT_V2' && obj.magic !== 'BOOKVIBE_EXT_V1') {
+    throw new Error('Missing required "magic": "QUILLVIBE_EXT_V2" header.');
   }
 
   const id = assertCleanString(obj.id, 'id', 64);
@@ -403,8 +405,8 @@ export function validateExternalExtensionManifest(rawJson: string): BookvibePlug
     permSet.add(rawPerm as ExtensionPermission);
   }
 
-  const manifest: BookvibePluginManifest = {
-    magic: 'BOOKVIBE_EXT_V1',
+  const manifest: QuillvibePluginManifest = {
+    magic: obj.magic,
     id,
     name,
     version,
@@ -471,7 +473,7 @@ export function validateExternalExtensionManifest(rawJson: string): BookvibePlug
         id: assertCleanString(to.id, `transforms[${idx}].id`, 48),
         label: assertCleanString(to.label, `transforms[${idx}].label`, 80),
         description: assertCleanString(to.description, `transforms[${idx}].description`, 200),
-        kind: kind as NonNullable<BookvibePluginManifest['transforms']>[number]['kind'],
+        kind: kind as NonNullable<QuillvibePluginManifest['transforms']>[number]['kind'],
       };
     });
   }
@@ -492,7 +494,7 @@ export function validateExternalExtensionManifest(rawJson: string): BookvibePlug
             : undefined,
         typography:
           typeof po.typography === 'object' && po.typography !== null
-            ? (po.typography as BookvibePluginManifest['presets'] extends Array<infer U>
+            ? (po.typography as QuillvibePluginManifest['presets'] extends Array<infer U>
                 ? U extends { typography?: infer T }
                   ? T
                   : never
@@ -539,7 +541,9 @@ export function loadInstalledExtensions(): InstalledExtension[] {
   if (typeof window !== 'undefined' && window.localStorage) {
     savedExternal = [];
     try {
-      const raw = window.localStorage.getItem(EXTENSIONS_STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(EXTENSIONS_STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_EXTENSIONS_STORAGE_KEY);
       if (raw) {
         const parsed = safeJsonParse<InstalledExtension[]>(raw);
         if (Array.isArray(parsed)) {
@@ -592,7 +596,9 @@ export function loadExtensionAuditLog(): ExtensionAuditEntry[] {
     return [...memoryAuditLog];
   }
   try {
-    const raw = window.localStorage.getItem(AUDIT_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(AUDIT_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_AUDIT_STORAGE_KEY);
     if (!raw) return [];
     const parsed = safeJsonParse<ExtensionAuditEntry[]>(raw);
     return Array.isArray(parsed) ? parsed : [];

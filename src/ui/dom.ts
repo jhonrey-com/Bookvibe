@@ -170,7 +170,7 @@ export function clearNode(node: Element): void {
 /**
  * Transparent sculpted Quillvibe layered open-folio + page-wing emblem matching public/logo.svg.
  */
-export function bookvibeLogo(size = 24): SVGSVGElement {
+export function quillvibeLogo(size = 24): SVGSVGElement {
   const svg = svgEl('svg', {
     width: size,
     height: size,
@@ -204,8 +204,6 @@ export function bookvibeLogo(size = 24): SVGSVGElement {
   );
   return svg;
 }
-
-export const quillvibeLogo = bookvibeLogo;
 
 const ICON_PATHS: Record<IconName, string[]> = {
   book: [

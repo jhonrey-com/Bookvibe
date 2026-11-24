@@ -11,13 +11,13 @@ pub struct ExtensionSpec {
     pub uti: &'static str,
 }
 
-pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
+pub const QUILLVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
     ExtensionSpec {
         dot_ext: ".quillvibe",
         bare_ext: "quillvibe",
         prog_id: "Quillvibe.Project.2",
         name: "Quillvibe Master Project",
-        mime_type: "application/vnd.quillvibe.project+json",
+        mime_type: "application/vnd.quillvibe.project",
         uti: "app.quillvibe.project",
     },
     ExtensionSpec {
@@ -25,7 +25,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         bare_ext: "qvibe",
         prog_id: "Quillvibe.CompactProject.2",
         name: "Quillvibe Compact Project",
-        mime_type: "application/vnd.quillvibe.project+json",
+        mime_type: "application/vnd.quillvibe.project",
         uti: "app.quillvibe.compact-project",
     },
     ExtensionSpec {
@@ -33,7 +33,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         bare_ext: "qvbook",
         prog_id: "Quillvibe.Manuscript.2",
         name: "Quillvibe Manuscript Package",
-        mime_type: "application/vnd.quillvibe.manuscript+json",
+        mime_type: "application/vnd.quillvibe.manuscript",
         uti: "app.quillvibe.manuscript",
     },
     ExtensionSpec {
@@ -41,7 +41,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         bare_ext: "qvbible",
         prog_id: "Quillvibe.Bible.2",
         name: "Quillvibe Story Bible Database",
-        mime_type: "application/vnd.quillvibe.bible+json",
+        mime_type: "application/vnd.quillvibe.bible",
         uti: "app.quillvibe.bible",
     },
     ExtensionSpec {
@@ -49,7 +49,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         bare_ext: "qvscene",
         prog_id: "Quillvibe.Scene.2",
         name: "Quillvibe Standalone Scene Draft",
-        mime_type: "application/vnd.quillvibe.scene+json",
+        mime_type: "application/vnd.quillvibe.scene",
         uti: "app.quillvibe.scene",
     },
     ExtensionSpec {
@@ -57,57 +57,13 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         bare_ext: "qvstyle",
         prog_id: "Quillvibe.Style.2",
         name: "Quillvibe Typeset Preset",
-        mime_type: "application/vnd.quillvibe.style+json",
+        mime_type: "application/vnd.quillvibe.style",
         uti: "app.quillvibe.style",
     },
-    ExtensionSpec {
-        dot_ext: ".bookvibe",
-        bare_ext: "bookvibe",
-        prog_id: "Bookvibe.Project.1",
-        name: "Bookvibe Master Project (Legacy)",
-        mime_type: "application/vnd.bookvibe.project+json",
-        uti: "org.bookvibe.project",
-    },
-    ExtensionSpec {
-        dot_ext: ".bvibe",
-        bare_ext: "bvibe",
-        prog_id: "Bookvibe.CompactProject.1",
-        name: "Bookvibe Compact Project (Legacy)",
-        mime_type: "application/vnd.bookvibe.project+json",
-        uti: "org.bookvibe.compact-project",
-    },
-    ExtensionSpec {
-        dot_ext: ".bvbook",
-        bare_ext: "bvbook",
-        prog_id: "Bookvibe.Manuscript.1",
-        name: "Bookvibe Manuscript Package (Legacy)",
-        mime_type: "application/vnd.bookvibe.manuscript+json",
-        uti: "org.bookvibe.manuscript",
-    },
-    ExtensionSpec {
-        dot_ext: ".bvbible",
-        bare_ext: "bvbible",
-        prog_id: "Bookvibe.Bible.1",
-        name: "Bookvibe Story Bible Database (Legacy)",
-        mime_type: "application/vnd.bookvibe.bible+json",
-        uti: "org.bookvibe.bible",
-    },
-    ExtensionSpec {
-        dot_ext: ".bvscene",
-        bare_ext: "bvscene",
-        prog_id: "Bookvibe.Scene.1",
-        name: "Bookvibe Standalone Scene Draft (Legacy)",
-        mime_type: "application/vnd.bookvibe.scene+json",
-        uti: "org.bookvibe.scene",
-    },
-    ExtensionSpec {
-        dot_ext: ".bvstyle",
-        bare_ext: "bvstyle",
-        prog_id: "Bookvibe.Style.1",
-        name: "Bookvibe Typeset Preset (Legacy)",
-        mime_type: "application/vnd.bookvibe.style+json",
-        uti: "org.bookvibe.style",
-    },
+];
+
+pub const LEGACY_IMPORT_EXTENSIONS: &[&str] = &[
+    "bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,16 +90,26 @@ pub struct AssociationReport {
 
 pub fn find_spec_by_extension(ext: &str) -> Option<&'static ExtensionSpec> {
     let normalized = ext.trim().trim_start_matches('.').to_ascii_lowercase();
-    BOOKVIBE_EXTENSION_SPECS
+    QUILLVIBE_EXTENSION_SPECS
         .iter()
         .find(|spec| spec.bare_ext == normalized)
 }
 
-pub fn is_supported_bookvibe_path(path: &Path) -> bool {
+pub fn is_supported_quillvibe_path(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())
         .and_then(find_spec_by_extension)
         .is_some()
+}
+
+pub fn is_importable_legacy_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .map(|s| {
+            let low = s.to_ascii_lowercase();
+            LEGACY_IMPORT_EXTENSIONS.contains(&low.as_str())
+        })
+        .unwrap_or(false)
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -151,10 +117,10 @@ pub fn generate_freedesktop_mime_xml() -> String {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<mime-info xmlns=\"http://www.freedesktop.org/standards/shared-mime-info\">\n",
     );
-    for spec in BOOKVIBE_EXTENSION_SPECS {
+    for spec in QUILLVIBE_EXTENSION_SPECS {
         xml.push_str(&format!(
-            "  <mime-type type=\"{}\">\n    <comment>{}</comment>\n    <sub-class-of type=\"application/json\"/>\n    <magic priority=\"80\">\n      <match type=\"string\" offset=\"0:256\" value='\"magic\": \"BOOKVIBE_V1\"'>\n        <match type=\"string\" offset=\"0:512\" value='\"extension\": \"{}\"'/>\n      </match>\n    </magic>\n    <glob pattern=\"*{}\"/>\n  </mime-type>\n",
-            spec.mime_type, spec.name, spec.dot_ext, spec.dot_ext
+            "  <mime-type type=\"{}\">\n    <comment>{}</comment>\n    <magic priority=\"80\">\n      <match type=\"string\" offset=\"0\" value=\"QVBX\"/>\n    </magic>\n    <glob pattern=\"*{}\"/>\n  </mime-type>\n",
+            spec.mime_type, spec.name, spec.dot_ext
         ));
     }
     xml.push_str("</mime-info>\n");
@@ -163,9 +129,12 @@ pub fn generate_freedesktop_mime_xml() -> String {
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn generate_linux_desktop_entry(exe_path: &str) -> String {
-    let mime_list: Vec<&str> = BOOKVIBE_EXTENSION_SPECS.iter().map(|s| s.mime_type).collect();
+    let mime_list: Vec<&str> = QUILLVIBE_EXTENSION_SPECS
+        .iter()
+        .map(|s| s.mime_type)
+        .collect();
     format!(
-        "[Desktop Entry]\nType=Application\nName=Bookvibe\nComment=Book writing, worldbuilding, and typesetting studio\nExec=\"{}\" %u\nTerminal=false\nCategories=Office;Publishing;TextEditor;\nMimeType={};\n",
+        "[Desktop Entry]\nType=Application\nName=Quillvibe\nComment=Book writing, worldbuilding, cover studio, and typesetting app\nExec=\"{}\" %u\nTerminal=false\nCategories=Office;Publishing;TextEditor;\nMimeType={};\n",
         exe_path.replace('"', "\\\""),
         mime_list.join(";")
     )
@@ -201,7 +170,7 @@ mod platform {
         let command_line = format!("\"{}\" \"%1\"", exe_path);
         let icon_value = format!("\"{}\",0", exe_path);
 
-        for spec in BOOKVIBE_EXTENSION_SPECS {
+        for spec in QUILLVIBE_EXTENSION_SPECS {
             let ext_key = classes
                 .create_subkey(spec.dot_ext)
                 .map_err(|e| format!("Failed registering extension {}: {e}", spec.dot_ext))?
@@ -257,10 +226,10 @@ mod platform {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let classes_opt = hkcu.open_subkey_with_flags("Software\\Classes", KEY_READ);
 
-        let mut items = Vec::with_capacity(BOOKVIBE_EXTENSION_SPECS.len());
+        let mut items = Vec::with_capacity(QUILLVIBE_EXTENSION_SPECS.len());
         let mut all_ok = true;
 
-        for spec in BOOKVIBE_EXTENSION_SPECS {
+        for spec in QUILLVIBE_EXTENSION_SPECS {
             let mut registered = false;
             let mut detail = String::from("Not yet registered in HKCU\\Software\\Classes");
 
@@ -332,8 +301,8 @@ mod platform {
         fs::create_dir_all(&mime_dir).map_err(|e| format!("Failed creating mime dir: {e}"))?;
         fs::create_dir_all(&apps_dir).map_err(|e| format!("Failed creating applications dir: {e}"))?;
 
-        let mime_xml_path = mime_dir.join("bookvibe.xml");
-        let desktop_path = apps_dir.join("bookvibe.desktop");
+        let mime_xml_path = mime_dir.join("quillvibe.xml");
+        let desktop_path = apps_dir.join("quillvibe.desktop");
 
         fs::write(&mime_xml_path, generate_freedesktop_mime_xml())
             .map_err(|e| format!("Failed writing {}: {e}", mime_xml_path.display()))?;
@@ -349,11 +318,11 @@ mod platform {
 
     pub fn status(exe_path: &str) -> AssociationReport {
         let data_dir = xdg_data_home();
-        let mime_exists = data_dir.join("mime").join("packages").join("bookvibe.xml").exists();
-        let desktop_exists = data_dir.join("applications").join("bookvibe.desktop").exists();
+        let mime_exists = data_dir.join("mime").join("packages").join("quillvibe.xml").exists();
+        let desktop_exists = data_dir.join("applications").join("quillvibe.desktop").exists();
         let ok = mime_exists && desktop_exists;
 
-        let items = BOOKVIBE_EXTENSION_SPECS
+        let items = QUILLVIBE_EXTENSION_SPECS
             .iter()
             .map(|spec| ExtensionAssocStatus {
                 extension: spec.dot_ext.to_string(),
@@ -363,7 +332,7 @@ mod platform {
                 prog_id: spec.prog_id.to_string(),
                 registered: ok,
                 detail: if ok {
-                    "Registered in ~/.local/share/mime/packages/bookvibe.xml".to_string()
+                    "Registered in ~/.local/share/mime/packages/quillvibe.xml".to_string()
                 } else {
                     "Pending XDG MIME registration".to_string()
                 },
@@ -390,7 +359,7 @@ mod platform {
 
     pub fn status(exe_path: &str) -> AssociationReport {
         let bundled = exe_path.contains(".app/Contents/MacOS");
-        let items = BOOKVIBE_EXTENSION_SPECS
+        let items = QUILLVIBE_EXTENSION_SPECS
             .iter()
             .map(|spec| ExtensionAssocStatus {
                 extension: spec.dot_ext.to_string(),
@@ -402,7 +371,7 @@ mod platform {
                 detail: if bundled {
                     format!("Declared via bundle Info.plist UTI {}", spec.uti)
                 } else {
-                    "Bundle as Bookvibe.app to activate LaunchServices UTIs".to_string()
+                    "Bundle as Quillvibe.app to activate LaunchServices UTIs".to_string()
                 },
             })
             .collect();
@@ -420,7 +389,7 @@ mod platform {
 pub fn current_exe_string() -> String {
     std::env::current_exe()
         .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| String::from("bookvibe"))
+        .unwrap_or_else(|_| String::from("quillvibe"))
 }
 
 pub fn register_os_file_associations() -> Result<AssociationReport, String> {
@@ -438,30 +407,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_all_six_official_extensions() {
-        assert_eq!(BOOKVIBE_EXTENSION_SPECS.len(), 12);
+    fn validates_only_six_official_quillvibe_extensions() {
+        assert_eq!(QUILLVIBE_EXTENSION_SPECS.len(), 6);
         for ext in [
             "quillvibe", ".qvibe", "QVBOOK", ".qvbible", "qvscene", ".qvstyle",
-            "bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle",
         ] {
             assert!(find_spec_by_extension(ext).is_some(), "missing spec for {ext}");
         }
+        // Legacy extensions must NOT register as supported double-click paths
+        for legacy in ["bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle"] {
+            assert!(find_spec_by_extension(legacy).is_none(), "legacy spec should not auto-open: {legacy}");
+        }
         assert!(find_spec_by_extension(".txt").is_none());
-        assert!(is_supported_bookvibe_path(Path::new("draft.qvscene")));
-        assert!(is_supported_bookvibe_path(Path::new("draft.bvscene")));
-        assert!(!is_supported_bookvibe_path(Path::new("notes.md")));
+        assert!(is_supported_quillvibe_path(Path::new("draft.qvscene")));
+        assert!(!is_supported_quillvibe_path(Path::new("draft.bvscene")));
+        assert!(is_importable_legacy_path(Path::new("draft.bvscene")));
+        assert!(!is_supported_quillvibe_path(Path::new("notes.md")));
     }
 
     #[test]
     fn generates_valid_freedesktop_mime_xml_and_desktop_entry() {
         let xml = generate_freedesktop_mime_xml();
-        assert!(xml.contains("application/vnd.quillvibe.project+json"));
-        assert!(xml.contains("application/vnd.bookvibe.project+json"));
-        assert!(xml.contains("BOOKVIBE_V1"));
+        assert!(xml.contains("application/vnd.quillvibe.project"));
+        assert!(!xml.contains("bookvibe"));
+        assert!(xml.contains("QVBX"));
         assert!(xml.contains("*.qvstyle"));
 
         let desktop = generate_linux_desktop_entry("/opt/quillvibe/quillvibe");
+        assert!(desktop.contains("Name=Quillvibe"));
         assert!(desktop.contains("Exec=\"/opt/quillvibe/quillvibe\" %u"));
-        assert!(desktop.contains("application/vnd.quillvibe.scene+json"));
+        assert!(desktop.contains("application/vnd.quillvibe.scene"));
     }
 }

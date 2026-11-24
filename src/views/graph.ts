@@ -504,9 +504,9 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       width: Math.round(pillW),
       height: 16,
       rx: 4,
-      fill: '#0b0c10',
-      'fill-opacity': showEdgeLabels ? '0.92' : '0',
-      stroke: isEdgeSelected ? '#e8e2d5' : '#1f232e',
+      fill: 'var(--bg-bar)',
+      'fill-opacity': showEdgeLabels ? '0.94' : '0',
+      stroke: isEdgeSelected ? 'var(--accent-ivory)' : 'var(--border-hairline)',
       'stroke-width': '1',
       visibility: showEdgeLabels ? 'visible' : 'hidden',
     });
@@ -514,7 +514,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     const labelEl = svgEl('text', {
       x: Math.round(geom.labelX),
       y: Math.round(geom.labelY),
-      fill: isEdgeSelected || isIncidentToSelected ? '#f2efe8' : '#a2a9b5',
+      fill: isEdgeSelected || isIncidentToSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
       'font-size': '10.5',
       'text-anchor': 'middle',
       'font-family': 'Inter, sans-serif',

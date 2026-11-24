@@ -1,19 +1,86 @@
 import { getPublisherProvenance } from './provenance';
 import type { AuthorIdentity, BookProject } from './types';
 
+const PERMANENT_KEYS_STORAGE_KEY = 'quillvibe.permanentAuthorKeys.v1';
+
+export interface PermanentAuthorKeyRecord {
+  penName: string;
+  normalizedPenName: string;
+  authorKeyId: string;
+  publicKeyJwk: string;
+  privateKeyJwk: string;
+  keyFingerprint: string;
+  createdAt: string;
+  lockedForever: true;
+}
+
+let memoryPermanentKeys = new Map<string, PermanentAuthorKeyRecord>();
+
+function normalizePenKey(penName: string): string {
+  return penName.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function readPermanentKeyStore(): Map<string, PermanentAuthorKeyRecord> {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(PERMANENT_KEYS_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as PermanentAuthorKeyRecord[];
+        if (Array.isArray(arr)) {
+          const map = new Map<string, PermanentAuthorKeyRecord>();
+          for (const rec of arr) {
+            if (rec?.normalizedPenName && rec?.authorKeyId) {
+              map.set(rec.normalizedPenName, { ...rec, lockedForever: true });
+            }
+          }
+          memoryPermanentKeys = map;
+          return map;
+        }
+      }
+    } catch {
+      // Keep memory map on storage error
+    }
+  }
+  return new Map(memoryPermanentKeys);
+}
+
+function writePermanentKeyStore(map: Map<string, PermanentAuthorKeyRecord>): void {
+  memoryPermanentKeys = new Map(map);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(
+        PERMANENT_KEYS_STORAGE_KEY,
+        JSON.stringify(Array.from(map.values())),
+      );
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+}
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
-async function computeSha256Hex(text: string): Promise<string> {
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.replace(/[^0-9a-f]/gi, '');
+  const out = new Uint8Array(Math.floor(clean.length / 2));
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+export async function computeSha256Hex(text: string): Promise<string> {
   const enc = new TextEncoder().encode(text);
   if (typeof crypto !== 'undefined' && crypto.subtle) {
-    const hashBuf = await crypto.subtle.digest('SHA-256', enc);
+    const copy = new Uint8Array(enc.byteLength);
+    copy.set(enc);
+    const hashBuf = await crypto.subtle.digest('SHA-256', copy.buffer);
     return bytesToHex(new Uint8Array(hashBuf));
   }
-  // Deterministic fallback hash when Web Crypto subtle is unavailable
   let h1 = 0x811c9dc5;
   let h2 = 0x9e3779b9;
   for (let i = 0; i < enc.length; i++) {
@@ -32,6 +99,7 @@ export function createDefaultAuthorIdentity(author = 'Pen Name'): AuthorIdentity
     publicKeyJwk: '',
     lastSignedAt: '',
     manuscriptDigest: '',
+    keyLockedForever: false,
   };
 }
 
@@ -42,14 +110,41 @@ export function ensureAuthorIdentity(project: BookProject): AuthorIdentity {
     ...base,
     ...project.authorIdentity,
     penName: project.authorIdentity.penName || project.author || base.penName,
+    keyLockedForever: Boolean(
+      project.authorIdentity.keyLockedForever || project.authorIdentity.authorKeyId,
+    ),
   };
 }
 
-export async function generateAuthorKeyPair(): Promise<{
-  authorKeyId: string;
-  publicKeyJwk: string;
-  privateKeyJwk: string;
-}> {
+export function getPermanentAuthorKeyForPenName(penName: string): PermanentAuthorKeyRecord | null {
+  const norm = normalizePenKey(penName);
+  if (!norm) return null;
+  const store = readPermanentKeyStore();
+  return store.get(norm) ?? null;
+}
+
+export function listPermanentAuthorKeys(): PermanentAuthorKeyRecord[] {
+  return Array.from(readPermanentKeyStore().values());
+}
+
+/**
+ * Creates or returns the immutable forever Author Key bound to this pen name.
+ * Once generated for a pen name, it never changes or rotates.
+ */
+export async function getOrCreatePermanentAuthorKey(penName: string): Promise<PermanentAuthorKeyRecord> {
+  const cleanPen = penName.trim() || 'Pen Name';
+  const norm = normalizePenKey(cleanPen);
+  const store = readPermanentKeyStore();
+  const existing = store.get(norm);
+  if (existing) {
+    return existing;
+  }
+
+  let authorKeyId = '';
+  let publicKeyJwk = '';
+  let privateKeyJwk = '';
+  let keyFingerprint = '';
+
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     try {
       const pair = await crypto.subtle.generateKey(
@@ -59,24 +154,57 @@ export async function generateAuthorKeyPair(): Promise<{
       );
       const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
       const priv = await crypto.subtle.exportKey('jwk', pair.privateKey);
-      const pubJson = JSON.stringify(pub);
-      const fp = await computeSha256Hex(pubJson);
-      return {
-        authorKeyId: `BVK-${fp.slice(0, 12).toUpperCase()}`,
-        publicKeyJwk: pubJson,
-        privateKeyJwk: JSON.stringify(priv),
-      };
+      publicKeyJwk = JSON.stringify(pub);
+      privateKeyJwk = JSON.stringify(priv);
+      keyFingerprint = await computeSha256Hex(publicKeyJwk);
+      authorKeyId = `QVK-${keyFingerprint.slice(0, 12).toUpperCase()}`;
     } catch {
       // Fallback below
     }
   }
 
-  const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const fp = await computeSha256Hex(seed);
+  if (!authorKeyId) {
+    const rand =
+      typeof crypto !== 'undefined' && crypto.getRandomValues
+        ? bytesToHex(crypto.getRandomValues(new Uint8Array(16)))
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    keyFingerprint = await computeSha256Hex(`${norm}:${rand}`);
+    authorKeyId = `QVK-${keyFingerprint.slice(0, 12).toUpperCase()}`;
+    publicKeyJwk = JSON.stringify({ kty: 'QV-LOCAL', fp: keyFingerprint.slice(0, 24) });
+    privateKeyJwk = JSON.stringify({ kty: 'QV-LOCAL-PRIV', secret: keyFingerprint });
+  }
+
+  const record: PermanentAuthorKeyRecord = {
+    penName: cleanPen,
+    normalizedPenName: norm,
+    authorKeyId,
+    publicKeyJwk,
+    privateKeyJwk,
+    keyFingerprint,
+    createdAt: new Date().toISOString(),
+    lockedForever: true,
+  };
+  store.set(norm, record);
+  writePermanentKeyStore(store);
+  return record;
+}
+
+export async function generateAuthorKeyPair(penName = 'Pen Name'): Promise<{
+  authorKeyId: string;
+  publicKeyJwk: string;
+  privateKeyJwk: string;
+  keyLockedForever: true;
+  keyCreatedAt: string;
+  keyFingerprint: string;
+}> {
+  const rec = await getOrCreatePermanentAuthorKey(penName);
   return {
-    authorKeyId: `BVK-${fp.slice(0, 12).toUpperCase()}`,
-    publicKeyJwk: JSON.stringify({ kty: 'BV-LOCAL', fp: fp.slice(0, 24) }),
-    privateKeyJwk: JSON.stringify({ kty: 'BV-LOCAL-PRIV', secret: fp }),
+    authorKeyId: rec.authorKeyId,
+    publicKeyJwk: rec.publicKeyJwk,
+    privateKeyJwk: rec.privateKeyJwk,
+    keyLockedForever: true,
+    keyCreatedAt: rec.createdAt,
+    keyFingerprint: rec.keyFingerprint,
   };
 }
 
@@ -87,6 +215,7 @@ export function buildCanonicalManuscriptText(project: BookProject): string {
     project.subtitle,
     identity.penName,
     identity.authorKeyId,
+    JSON.stringify(project.collaborators ?? []),
   ];
   for (const part of project.parts) {
     chunks.push(part.title);
@@ -103,12 +232,32 @@ export function buildCanonicalManuscriptText(project: BookProject): string {
 export async function signManuscript(project: BookProject): Promise<BookProject> {
   const next = structuredClone(project);
   let identity = ensureAuthorIdentity(next);
-  if (!identity.authorKeyId || !identity.publicKeyJwk) {
-    const keys = await generateAuthorKeyPair();
-    identity = { ...identity, ...keys };
+  const targetPen = identity.penName || next.author || 'Pen Name';
+
+  // Always bind to the permanent pen-name key; never overwrite a locked key with a different one
+  const permanent = await getOrCreatePermanentAuthorKey(targetPen);
+  if (
+    identity.authorKeyId &&
+    identity.authorKeyId !== permanent.authorKeyId &&
+    identity.keyLockedForever
+  ) {
+    throw new Error(
+      `Pen name "${targetPen}" is permanently bound to Author Key ${identity.authorKeyId} and cannot be changed.`,
+    );
   }
 
-  const canonical = buildCanonicalManuscriptText(next);
+  identity = {
+    ...identity,
+    penName: targetPen,
+    authorKeyId: identity.authorKeyId || permanent.authorKeyId,
+    publicKeyJwk: identity.publicKeyJwk || permanent.publicKeyJwk,
+    privateKeyJwk: identity.privateKeyJwk || permanent.privateKeyJwk,
+    keyCreatedAt: identity.keyCreatedAt || permanent.createdAt,
+    keyFingerprint: identity.keyFingerprint || permanent.keyFingerprint,
+    keyLockedForever: true,
+  };
+
+  const canonical = buildCanonicalManuscriptText({ ...next, authorIdentity: identity });
   const digest = await computeSha256Hex(canonical);
   let signatureToken = digest;
 
@@ -123,12 +272,15 @@ export async function signManuscript(project: BookProject): Promise<BookProject>
           false,
           ['sign'],
         );
+        const digestBytes = new TextEncoder().encode(digest);
+        const copy = new Uint8Array(digestBytes.byteLength);
+        copy.set(digestBytes);
         const sigBuf = await crypto.subtle.sign(
           { name: 'ECDSA', hash: 'SHA-256' },
           key,
-          new TextEncoder().encode(digest),
+          copy.buffer,
         );
-        signatureToken = `${digest}.${bytesToHex(new Uint8Array(sigBuf)).slice(0, 32)}`;
+        signatureToken = `${digest}.${bytesToHex(new Uint8Array(sigBuf))}`;
       }
     } catch {
       // Keep SHA-256 digest seal if JWK is local-only fallback
@@ -145,8 +297,91 @@ export async function signManuscript(project: BookProject): Promise<BookProject>
   return next;
 }
 
+export interface AuthorKeyCheckResult {
+  ok: boolean;
+  reason?: string;
+}
+
+export async function verifyProjectAuthorKeyIntegrity(
+  project: BookProject,
+): Promise<AuthorKeyCheckResult> {
+  const identity = project.authorIdentity;
+  if (!identity || !identity.authorKeyId) {
+    return { ok: true };
+  }
+
+  if (identity.publicKeyJwk) {
+    const fp = await computeSha256Hex(identity.publicKeyJwk);
+    const expectedPrefix = identity.authorKeyId.startsWith('BVK-') ? 'BVK-' : 'QVK-';
+    const expectedId = `${expectedPrefix}${fp.slice(0, 12).toUpperCase()}`;
+    if (identity.authorKeyId !== expectedId && !identity.publicKeyJwk.includes('QV-LOCAL') && !identity.publicKeyJwk.includes('BV-LOCAL')) {
+      return {
+        ok: false,
+        reason: `Author Key ID (${identity.authorKeyId}) does not match embedded public key fingerprint (${expectedId}).`,
+      };
+    }
+  }
+
+  const localForever = getPermanentAuthorKeyForPenName(identity.penName);
+  if (localForever && localForever.authorKeyId !== identity.authorKeyId) {
+    return {
+      ok: false,
+      reason: `Author Key mismatch for pen name "${identity.penName}": expected permanent key ${localForever.authorKeyId}, file carried ${identity.authorKeyId}.`,
+    };
+  }
+
+  if (
+    identity.manuscriptDigest &&
+    identity.manuscriptDigest.includes('.') &&
+    identity.publicKeyJwk &&
+    typeof crypto !== 'undefined' &&
+    crypto.subtle
+  ) {
+    const [digestHex, sigHex] = identity.manuscriptDigest.split('.');
+    if (sigHex && sigHex.length >= 64) {
+      try {
+        const parsedPub = JSON.parse(identity.publicKeyJwk) as JsonWebKey;
+        if (parsedPub.kty === 'EC') {
+          const pubKey = await crypto.subtle.importKey(
+            'jwk',
+            parsedPub,
+            { name: 'ECDSA', namedCurve: 'P-256' },
+            false,
+            ['verify'],
+          );
+          const sigBytes = hexToBytes(sigHex);
+          const sigCopy = new Uint8Array(sigBytes.byteLength);
+          sigCopy.set(sigBytes);
+          const msgBytes = new TextEncoder().encode(digestHex);
+          const msgCopy = new Uint8Array(msgBytes.byteLength);
+          msgCopy.set(msgBytes);
+          const validSig = await crypto.subtle.verify(
+            { name: 'ECDSA', hash: 'SHA-256' },
+            pubKey,
+            sigCopy.buffer,
+            msgCopy.buffer,
+          );
+          if (!validSig) {
+            return {
+              ok: false,
+              reason: 'Cryptographic ECDSA author seal verification failed.',
+            };
+          }
+        }
+      } catch {
+        return {
+          ok: false,
+          reason: 'Malformed public Author Key JWK.',
+        };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 /**
- * Removes private signing keys before saving portable `.bookvibe` / `.bvbook` files or LAN syncing.
+ * Removes private signing keys before saving portable `.quillvibe` / `.qvbook` files or syncing.
  */
 export function stripPrivateAuthorSecrets(project: BookProject): BookProject {
   const clean = structuredClone(project);

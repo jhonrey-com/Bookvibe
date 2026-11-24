@@ -28,7 +28,6 @@ export const EXPORT_FORMAT_OPTIONS: readonly ExportFormatOption[] = [
   { id: '.qvbible', label: 'Story Bible DB (.qvbible)', shortLabel: '.qvbible', description: 'Shareable characters, locations, lore, and custom categories database.' },
   { id: '.qvscene', label: 'Active Scene Draft (.qvscene)', shortLabel: '.qvscene', description: 'Exports only the currently open scene draft, marks, and snapshots.' },
   { id: '.qvstyle', label: 'Typeset Preset (.qvstyle)', shortLabel: '.qvstyle', description: 'Reusable trim size, margins, drop caps, and paper preset.' },
-  { id: '.bookvibe', label: 'Legacy Bookvibe (.bookvibe)', shortLabel: '.bookvibe', description: 'Backward-compatible archive readable by legacy Bookvibe 1.x builds.' },
 ] as const;
 
 export interface TrimSpec {
@@ -731,7 +730,7 @@ export function buildEpubBlobBytes(project: BookProject, coverPngDataUrl?: strin
   entries.push({
     name: 'OEBPS/content.opf',
     data: enc.encode(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">urn:bookvibe:${escapeXmlText(payload.bookId)}</dc:identifier><dc:title>${titleEsc}</dc:title><dc:creator>${authorEsc}</dc:creator><dc:language>${lang}</dc:language><meta property="dcterms:modified">2026-11-22T00:00:00Z</meta></metadata><manifest>${manifest.join('')}</manifest><spine>${spine.join('')}</spine></package>`,
+      `<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">urn:quillvibe:${escapeXmlText(payload.bookId)}</dc:identifier><dc:title>${titleEsc}</dc:title><dc:creator>${authorEsc}</dc:creator><dc:language>${lang}</dc:language><meta property="dcterms:modified">2026-11-22T00:00:00Z</meta></metadata><manifest>${manifest.join('')}</manifest><spine>${spine.join('')}</spine></package>`,
     ),
   });
 
@@ -953,8 +952,13 @@ export function buildPrintableBookHtml(project: BookProject): string {
         })
         .join('\n');
 
+      const arcBanner = project.publishing?.arcWatermarkText?.trim()
+        ? `<div class="arc-watermark">${escapeXmlText(project.publishing.arcWatermarkText.trim())}</div>`
+        : '';
+
       return `<section class="book-sheet">
         <div>
+          ${arcBanner}
           ${typo.runningHeader ? `<div class="running-head"><span>${escapeXmlText(penName)}</span><span>${escapeXmlText(project.title)}</span></div>` : ''}
           ${sheet.isChapterStart ? `<p class="chapter-kicker">${escapeXmlText(sheet.chapterLabel ?? '')}</p><h2 class="chapter-title">${escapeXmlText(sheet.chapterTitle ?? '')}</h2>` : ''}
           <div class="book-prose">${bodyHtml}</div>
@@ -1049,6 +1053,16 @@ export function buildPrintableBookHtml(project: BookProject): string {
   }
   .scene-break { text-align: center !important; text-indent: 0 !important; letter-spacing: 0.35em; margin: 12pt 0 !important; color: #5c5850; }
   blockquote { font-style: italic; margin: 10pt 20pt; color: #3b3832; }
+  .arc-watermark {
+    text-align: center;
+    font-size: 7.5pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8a7f70;
+    border-bottom: 1px solid #dfd8ca;
+    padding-bottom: 4pt;
+    margin-bottom: 10pt;
+  }
   .page-footer {
     text-align: center;
     font-size: 9pt;

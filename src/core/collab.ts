@@ -3,6 +3,7 @@ import { countWords, findSceneContext, newId } from './manuscript';
 import type {
   BookProject,
   Collaborator,
+  CollaboratorPermissions,
   CollaboratorRole,
   SceneAnnotation,
   SceneNode,
@@ -12,14 +13,137 @@ export const COLLABORATOR_ROLE_LABELS: Record<CollaboratorRole, string> = {
   'co-author': 'Co-Author',
   proofreader: 'Proofreader',
   editor: 'Line Editor',
+  typesetter: 'Typesetter & Cover Designer',
+  publisher: 'Publisher / Imprint Lead',
   'beta-reader': 'Beta Reader',
 };
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<CollaboratorRole, CollaboratorPermissions> = {
+  'co-author': {
+    canEditProse: true,
+    canProofreadOnly: false,
+    canEditBibleAndGraph: true,
+    canEditCoverAndTypeset: false,
+    canExportFiles: true,
+    canManageCollaborators: false,
+  },
+  proofreader: {
+    canEditProse: false,
+    canProofreadOnly: true,
+    canEditBibleAndGraph: false,
+    canEditCoverAndTypeset: false,
+    canExportFiles: false,
+    canManageCollaborators: false,
+  },
+  editor: {
+    canEditProse: true,
+    canProofreadOnly: false,
+    canEditBibleAndGraph: true,
+    canEditCoverAndTypeset: false,
+    canExportFiles: false,
+    canManageCollaborators: false,
+  },
+  typesetter: {
+    canEditProse: false,
+    canProofreadOnly: false,
+    canEditBibleAndGraph: false,
+    canEditCoverAndTypeset: true,
+    canExportFiles: true,
+    canManageCollaborators: false,
+  },
+  publisher: {
+    canEditProse: false,
+    canProofreadOnly: true,
+    canEditBibleAndGraph: true,
+    canEditCoverAndTypeset: true,
+    canExportFiles: true,
+    canManageCollaborators: true,
+  },
+  'beta-reader': {
+    canEditProse: false,
+    canProofreadOnly: true,
+    canEditBibleAndGraph: false,
+    canEditCoverAndTypeset: false,
+    canExportFiles: false,
+    canManageCollaborators: false,
+  },
+};
+
+export const OWNER_FULL_PERMISSIONS: CollaboratorPermissions = {
+  canEditProse: true,
+  canProofreadOnly: false,
+  canEditBibleAndGraph: true,
+  canEditCoverAndTypeset: true,
+  canExportFiles: true,
+  canManageCollaborators: true,
+};
+
+export function getCollaboratorPermissions(collab: Pick<Collaborator, 'role' | 'permissions'>): CollaboratorPermissions {
+  return {
+    ...DEFAULT_ROLE_PERMISSIONS[collab.role],
+    ...(collab.permissions ?? {}),
+  };
+}
+
+export function getActiveSessionPermissions(project: BookProject): CollaboratorPermissions & {
+  isOwner: boolean;
+  canModifyAuthorKey: boolean;
+} {
+  const ownerName = (project.authorIdentity?.penName || project.author || 'Primary Author').trim().toLowerCase();
+  const activeName = (project.activeAuthorLabel || ownerName).trim().toLowerCase();
+  if (!activeName || activeName === ownerName) {
+    return {
+      ...OWNER_FULL_PERMISSIONS,
+      isOwner: true,
+      canModifyAuthorKey: !project.authorIdentity?.keyLockedForever,
+    };
+  }
+  const match = (project.collaborators ?? []).find(
+    (c) => (c.penName || c.name).trim().toLowerCase() === activeName || c.name.trim().toLowerCase() === activeName,
+  );
+  if (!match) {
+    return {
+      ...OWNER_FULL_PERMISSIONS,
+      isOwner: true,
+      canModifyAuthorKey: !project.authorIdentity?.keyLockedForever,
+    };
+  }
+  return {
+    ...getCollaboratorPermissions(match),
+    isOwner: false,
+    canModifyAuthorKey: false,
+  };
+}
+
+export function updateCollaboratorPermissions(
+  project: BookProject,
+  collaboratorId: string,
+  patch: Partial<CollaboratorPermissions>,
+): BookProject {
+  const next = normalizeProjectDefaults(project);
+  next.collaborators = (next.collaborators ?? []).map((c) => {
+    if (c.id !== collaboratorId) return c;
+    const base = getCollaboratorPermissions(c);
+    return {
+      ...c,
+      permissions: { ...base, ...patch },
+    };
+  });
+  return next;
+}
 
 const COLLAB_COLORS = ['#c7a97b', '#6b9cd4', '#67b08c', '#c78c9c', '#989ec4'];
 
 export function addCollaborator(
   project: BookProject,
-  input: { name: string; penName?: string; role: CollaboratorRole; creditLine?: string; authorKeyId?: string },
+  input: {
+    name: string;
+    penName?: string;
+    role: CollaboratorRole;
+    creditLine?: string;
+    authorKeyId?: string;
+    permissions?: Partial<CollaboratorPermissions>;
+  },
 ): BookProject {
   const next = normalizeProjectDefaults(project);
   const entry: Collaborator = {
@@ -33,6 +157,10 @@ export function addCollaborator(
     authorKeyId: input.authorKeyId?.trim() || '',
     color: COLLAB_COLORS[(next.collaborators?.length ?? 0) % COLLAB_COLORS.length],
     addedAt: new Date().toISOString(),
+    permissions: {
+      ...DEFAULT_ROLE_PERMISSIONS[input.role],
+      ...(input.permissions ?? {}),
+    },
   };
   next.collaborators = [...(next.collaborators ?? []), entry];
   return next;

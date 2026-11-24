@@ -194,7 +194,7 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
                 if content_length > MAX_SYNC_PAYLOAD_BYTES {
                     return Err(String::from("Payload exceeds 50 MB limit."));
                 }
-            } else if key == "x-bookvibe-pin" {
+            } else if key == "x-quillvibe-pin" || key == "x-bookvibe-pin" {
                 pin_header = Some(val);
             }
         }
@@ -405,7 +405,7 @@ pub fn pull_book_from_lan_peer(peer_addr: &str, pin: &str) -> Result<String, Str
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
     let req = format!(
-        "GET /api/book HTTP/1.1\r\nHost: {addr}\r\nX-Bookvibe-Pin: {clean_pin}\r\nConnection: close\r\n\r\n"
+        "GET /api/book HTTP/1.1\r\nHost: {addr}\r\nX-Quillvibe-Pin: {clean_pin}\r\nConnection: close\r\n\r\n"
     );
     stream
         .write_all(req.as_bytes())
@@ -435,7 +435,7 @@ pub fn push_book_to_lan_peer(peer_addr: &str, pin: &str, book_json: &str) -> Res
 
     let bytes = book_json.as_bytes();
     let req = format!(
-        "POST /api/push HTTP/1.1\r\nHost: {addr}\r\nX-Bookvibe-Pin: {clean_pin}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "POST /api/push HTTP/1.1\r\nHost: {addr}\r\nX-Quillvibe-Pin: {clean_pin}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     stream

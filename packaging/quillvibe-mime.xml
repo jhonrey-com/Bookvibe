@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.quillvibe.project">
+    <comment>Quillvibe Master Project</comment>
+    <magic priority="80">
+      <match type="string" offset="0" value="QVBX"/>
+    </magic>
+    <glob pattern="*.quillvibe"/>
+    <glob pattern="*.qvibe"/>
+  </mime-type>
+  <mime-type type="application/vnd.quillvibe.manuscript">
+    <comment>Quillvibe Manuscript Package</comment>
+    <magic priority="80">
+      <match type="string" offset="0" value="QVBX"/>
+    </magic>
+    <glob pattern="*.qvbook"/>
+  </mime-type>
+  <mime-type type="application/vnd.quillvibe.bible">
+    <comment>Quillvibe Story Bible Database</comment>
+    <magic priority="80">
+      <match type="string" offset="0" value="QVBX"/>
+    </magic>
+    <glob pattern="*.qvbible"/>
+  </mime-type>
+  <mime-type type="application/vnd.quillvibe.scene">
+    <comment>Quillvibe Standalone Scene Draft</comment>
+    <magic priority="80">
+      <match type="string" offset="0" value="QVBX"/>
+    </magic>
+    <glob pattern="*.qvscene"/>
+  </mime-type>
+  <mime-type type="application/vnd.quillvibe.style">
+    <comment>Quillvibe Typeset Preset</comment>
+    <magic priority="80">
+      <match type="string" offset="0" value="QVBX"/>
+    </magic>
+    <glob pattern="*.qvstyle"/>
+  </mime-type>
+</mime-info>

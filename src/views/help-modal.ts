@@ -27,7 +27,7 @@ const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
 
 const SHORTCUT_LIST: Array<{ keys: string; action: string }> = [
   { keys: 'Ctrl / Cmd + S', action: 'Capture a Revision Snapshot in Manuscript view, or export default file elsewhere' },
-  { keys: 'Ctrl / Cmd + O', action: 'Open any .quillvibe, .qv* or legacy .bookvibe, .bv* or .bvext file' },
+  { keys: 'Ctrl / Cmd + O', action: 'Open any .quillvibe, .qv* or .qvext file (use Settings -> Publishing & Archive for legacy .bookvibe imports)' },
   { keys: 'Ctrl / Cmd + B / I', action: 'Wrap selected draft prose in **bold** or *italic* Markdown' },
   { keys: 'Ctrl / Cmd + Shift + F', action: 'Toggle Zen Focus Mode (hides binder and inspector sidebars)' },
   { keys: 'Right-Click Anywhere', action: 'Open contextual formatting, 15 proofread marks, layer tools, or scene actions' },
@@ -50,8 +50,8 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     className: 'bv-input bv-help-search-input',
     attrs: {
       type: 'search',
-      placeholder: 'Search any slider, lever, button, dropdown (e.g. 15m, reset, sprint, barcode, font, frameless)…',
-      'aria-label': 'Search all Bookvibe help topics, controls, icons, and shortcuts',
+      placeholder: 'Search any slider, lever, button, dropdown (e.g. 15m, reset, sprint, barcode, font, lock)…',
+      'aria-label': 'Search all Quillvibe help topics, controls, icons, and shortcuts',
       value: globalSearchQuery,
     },
     on: {
@@ -304,10 +304,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
         el(
           'section',
           { className: 'bv-cork-card' },
-          el('span', { className: 'bv-panel-title', text: 'Bookvibe First-Visit Walkthroughs' }),
+          el('span', { className: 'bv-panel-title', text: 'Quillvibe First-Visit Walkthroughs' }),
           el('p', {
             className: 'bv-label',
-            text: 'Each workspace opens with a short animated pointer guide on your first visit. You can replay every guide from the beginning or pause hints at any time.',
+            text: 'Each workspace opens with a short pointer guide on your first visit. You can replay every guide from the beginning or pause hints at any time.',
           }),
           el(
             'div',
@@ -375,10 +375,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Desktop & Direct Web Execution' }),
+            el('span', { className: 'bv-panel-title', text: 'Desktop App & Browser Workspace' }),
             el('p', {
               className: 'bv-label',
-              text: 'Bookvibe runs locally in native frameless desktop windows on Windows, macOS, and Linux, or directly inside your browser at https://bookvibe.jhonrey.com/ without logins. Remember to export .bookvibe files locally in browser mode so work stays backed up.',
+              text: 'Quillvibe runs on Windows, macOS, and Linux desktop installers, or directly in your browser at https://quillvibe.jhonrey.com/ without logins. Support email: quillvibe@jhonrey.com. Export protected .quillvibe files locally in browser mode to keep backups on disk.',
             }),
             el(
               'div',
@@ -503,10 +503,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           tier: 'Basic Workflow',
           title: 'Notes, Sprint Timer (15m / Start / Reset) & Markdown Builder',
           steps: [
-            'Write fast notes or standalone chapters in Manuscript Draft mode on Obsidian, Parchment, or Ivory paper.',
+            'Write fast notes or standalone chapters in Manuscript Draft mode on Ivory, Parchment, or Obsidian paper.',
             'Use the bottom-right Sprint Bar to pick 15m, 25m, or 45m, click Start to track countdown and net words (+0w), or click Reset to restore your session clock.',
             'Press Ctrl+B, Ctrl+I, H2, blockquote, or * * * scene-break buttons to write clean Markdown inline.',
-            'Choose .md or .bvscene in the top-right Save format dropdown so one click exports plain Markdown or a portable single scene.',
+            'Choose .md or .qvscene in the top-right Save format dropdown so one click exports plain Markdown or a portable single scene.',
           ],
         },
         {
@@ -515,17 +515,27 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           steps: [
             'Build structured character, place, and lore cards in Story Bible. Add custom tabs (Magic Systems, Factions), drag portraits onto cards, and add arbitrary key/value traits.',
             'Switch Editor mode to Proofread to apply 15 copyediting marks (delete strikethrough, caret insert, substitute, transpose, stet, inline margin comments). Toggle Clean Preview to read accepted prose without overwriting draft text.',
-            'Open Story Graph to map character bonds and plot threads. Drag cards to see connecting lines follow at 60fps, drag hover ● port handles onto target cards to link them, and switch Compact / Standard / Detailed views.',
+            'Open Story Graph to map character bonds and plot threads. Drag cards to see connecting lines follow smoothly, drag hover port dots onto target cards to link them, and switch Compact / Standard / Detailed views.',
           ],
         },
         {
           tier: 'Professional Publishing',
-          title: 'Custom Fonts, Full Cover Wrap, Collaboration & Signing',
+          title: 'Protected QVBX Files, Forever Author Keys, Team Roles & Enterprise Releases',
           steps: [
             'Install personal .ttf, .otf, .woff, or .woff2 fonts in Settings > Typefaces, then apply them to the Draft canvas, Interior Typeset spread, and Cover Studio.',
-            'Flip tactile switches for Drop Caps, Smart Quotes, Running Headers, and ISBN Barcode Box cleanly in Typeset and Cover Studio.',
-            'Design Front Cover, Back Cover, Spine, and Dust Jacket Flaps with sanitized Canva/vector SVGs or transparent PNG/WEBP overlays.',
-            'Configure Imprint, ISBN, and Editorial Stage in Settings > Publishing & Migration, import existing .docx or Google Docs .html manuscripts, and sign releases with ECDSA Author Keys.',
+            'Flip switches for Drop Caps, Smart Quotes, Running Headers, and ISBN Barcode Box cleanly in Typeset and Cover Studio.',
+            'Each pen name gets one permanent Author Key that cannot be swapped. Set collaborator permissions (Co-Author, Proofreader, Editor, Typesetter, Publisher, Beta Reader) in Collaborate.',
+            'Export protected .quillvibe files with an optional password, configure Commercial & Enterprise publishing fields in Settings > Publishing & Archive, and import legacy .bookvibe archives there.',
+          ],
+        },
+        {
+          tier: 'Desktop App Features',
+          title: 'Features Available in the Standalone Desktop Installer',
+          steps: [
+            'Immersive Fullscreen Mode (F11) with optional live wall clock, sprint timer, word goal progress, and Alarm Clock ringtone pill.',
+            'Multi-Window Editing: open two books or chapters side by side in separate OS windows from Book Library.',
+            'Offline Same-Wi-Fi LAN Sync and OS Bluetooth / Nearby Share file handoffs without touching any remote cloud server.',
+            'Native OS File Associations: double-click .quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, or .qvstyle files in Explorer or Finder to open directly in Quillvibe.',
           ],
         },
       ];
@@ -680,7 +690,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     }
 
     bodyWrap.append(
-      el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Quillvibe File Extensions (.quillvibe & Legacy .bookvibe)' }), fmtGrid),
+      el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Quillvibe File Extensions (Protected QVBX Format)' }), fmtGrid),
       el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Keyboard & Canvas Shortcuts' }), kbdWrap),
     );
   };

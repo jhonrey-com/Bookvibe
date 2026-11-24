@@ -1,9 +1,9 @@
 import type {
   BookLibraryState,
   BookProject,
-  BookvibeExtension,
-  BookvibeSettings,
   ExportFormatId,
+  QuillvibeExtension,
+  QuillvibeSettings,
   StudioViewId,
 } from './types';
 
@@ -15,7 +15,7 @@ export type ExtensionsModalTab = 'integrated' | 'external' | 'formats';
 export interface AppState {
   library: BookLibraryState;
   project: BookProject;
-  settings: BookvibeSettings;
+  settings: QuillvibeSettings;
   activeView: StudioViewId;
   activeSceneId: string;
   defaultExportFormat: ExportFormatId;
@@ -44,7 +44,7 @@ export interface AppState {
 export interface AppActions {
   getState(): AppState;
   setState(patch: Partial<AppState>, rerender?: boolean): void;
-  updateSettings(patch: Partial<BookvibeSettings>): void;
+  updateSettings(patch: Partial<QuillvibeSettings>): void;
   mutateProject(updater: (prev: BookProject) => BookProject, rerender?: boolean): void;
   updateActiveSceneTextQuietly(field: 'title' | 'content', value: string): void;
   selectScene(sceneId: string, switchToEditor?: boolean): void;
@@ -60,12 +60,16 @@ export interface AppActions {
   openNewWindow(bookId?: string): Promise<void>;
   replayWalkthrough(): void;
   importExternalDocument(): Promise<void>;
+  importLegacyBookFile(): Promise<void>;
   switchBook(bookId: string): void;
   replaceLibrary(library: BookLibraryState): void;
   setDefaultExportFormat(fmt: ExportFormatId): void;
   exportDefaultFormat(): Promise<void>;
-  openAnyBookvibeFile(): Promise<void>;
-  exportAsExtension(ext: BookvibeExtension, options?: { sceneId?: string }): Promise<void>;
+  openAnyQuillvibeFile(): Promise<void>;
+  exportAsExtension(
+    ext: QuillvibeExtension,
+    options?: { sceneId?: string; password?: string },
+  ): Promise<void>;
   exportEpub(): Promise<void>;
   exportMarkdown(): Promise<void>;
   exportHtml(): Promise<void>;

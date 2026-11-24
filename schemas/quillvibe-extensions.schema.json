@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quillvibe.jhonrey.com/schemas/quillvibe-extensions-v2.schema.json",
+  "title": "Quillvibe Official File Extension Suite (v2.0.0)",
+  "description": "Formal inner payload schema for the six official Quillvibe binary QVBX formats (.quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle).",
+  "type": "object",
+  "required": ["magic", "formatVersion", "extension", "mimeType", "uti", "exportedAt", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "magic": {
+      "type": "string",
+      "const": "QUILLVIBE_V2"
+    },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "extension": {
+      "type": "string",
+      "enum": [".quillvibe", ".qvibe", ".qvbook", ".qvbible", ".qvscene", ".qvstyle"]
+    },
+    "mimeType": {
+      "type": "string",
+      "enum": [
+        "application/vnd.quillvibe.project",
+        "application/vnd.quillvibe.manuscript",
+        "application/vnd.quillvibe.bible",
+        "application/vnd.quillvibe.scene",
+        "application/vnd.quillvibe.style"
+      ]
+    },
+    "uti": {
+      "type": "string",
+      "enum": [
+        "app.quillvibe.project",
+        "app.quillvibe.compact-project",
+        "app.quillvibe.manuscript",
+        "app.quillvibe.bible",
+        "app.quillvibe.scene",
+        "app.quillvibe.style"
+      ]
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provenanceMark": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

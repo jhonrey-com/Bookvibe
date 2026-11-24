@@ -3,12 +3,12 @@ import {
   getLanSyncStatus,
   isTauriRuntime,
   launchBluetoothShare,
-  openBookvibeFile,
+  openQuillvibeFile,
   pollLanIncomingSync,
   pullFromLanPeer,
   pushToLanPeer,
   sanitizeSlug,
-  saveBookvibeExtensionFile,
+  saveQuillvibeExtensionFile,
   startLanSyncHost,
   stopLanSyncHost,
   updateLanSyncHostBook,
@@ -16,8 +16,10 @@ import {
 import {
   COLLABORATOR_ROLE_LABELS,
   addCollaborator,
+  getCollaboratorPermissions,
   mergeBookRevisions,
   removeCollaborator,
+  updateCollaboratorPermissions,
 } from '../core/collab';
 import {
   ENTERPRISE_SERVER_CONTRACT_DOC,
@@ -31,9 +33,13 @@ import {
   testEnterpriseServer,
   type EnterpriseSyncConfig,
 } from '../core/enterprise-sync';
-import { parseExtensionFile, serializeExtensionFile } from '../core/extensions';
+import {
+  parseQuillvibeInput,
+  serializeExtensionFile,
+  serializeQuillvibeBinary,
+} from '../core/extensions';
 import { normalizeProjectDefaults } from '../core/library';
-import type { CollaboratorRole, LanSessionInfo } from '../core/types';
+import type { CollaboratorPermissions, CollaboratorRole, LanSessionInfo } from '../core/types';
 import { el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
@@ -67,22 +73,32 @@ export function showCollabModal(actions: AppActions): void {
 
   const contentArea = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
 
-  const mergeIncomingRaw = (rawJson: string, filenameHint: string, peerLabel: string) => {
-    const parsed = parseExtensionFile(rawJson, filenameHint);
-    const valid =
-      parsed.extension === '.quillvibe' ||
-      parsed.extension === '.qvibe' ||
-      parsed.extension === '.bookvibe' ||
-      parsed.extension === '.bvibe';
-    if (!valid) {
-      actions.notify('Peer file must be a .quillvibe, .qvibe, .bookvibe, or .bvibe book package.');
-      return;
+  const mergeIncomingRaw = async (
+    rawInput: Uint8Array | string,
+    filenameHint: string,
+    peerLabel: string,
+    base64Encoded = false,
+  ) => {
+    try {
+      const decoded = await parseQuillvibeInput(rawInput, { filenameHint, base64Encoded });
+      const { parsed } = decoded;
+      const valid =
+        parsed.extension === '.quillvibe' ||
+        parsed.extension === '.qvibe' ||
+        parsed.extension === '.bookvibe' ||
+        parsed.extension === '.bvibe';
+      if (!valid) {
+        actions.notify('Peer file must be a .quillvibe, .qvibe, or imported .bookvibe/.bvibe book package.');
+        return;
+      }
+      const summary = mergeBookRevisions(actions.getState().project, parsed.payload, peerLabel);
+      actions.mutateProject(() => summary.project);
+      actions.notify(
+        `Synced ${peerLabel}: ${summary.updatedScenes} updated, ${summary.addedScenes} new scenes, ${summary.mergedAnnotations} notes`,
+      );
+    } catch (err) {
+      actions.notify(err instanceof Error ? err.message : 'Unable to decode peer revision.');
     }
-    const summary = mergeBookRevisions(actions.getState().project, parsed.payload, peerLabel);
-    actions.mutateProject(() => summary.project);
-    actions.notify(
-      `Synced ${peerLabel}: ${summary.updatedScenes} updated, ${summary.addedScenes} new scenes, ${summary.mergedAnnotations} notes`,
-    );
   };
 
   const buildDesktopBanner = (titleText: string, bodyText: string) =>
@@ -138,44 +154,77 @@ export function showCollabModal(actions: AppActions): void {
         ),
       );
 
+      const permFields: Array<{ key: keyof CollaboratorPermissions; label: string }> = [
+        { key: 'canEditProse', label: 'Edit prose' },
+        { key: 'canProofreadOnly', label: 'Proofread marks & notes' },
+        { key: 'canEditBibleAndGraph', label: 'Edit Bible & Graph' },
+        { key: 'canEditCoverAndTypeset', label: 'Edit Cover & Typeset' },
+        { key: 'canExportFiles', label: 'Export files' },
+        { key: 'canManageCollaborators', label: 'Manage team' },
+      ];
+
       const list = el('div', { className: 'bv-snap-list' });
       if (collabs.length === 0) {
         list.appendChild(
-          el('span', { className: 'bv-label', text: 'No co-authors or proofreaders credited yet.' }),
+          el('span', { className: 'bv-label', text: 'No co-authors, proofreaders, or team members credited yet.' }),
         );
       } else {
         for (const c of collabs) {
+          const perms = getCollaboratorPermissions(c);
+          const permGrid = el(
+            'div',
+            { className: 'qv-collab-perm-grid' },
+            ...permFields.map((pf) => {
+              const chk = el('input', {
+                attrs: { type: 'checkbox', checked: perms[pf.key] },
+                on: {
+                  change: () => {
+                    actions.mutateProject((prev) =>
+                      updateCollaboratorPermissions(prev, c.id, { [pf.key]: chk.checked }),
+                    );
+                  },
+                },
+              });
+              return el('label', { className: 'bv-check-row' }, chk, el('span', { text: pf.label }));
+            }),
+          );
           list.appendChild(
             el(
               'div',
-              { className: 'bv-list-card' },
+              { className: 'bv-list-card', style: { flexDirection: 'column', alignItems: 'stretch', gap: '6px' } },
               el(
                 'div',
-                {},
-                el('div', {
-                  text: `${c.penName || c.name} · ${COLLABORATOR_ROLE_LABELS[c.role]}`,
-                  style: { fontWeight: '600', color: 'var(--text-primary)' },
-                }),
-                el('div', {
-                  className: 'bv-label',
-                  text: `${c.creditLine}${c.authorKeyId ? ` · Key ${c.authorKeyId}` : ''}`,
-                }),
-              ),
-              el(
-                'button',
-                {
-                  className: 'bv-mini-btn',
-                  tooltip: { title: 'Remove Collaborator', short: 'Remove credit and collaborator record.' },
-                  attrs: { type: 'button' },
-                  on: {
-                    click: () => {
-                      actions.mutateProject((prev) => removeCollaborator(prev, c.id));
-                      void renderTabContent();
+                { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' } },
+                el(
+                  'div',
+                  {},
+                  el('div', {
+                    text: `${c.penName || c.name} · ${COLLABORATOR_ROLE_LABELS[c.role]}`,
+                    style: { fontWeight: '600', color: 'var(--text-primary)' },
+                  }),
+                  el('div', {
+                    className: 'bv-label',
+                    text: `${c.creditLine}${c.authorKeyId ? ` · Key ${c.authorKeyId}` : ''}`,
+                  }),
+                ),
+                el(
+                  'button',
+                  {
+                    className: 'bv-mini-btn',
+                    tooltip: { title: 'Remove Collaborator', short: 'Remove credit and access restriction rule.' },
+                    attrs: { type: 'button' },
+                    on: {
+                      click: () => {
+                        actions.mutateProject((prev) => removeCollaborator(prev, c.id));
+                        void renderTabContent();
+                      },
                     },
                   },
-                },
-                icon('trash', 12),
+                  icon('trash', 12),
+                ),
               ),
+              el('span', { className: 'qv-key-locked-pill', text: 'Owner Author Key: Protected (Never Changeable by Peers)' }),
+              permGrid,
             ),
           );
         }
@@ -188,7 +237,7 @@ export function showCollabModal(actions: AppActions): void {
       const roleSel = el(
         'select',
         { className: 'bv-input' },
-        ...(['co-author', 'proofreader', 'editor', 'beta-reader'] as const).map((r) =>
+        ...(['co-author', 'proofreader', 'editor', 'typesetter', 'publisher', 'beta-reader'] as const).map((r) =>
           el('option', { text: COLLABORATOR_ROLE_LABELS[r], attrs: { value: r } }),
         ),
       );
@@ -297,7 +346,7 @@ export function showCollabModal(actions: AppActions): void {
               while (true) {
                 const incoming = await pollLanIncomingSync();
                 if (!incoming) break;
-                mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
+                await mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
               }
               await updateLanSyncHostBook(
                 serializeExtensionFile('.quillvibe', actions.getState().project),
@@ -565,10 +614,10 @@ export function showCollabModal(actions: AppActions): void {
                   on: {
                     click: async () => {
                       const current = actions.getState().project;
-                      const payload = serializeExtensionFile('.quillvibe', current);
+                      const binary = await serializeQuillvibeBinary('.quillvibe', current);
                       const filename = `${sanitizeSlug(current.title)}.quillvibe`;
                       if (desktopMode) {
-                        const savedPath = await saveBookvibeExtensionFile('.quillvibe', payload, current.title);
+                        const savedPath = await saveQuillvibeExtensionFile('.quillvibe', binary, current.title);
                         if (!savedPath) {
                           actions.notify('Bluetooth export cancelled.');
                           return;
@@ -585,7 +634,7 @@ export function showCollabModal(actions: AppActions): void {
                       const msg = await launchBluetoothShare({
                         mode: 'send',
                         filename,
-                        payload,
+                        payloadBytes: binary,
                         title: current.title,
                       });
                       actions.notify(msg);
@@ -648,9 +697,14 @@ export function showCollabModal(actions: AppActions): void {
                   attrs: { type: 'button' },
                   on: {
                     click: async () => {
-                      const opened = await openBookvibeFile();
+                      const opened = await openQuillvibeFile();
                       if (!opened) return;
-                      mergeIncomingRaw(opened.content, opened.filename, opened.filename);
+                      await mergeIncomingRaw(
+                        opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
+                        opened.filename,
+                        opened.filename,
+                        Boolean(opened.isBinary),
+                      );
                     },
                   },
                 },
@@ -835,7 +889,7 @@ export function showCollabModal(actions: AppActions): void {
                     serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
                     saveEnterpriseSyncConfig(serverCfg);
                     const { rawJson, sha256 } = await pullBookFromEnterpriseServer(serverCfg, tokenIn.value, project);
-                    mergeIncomingRaw(rawJson, 'enterprise.quillvibe', 'Enterprise Sync Server');
+                    await mergeIncomingRaw(rawJson, 'enterprise.quillvibe', 'Enterprise Sync Server');
                     serverStatusOk = true;
                     serverStatusMessage = `Pulled SHA-256 ${sha256.slice(0, 12).toUpperCase()}`;
                     statusTag.textContent = serverStatusMessage;
@@ -915,18 +969,29 @@ export function showCollabModal(actions: AppActions): void {
     );
   };
 
+  const tabOptions: Array<{
+    id: CollabTab;
+    label: string;
+    icon: 'badge-id' | 'wifi' | 'bluetooth' | 'server';
+    tooltip: (typeof TOOLTIP_CATALOG)['collabCredits'];
+  }> = [
+    { id: 'credits', label: 'Co-Authors & Permissions', icon: 'badge-id', tooltip: TOOLTIP_CATALOG.collabCredits },
+    ...(isTauriRuntime()
+      ? [
+          { id: 'wifi' as const, label: 'Same-Wi-Fi LAN Sync', icon: 'wifi' as const, tooltip: TOOLTIP_CATALOG.collabWifi },
+          { id: 'bluetooth' as const, label: 'Bluetooth & Nearby Sync', icon: 'bluetooth' as const, tooltip: TOOLTIP_CATALOG.collabBluetooth },
+        ]
+      : []),
+    { id: 'server', label: 'Enterprise / Website Sync', icon: 'server', tooltip: TOOLTIP_CATALOG.collabServer },
+  ];
+
   const tabSwitcher = new LiquidGlassControl<CollabTab>({
     ariaLabel: 'Collaboration method',
     surface: 'solid',
     compact: true,
     iconOnly: true,
     value: activeTab,
-    options: [
-      { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'badge-id', tooltip: TOOLTIP_CATALOG.collabCredits },
-      { id: 'wifi', label: 'Same-Wi-Fi LAN Sync', icon: 'wifi', tooltip: TOOLTIP_CATALOG.collabWifi },
-      { id: 'bluetooth', label: 'Bluetooth & Nearby Sync', icon: 'bluetooth', tooltip: TOOLTIP_CATALOG.collabBluetooth },
-      { id: 'server', label: 'Enterprise / Website Sync', icon: 'server', tooltip: TOOLTIP_CATALOG.collabServer },
-    ],
+    options: tabOptions,
     onChange: (tab) => {
       activeTab = tab;
       void renderTabContent();
@@ -940,16 +1005,20 @@ export function showCollabModal(actions: AppActions): void {
     backdrop.remove();
   };
 
+  const modalTitle = isTauriRuntime()
+    ? 'Collaboration · Co-Authors, LAN, Bluetooth & Website Sync'
+    : 'Collaboration · Co-Authors, Permissions & Website Sync';
+
   const modal = el(
     'div',
     {
       className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Collaborate, LAN, Bluetooth, and Enterprise Sync' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': modalTitle },
     },
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Collaboration · Co-Authors, LAN, Bluetooth & Enterprise Sync' }),
+      el('span', { className: 'bv-panel-title', text: modalTitle }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',

@@ -58,15 +58,15 @@ export const TOOLTIP_CATALOG = {
   },
   openFile: {
     title: 'Open File',
-    short: 'Open .quillvibe, .qv* or legacy .bookvibe, .bv* files.',
+    short: 'Open .quillvibe, .qv* or .qvext files.',
     shortcut: 'Ctrl+O',
-    details: 'Loads a local Quillvibe or Bookvibe file directly into the matching workspace view. Dragging files onto the window works too.',
+    details: 'Decodes protected QVBX Quillvibe files directly into the matching workspace view. Import legacy .bookvibe files from Settings -> Migration.',
   },
   saveDefault: {
     title: 'Export Using Selected Format',
     short: 'Saves or exports using the active dropdown format.',
     shortcut: 'Ctrl+S',
-    details: 'Exports immediately in the format chosen beside this button (.quillvibe, .epub, .md, .html, .txt, .qv*, or .bookvibe).',
+    details: 'Exports immediately in the format chosen beside this button (.quillvibe, .epub, .md, .html, .txt, or .qv*).',
   },
   defaultFormatSelect: {
     title: 'Default Export Format',
@@ -76,16 +76,16 @@ export const TOOLTIP_CATALOG = {
   extensionsManager: {
     title: 'Extensions & Formats',
     short: 'Manage integrated toolkits, external plugins, and file formats.',
-    details: 'Enable or run built-in proofing/cleanup/font extensions, inspect permissions before installing external .bvext files, audit reads, or register Quillvibe extensions with your OS.',
+    details: 'Enable or run built-in proofing/cleanup/font extensions, inspect permissions before installing external .qvext files, and audit data reads.',
     tips: [
       'External plugins require explicit permission review before install.',
-      'Extensions cannot access the internet, filesystem, or private author keys.',
+      'Extensions cannot access the internet, filesystem, or permanent author keys.',
     ],
   },
   settingsBtn: {
-    title: 'Settings, Tiers & Themes',
-    short: 'Tool tiers (Basic/Int/Adv), Ivory/Obsidian themes, fonts & Word import.',
-    details: 'Switch Basic, Intermediate, or Advanced tools, change Ivory/Parchment/Obsidian themes, install custom fonts, or import .docx/.html/.md manuscripts.',
+    title: 'Settings, Levels & Themes',
+    short: 'Tool levels (Basic/Int/Adv), Ivory/Obsidian themes, fonts & imports.',
+    details: 'Switch Basic, Intermediate, or Advanced tools, change Ivory/Parchment/Obsidian themes, install custom fonts, or import .docx/.html/.md/.bookvibe files.',
   },
   tierSwitch: {
     title: 'Workspace Tool Tier',
@@ -221,12 +221,12 @@ export const TOOLTIP_CATALOG = {
     short: 'Built-in offline proofing, cleanup, metrics, and presets.',
   },
   extExternal: {
-    title: 'External Extensions (.bvext)',
-    short: 'Install community .bvext bundles with permission consent.',
+    title: 'External Extensions (.qvext)',
+    short: 'Install community .qvext bundles with permission consent.',
     details: 'Inspect exact permissions requested, toggle individual scopes on/off, and audit every data read.',
   },
   extFormats: {
-    title: 'Official Formats & OS Registration',
-    short: 'Inspect Bookvibe extensions and register desktop file handlers.',
+    title: 'Official Formats & Registration',
+    short: 'Inspect protected Quillvibe extensions (.quillvibe, .qv*).',
   },
 } satisfies Record<string, TooltipSpec>;

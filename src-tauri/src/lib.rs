@@ -4,8 +4,9 @@ mod lan_sync;
 
 use export::{build_epub_bytes, sanitize_filename, EpubExportPayload};
 use file_assoc::{
-    find_spec_by_extension, get_association_status, is_supported_bookvibe_path,
-    register_os_file_associations, AssociationReport, BOOKVIBE_EXTENSION_SPECS,
+    find_spec_by_extension, get_association_status, is_importable_legacy_path,
+    is_supported_quillvibe_path, register_os_file_associations, AssociationReport,
+    LEGACY_IMPORT_EXTENSIONS, QUILLVIBE_EXTENSION_SPECS,
 };
 use lan_sync::{
     get_lan_sync_status, launch_os_bluetooth_share, poll_lan_incoming_sync,
@@ -27,6 +28,75 @@ const LEGACY_PROJECT_FILENAME: &str = "current-project.bookvibe";
 const LIBRARY_FILENAME: &str = "quillvibe-library.json";
 const LEGACY_LIBRARY_FILENAME: &str = "bookvibe-library.json";
 
+const B64_ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn encode_base64(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(((bytes.len() + 2) / 3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(B64_ALPHA[((n >> 18) & 0x3f) as usize] as char);
+        out.push(B64_ALPHA[((n >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            B64_ALPHA[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64_ALPHA[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    fn val(b: u8) -> Option<u32> {
+        match b {
+            b'A'..=b'Z' => Some((b - b'A') as u32),
+            b'a'..=b'z' => Some((b - b'a' + 26) as u32),
+            b'0'..=b'9' => Some((b - b'0' + 52) as u32),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let clean: Vec<u8> = input.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if clean.is_empty() {
+        return Ok(Vec::new());
+    }
+    if clean.len() % 4 != 0 {
+        return Err(String::from("Invalid base64 payload length."));
+    }
+    let mut out = Vec::with_capacity((clean.len() / 4) * 3);
+    for chunk in clean.chunks_exact(4) {
+        let a = val(chunk[0]).ok_or_else(|| String::from("Invalid base64 character."))?;
+        let b = val(chunk[1]).ok_or_else(|| String::from("Invalid base64 character."))?;
+        let c = if chunk[2] == b'=' {
+            0
+        } else {
+            val(chunk[2]).ok_or_else(|| String::from("Invalid base64 character."))?
+        };
+        let d = if chunk[3] == b'=' {
+            0
+        } else {
+            val(chunk[3]).ok_or_else(|| String::from("Invalid base64 character."))?
+        };
+        let n = (a << 18) | (b << 12) | (c << 6) | d;
+        out.push(((n >> 16) & 0xff) as u8);
+        if chunk[2] != b'=' {
+            out.push(((n >> 8) & 0xff) as u8);
+        }
+        if chunk[3] != b'=' {
+            out.push((n & 0xff) as u8);
+        }
+    }
+    Ok(out)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenedFilePayload {
@@ -34,6 +104,8 @@ pub struct OpenedFilePayload {
     pub filename: String,
     pub extension: String,
     pub content: String,
+    pub content_base64: String,
+    pub is_binary: bool,
 }
 
 #[derive(Default)]
@@ -41,35 +113,61 @@ pub struct StartupFileState {
     pending: Mutex<Option<OpenedFilePayload>>,
 }
 
-fn read_validated_bookvibe_file(path: &Path) -> Result<OpenedFilePayload, String> {
-    if !is_supported_bookvibe_path(path) {
-        return Err(String::from("Unsupported file extension for Bookvibe."));
+fn read_validated_quillvibe_file(
+    path: &Path,
+    allow_legacy_import: bool,
+) -> Result<OpenedFilePayload, String> {
+    let supported_native = is_supported_quillvibe_path(path);
+    let supported_legacy = allow_legacy_import && is_importable_legacy_path(path);
+    if !supported_native && !supported_legacy {
+        return Err(String::from(
+            "Unsupported file extension. Only .quillvibe and .qv* files open directly in Quillvibe.",
+        ));
     }
+
     let meta = fs::metadata(path).map_err(|e| format!("Cannot inspect file: {e}"))?;
     if meta.len() > MAX_PROJECT_BYTES {
         return Err(String::from("File exceeds 50 MB safety limit."));
     }
-    let content = fs::read_to_string(path).map_err(|e| format!("Failed reading UTF-8 file: {e}"))?;
+
+    let bytes = fs::read(path).map_err(|e| format!("Failed reading file: {e}"))?;
     let filename = path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("untitled.bookvibe")
+        .unwrap_or("untitled.quillvibe")
         .to_string();
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| format!(".{}", e.to_ascii_lowercase()))
-        .unwrap_or_else(|| String::from(".bookvibe"));
+        .unwrap_or_else(|| String::from(".quillvibe"));
+
+    let is_qvbx = bytes.starts_with(b"QVBX");
+    if is_qvbx {
+        return Ok(OpenedFilePayload {
+            path: path.to_string_lossy().into_owned(),
+            filename,
+            extension,
+            content: String::new(),
+            content_base64: encode_base64(&bytes),
+            is_binary: true,
+        });
+    }
+
+    let content =
+        String::from_utf8(bytes).map_err(|_| String::from("Damaged or unrecognized binary Quillvibe file."))?;
 
     Ok(OpenedFilePayload {
         path: path.to_string_lossy().into_owned(),
         filename,
         extension,
         content,
+        content_base64: String::new(),
+        is_binary: false,
     })
 }
 
-fn write_atomic_utf8(target: &Path, payload: &str) -> Result<(), String> {
+fn write_atomic_bytes(target: &Path, payload: &[u8]) -> Result<(), String> {
     if payload.len() as u64 > MAX_PROJECT_BYTES {
         return Err(String::from("Payload exceeds 50 MB limit."));
     }
@@ -81,10 +179,10 @@ fn write_atomic_utf8(target: &Path, payload: &str) -> Result<(), String> {
         target
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("bookvibe")
+            .unwrap_or("quillvibe")
     );
     let tmp_path = target.with_file_name(tmp_name);
-    fs::write(&tmp_path, payload.as_bytes()).map_err(|e| format!("Failed writing temp file: {e}"))?;
+    fs::write(&tmp_path, payload).map_err(|e| format!("Failed writing temp file: {e}"))?;
     fs::rename(&tmp_path, target).map_err(|e| format!("Failed committing atomic save: {e}"))?;
     Ok(())
 }
@@ -125,7 +223,7 @@ fn load_default_project(app: AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 fn save_default_project(app: AppHandle, payload: String) -> Result<(), String> {
     let path = default_project_path(&app)?;
-    write_atomic_utf8(&path, &payload)
+    write_atomic_bytes(&path, payload.as_bytes())
 }
 
 #[tauri::command]
@@ -157,44 +255,65 @@ fn save_book_library(app: AppHandle, payload: String) -> Result<(), String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Cannot resolve app data directory: {e}"))?;
-    write_atomic_utf8(&dir.join(LIBRARY_FILENAME), &payload)
+    write_atomic_bytes(&dir.join(LIBRARY_FILENAME), payload.as_bytes())
 }
 
 #[tauri::command]
-fn open_bookvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
-    let exts: Vec<&str> = BOOKVIBE_EXTENSION_SPECS.iter().map(|s| s.bare_ext).collect();
+fn open_quillvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
+    let exts: Vec<&str> = QUILLVIBE_EXTENSION_SPECS.iter().map(|s| s.bare_ext).collect();
     let picked = rfd::FileDialog::new()
         .set_title("Open Quillvibe File")
-        .add_filter("All Quillvibe & Bookvibe Formats", &exts)
+        .add_filter("All Quillvibe Formats (.quillvibe, .qv*)", &exts)
         .add_filter("Quillvibe Master Project (.quillvibe, .qvibe)", &["quillvibe", "qvibe"])
         .add_filter("Quillvibe Manuscript (.qvbook)", &["qvbook"])
         .add_filter("Quillvibe Story Bible (.qvbible)", &["qvbible"])
         .add_filter("Quillvibe Scene Draft (.qvscene)", &["qvscene"])
         .add_filter("Quillvibe Typeset Style (.qvstyle)", &["qvstyle"])
-        .add_filter("Legacy Bookvibe (.bookvibe, .bv*)", &["bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle"])
         .pick_file();
 
     match picked {
-        Some(path) => read_validated_bookvibe_file(&path).map(Some),
+        Some(path) => read_validated_quillvibe_file(&path, false).map(Some),
         None => Ok(None),
     }
 }
 
 #[tauri::command]
-fn save_bookvibe_file_dialog(
-    payload: String,
+fn import_legacy_book_dialog() -> Result<Option<OpenedFilePayload>, String> {
+    let picked = rfd::FileDialog::new()
+        .set_title("Import Legacy Project Archive")
+        .add_filter("Legacy Book Archive (.bookvibe, .bv*)", LEGACY_IMPORT_EXTENSIONS)
+        .pick_file();
+
+    match picked {
+        Some(path) => read_validated_quillvibe_file(&path, true).map(Some),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+fn save_quillvibe_file_dialog(
+    payload: Option<String>,
+    payload_base64: Option<String>,
     suggested_name: String,
     extension: String,
     description: String,
 ) -> Result<Option<String>, String> {
     let spec = find_spec_by_extension(&extension)
-        .ok_or_else(|| String::from("Extension is not in the official Bookvibe allowlist."))?;
-    let safe_base = sanitize_filename(&suggested_name, "bookvibe-export");
+        .ok_or_else(|| String::from("Extension is not in the official Quillvibe allowlist."))?;
+    let safe_base = sanitize_filename(&suggested_name, "quillvibe-export");
     let file_name = format!("{safe_base}{}", spec.dot_ext);
     let label = if description.trim().is_empty() {
         spec.name
     } else {
         description.trim()
+    };
+
+    let bytes = if let Some(b64) = payload_base64 {
+        decode_base64(&b64)?
+    } else if let Some(txt) = payload {
+        txt.into_bytes()
+    } else {
+        return Err(String::from("Missing payload to write."));
     };
 
     let picked = rfd::FileDialog::new()
@@ -208,7 +327,7 @@ fn save_bookvibe_file_dialog(
             if path.extension().and_then(|e| e.to_str()) != Some(spec.bare_ext) {
                 path.set_extension(spec.bare_ext);
             }
-            write_atomic_utf8(&path, &payload)?;
+            write_atomic_bytes(&path, &bytes)?;
             Ok(Some(path.to_string_lossy().into_owned()))
         }
         None => Ok(None),
@@ -251,7 +370,7 @@ fn export_markdown_file(content: String, suggested_name: String) -> Result<Optio
             if path.extension().and_then(|e| e.to_str()) != Some("md") {
                 path.set_extension("md");
             }
-            write_atomic_utf8(&path, &content)?;
+            write_atomic_bytes(&path, content.as_bytes())?;
             Ok(Some(path.to_string_lossy().into_owned()))
         }
         None => Ok(None),
@@ -365,8 +484,8 @@ fn open_book_in_new_window(
 fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
     for arg in std::env::args_os().skip(1) {
         let candidate = PathBuf::from(&arg);
-        if candidate.is_file() && is_supported_bookvibe_path(&candidate) {
-            if let Ok(loaded) = read_validated_bookvibe_file(&candidate) {
+        if candidate.is_file() && is_supported_quillvibe_path(&candidate) {
+            if let Ok(loaded) = read_validated_quillvibe_file(&candidate, false) {
                 return Some(loaded);
             }
         }
@@ -393,8 +512,9 @@ pub fn run() {
             save_default_project,
             load_book_library,
             save_book_library,
-            open_bookvibe_file_dialog,
-            save_bookvibe_file_dialog,
+            open_quillvibe_file_dialog,
+            import_legacy_book_dialog,
+            save_quillvibe_file_dialog,
             export_epub_file,
             export_markdown_file,
             register_file_associations,

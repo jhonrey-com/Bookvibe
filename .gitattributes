@@ -1,10 +1,10 @@
 * text=auto eol=lf
 *.bat text eol=crlf
 
-# GitHub Linguist & diff recognition for official Bookvibe extensions
-*.bookvibe text eol=lf linguist-language=JSON
-*.bvibe text eol=lf linguist-language=JSON
-*.bvbook text eol=lf linguist-language=JSON
-*.bvbible text eol=lf linguist-language=JSON
-*.bvscene text eol=lf linguist-language=JSON
-*.bvstyle text eol=lf linguist-language=JSON
+# Binary identification for official Quillvibe QVBX containers
+*.quillvibe binary
+*.qvibe binary
+*.qvbook binary
+*.qvbible binary
+*.qvscene binary
+*.qvstyle binary

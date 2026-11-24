@@ -1,6 +1,6 @@
 import type { AppActions, ExtensionsModalTab } from '../core/app-context';
 import { getOsExtensionStatus, isTauriRuntime, registerOsExtensions } from '../core/bridge';
-import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
+import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import { installFontPackFromExtension } from '../core/fonts';
 import {
   EXTENSION_PERMISSION_INFO,
@@ -19,9 +19,9 @@ import {
 } from '../core/plugins';
 import type {
   AssociationReport,
-  BookvibePluginManifest,
   ExtensionPermission,
   InstalledExtension,
+  QuillvibePluginManifest,
 } from '../core/types';
 import { el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
@@ -45,7 +45,7 @@ export async function showExtensionsModal(
   let osReport: AssociationReport = await getOsExtensionStatus();
   let lastReadabilitySummary = '';
   let pendingConsent: {
-    manifest: BookvibePluginManifest;
+    manifest: QuillvibePluginManifest;
     sha256: string;
     selectedPerms: Set<ExtensionPermission>;
   } | null = null;
@@ -356,7 +356,7 @@ export async function showExtensionsModal(
       contentArea.appendChild(
         el('p', {
           className: 'bv-label',
-          text: 'Integrated extensions ship directly inside Bookvibe, run 100% locally offline, and declare every data scope they access.',
+          text: 'Integrated extensions ship inside Quillvibe, run 100% locally offline, and declare every data scope they access.',
           style: { margin: '0' },
         }),
       );
@@ -426,7 +426,7 @@ export async function showExtensionsModal(
       if (consentEl) contentArea.appendChild(consentEl);
 
       const extFileInput = el('input', {
-        attrs: { type: 'file', accept: '.bvext,.json' },
+        attrs: { type: 'file', accept: '.qvext,.bvext,.json' },
         style: { display: 'none' },
         on: {
           change: async () => {
@@ -455,7 +455,7 @@ export async function showExtensionsModal(
         el(
           'div',
           { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
-          el('span', { className: 'bv-panel-title', text: 'External Extension Sandbox (.bvext)' }),
+          el('span', { className: 'bv-panel-title', text: 'External Extension Sandbox (.qvext)' }),
           el(
             'div',
             { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
@@ -467,7 +467,7 @@ export async function showExtensionsModal(
                 on: { click: () => extFileInput.click() },
               },
               icon('folder', 14),
-              'Install .bvext File…',
+              'Install .qvext File…',
             ),
             el('button', {
               className: 'bv-btn',
@@ -488,7 +488,7 @@ export async function showExtensionsModal(
             }),
             el('button', {
               className: 'bv-mini-btn',
-              text: 'Download .bvext Template',
+              text: 'Download .qvext Template',
               attrs: { type: 'button' },
               on: {
                 click: () => {
@@ -496,7 +496,7 @@ export async function showExtensionsModal(
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = 'uk-house-style.bvext';
+                  a.download = 'uk-house-style.qvext';
                   a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 2500);
                 },
@@ -517,7 +517,7 @@ export async function showExtensionsModal(
         contentArea.appendChild(
           el('p', {
             className: 'bv-label',
-            text: 'No external extensions installed. Drop any .bvext file onto Bookvibe or click "Inspect Sample External Extension" above to review permissions before installing.',
+            text: 'No external extensions installed. Drop any .qvext file onto Quillvibe or click "Inspect Sample External Extension" above to review permissions before installing.',
           }),
         );
       } else {
@@ -652,78 +652,55 @@ export async function showExtensionsModal(
       return;
     }
 
-    // Tab 3: Official File Extensions & OS Registration
+    // Tab 3: Official File Extensions (& OS Registration on Desktop)
     const desktopMode = isTauriRuntime();
-    if (!desktopMode) {
-      contentArea.appendChild(
-        el(
+    const statusBanner = desktopMode
+      ? el(
           'div',
-          { className: 'bv-desktop-banner' },
+          {
+            className: 'bv-list-card',
+            style: { background: 'var(--bg-bar)' },
+          },
           el(
             'div',
-            { className: 'bv-desktop-banner-head' },
-            el('span', { className: 'bv-panel-title', text: 'OS File-Type Registration — Desktop App Only' }),
-            el('span', { className: 'bv-runtime-pill', text: 'Desktop Executable Only' }),
+            {},
+            el('div', {
+              text: osReport.allRegistered
+                ? 'All 6 Quillvibe extensions are active in your OS file shell'
+                : `Platform: ${osReport.platform} · Scope: ${osReport.scope}`,
+              style: { fontWeight: '600' },
+            }),
+            el('div', { className: 'bv-label', text: osReport.executablePath }),
           ),
-          el('p', {
-            className: 'bv-label',
-            text: 'Registering .quillvibe and legacy .bookvibe companion extensions with Windows Explorer, macOS Finder, or Linux MIME requires the native desktop installer. Exporting and opening files works directly in browser mode.',
-          }),
-          el('a', {
-            className: 'bv-btn bv-btn-primary',
-            text: 'Download Desktop App',
-            attrs: {
-              href: 'https://github.com/jhonrey-com/Quillvibe/releases/latest',
-              target: '_blank',
-              rel: 'noopener noreferrer',
+          el(
+            'button',
+            {
+              className: 'bv-btn bv-btn-primary',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  osReport = await registerOsExtensions();
+                  actions.notify(
+                    osReport.allRegistered
+                      ? 'Registered all 6 Quillvibe extensions in OS shell.'
+                      : 'OS registration requires launching the compiled desktop binary.',
+                  );
+                  renderContent();
+                },
+              },
             },
-          }),
-        ),
-      );
-    }
-
-    const statusBanner = el(
-      'div',
-      {
-        className: `bv-list-card${!desktopMode ? ' bv-desktop-only-section' : ''}`,
-        style: { background: 'var(--bg-bar)' },
-        attrs: { 'aria-disabled': !desktopMode },
-      },
-      el(
-        'div',
-        {},
-        el('div', {
-          text: osReport.allRegistered
-            ? 'All 6 Bookvibe extensions are active in your OS file shell'
-            : `Platform: ${osReport.platform} · Scope: ${osReport.scope}`,
-          style: { fontWeight: '600' },
-        }),
-        el('div', { className: 'bv-label', text: osReport.executablePath }),
-      ),
-      el(
-        'button',
-        {
-          className: 'bv-btn bv-btn-primary',
-          attrs: { type: 'button', disabled: !desktopMode },
-          on: {
-            click: async () => {
-              osReport = await registerOsExtensions();
-              actions.notify(
-                osReport.allRegistered
-                  ? 'Registered all 6 Bookvibe extensions in OS shell.'
-                  : 'OS registration requires launching the compiled desktop binary.',
-              );
-              renderContent();
-            },
-          },
-        },
-        icon('check', 14),
-        desktopMode ? 'Register in OS Shell' : 'Desktop Only',
-      ),
-    );
+            icon('check', 14),
+            'Register in OS Shell',
+          ),
+        )
+      : el('p', {
+          className: 'bv-label',
+          style: { margin: '0' },
+          text: 'All 6 official Quillvibe file formats use QVBX binary protection so external tools cannot read or alter manuscripts or Author Keys. Legacy .bookvibe archives can still be imported from Settings -> Publishing & Archive.',
+        });
 
     const tbody = el('tbody');
-    for (const spec of BOOKVIBE_EXTENSIONS) {
+    for (const spec of QUILLVIBE_EXTENSIONS) {
       const liveItem = osReport.items.find((i) => i.extension === spec.extension);
       const isOk = Boolean(liveItem?.registered);
       tbody.appendChild(
@@ -742,15 +719,19 @@ export async function showExtensionsModal(
             el('div', { className: 'bv-label', text: spec.purpose }),
           ),
           el('td', { className: 'bv-mono-tag', text: spec.mimeType }),
-          el(
-            'td',
-            { style: { whiteSpace: 'nowrap' } },
-            el('span', {
-              className: 'bv-mono-tag',
-              text: isOk ? 'Registered' : desktopMode ? 'Ready to Register' : 'Desktop Only',
-              style: { color: isOk ? 'var(--accent-emerald)' : 'var(--accent-amber)' },
-            }),
-          ),
+          ...(desktopMode
+            ? [
+                el(
+                  'td',
+                  { style: { whiteSpace: 'nowrap' } },
+                  el('span', {
+                    className: 'bv-mono-tag',
+                    text: isOk ? 'Registered' : 'Ready to Register',
+                    style: { color: isOk ? 'var(--accent-emerald)' : 'var(--accent-amber)' },
+                  }),
+                ),
+              ]
+            : []),
           el(
             'td',
             {},
@@ -758,7 +739,7 @@ export async function showExtensionsModal(
               className: 'bv-mini-btn',
               text: 'Save',
               attrs: { type: 'button' },
-              on: { click: () => void actions.exportAsExtension(spec.extension) },
+              on: { click: () => void actions.exportAsExtension(spec.extension as import('../core/types').QuillvibeExtension) },
             }),
           ),
         ),
@@ -777,7 +758,7 @@ export async function showExtensionsModal(
           el('th', { text: 'Ext' }),
           el('th', { text: 'Format' }),
           el('th', { text: 'Official MIME' }),
-          el('th', { text: 'OS Status' }),
+          ...(desktopMode ? [el('th', { text: 'OS Status' })] : []),
           el('th', { text: 'Action' }),
         ),
       ),

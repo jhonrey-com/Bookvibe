@@ -1,12 +1,12 @@
-# Bookvibe Reference Guide
+# Quillvibe Reference Guide
 
-This guide explains every icon, file extension, proofreading symbol, and extension permission in Bookvibe using direct definitions.
+This guide explains every icon, file extension, proofreading symbol, and extension permission in Quillvibe using direct definitions.
 
 ---
 
 ## 1. Icons & Tooltips
 
-Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor toolbar, and modal tabs to keep writing surfaces clear.
+Quillvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor toolbar, and modal tabs to keep writing surfaces clear.
 
 ### Custom Hover & Click-to-Expand Help
 - **Hover or focus** any button to open a compact tooltip showing its name, shortcut, and 1-line summary.
@@ -17,14 +17,14 @@ Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor
 | Icon | Name | Action |
 | :--- | :--- | :--- |
 | Left sidebar frame | **Manuscript Binder** | Toggles the Parts, Chapters, and Scenes tree (slides in as a drawer on compact screens). |
-| Books on shelf | **Library & Author Identity** | Manage multiple books and set a per-book Pen Name, handwritten/typed Signature, and ECDSA Author Key. |
-| Overlapping figures | **Collaborate Offline** | Manage co-authors and proofreaders, sync over same-Wi-Fi PIN pairing, or exchange files via Bluetooth / Nearby Share. |
-| Folder | **Open File** | Opens `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, `.bvstyle`, or installs `.bvext` extension bundles. |
-| Disk + Format dropdown | **Save / Export Default** | Saves immediately using the extension selected in the dropdown beside it (persists across restarts). |
-| Interlocking module | **Extensions & Formats** | Manages Integrated toolkits, External `.bvext` plugins with permission consent, Data Audit Log, and OS shell file registration. |
-| Gear cog | **Settings & Fonts** | Installs device/extension `.ttf`/`.otf`/`.woff`/`.woff2` fonts, adjusts editor spacing, manages Imprint/ISBN/Stage, and imports `.docx` or Google Docs `.html`. |
-| Lifebuoy / Question | **Help & Guided Tour** | Opens the built-in manual, unique Icon Directory legend, keyboard reference, and animated section walkthrough replay. |
-| Right sidebar frame | **Scene Inspector** | Toggles active scene metadata, proofread marks summary, Story Bible mentions, snapshots, and proofreader notes across every workspace view. |
+| Books on shelf | **Library & Author Identity** | Manage multiple books and set a per-book Pen Name, handwritten/typed Signature, and permanent ECDSA Author Key. |
+| Overlapping figures | **Collaborate & Permissions** | Manage co-authors, proofreaders, restrictions, Self-Hosted HTTPS sync (and Wi-Fi PIN / Bluetooth in the desktop app). |
+| Folder | **Open File** | Opens `.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` bundles. |
+| Disk + Format dropdown | **Save / Export Default** | Saves immediately using the extension selected in the dropdown beside it. |
+| Interlocking module | **Extensions & Formats** | Manages Integrated toolkits, External `.qvext` plugins with permission consent, and Data Audit Log. |
+| Gear cog | **Settings & Preferences** | Switch Workspace Tool Level (`Basic`/`Intermediate`/`Advanced`), install fonts, configure Commercial Metadata, and import `.docx`, `.html`, `.md`, or legacy `.bookvibe`. |
+| Lifebuoy / Question | **Help & Guided Tour** | Opens the built-in manual, unique Icon Directory legend, keyboard reference, and section walkthrough replay. |
+| Right sidebar frame | **Scene Inspector** | Toggles active scene metadata, proofread marks summary, Story Bible mentions, snapshots, and proofreader notes. |
 
 ### Main Workspace Switcher Icons
 | Icon | Workspace | Purpose |
@@ -33,58 +33,35 @@ Bookvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor
 | 2×2 card grid | **Corkboard** | Arrange scene synopsis index cards and drag scenes between chapters. |
 | Bulleted lines | **Outline** | Filterable tabular ledger showing timeline, POV, location, status, word targets, and reading time. |
 | Open codex + ribbon | **Story Bible** | Characters, locations, lore, custom categories, custom fields, and reference images. |
-| Linked nodes | **Story Graph** | Live interactive map linking characters, plot beats, scenes, locations, and custom nodes with Compact / Standard / Detailed views and port drag-to-connect. |
-| Serif `T` | **Typeset & Cover** | Interior page preview with custom fonts, Front/Back/Spine/Flaps Cover Studio with SVG/PNG layers, and EPUB/PDF export. |
-
-### Editor Mode Icons
-| Icon | Mode | Behavior |
-| :--- | :--- | :--- |
-| Document sheet with pencil | **Draft** | Distraction-free prose writing canvas (*Obsidian*, *Parchment*, or *Ivory* sheets). |
-| Marked page + check | **Proofread** | Interactive editorial markup sheet supporting strikeout, caret insert, transpose, stet, comments, and Clean Preview. |
-| Divided window | **Split View** | Side-by-side reference pane for any scene or Story Bible entry. |
-| Split `+` / `−` sheets | **Revision Diff** | Word-level comparison between live text and any saved Revision Snapshot. |
-
-### Publishing & Modal Sub-Tabs
-- **Page Margins (`page-margins`)**: Book interior trim size, typeface, numerals, drop caps, and running headers.
-- **Book Cover (`cover`)**: Front, Back, Spine, Dust Jacket Flaps, and SVG/PNG drag-and-drop layers.
-- **Wax Seal (`seal`)**: Publish checklist, ECDSA Author Key signing, and release exports.
-- **ID Badge (`badge-id`)**, **Wi-Fi Waves (`wifi`)**, **Bluetooth (`bluetooth`)**: Credits, LAN PIN sync, and local file exchange tabs.
-- **Stacked Layers (`layers`)**, **Shield (`shield`)**, **Code File (`file-code`)**: Integrated extensions, `.bvext` sandbox, and official file format specs.
-
-### Bottom Status Bar & Sprint Controls (`15m`, `Start`, `Reset`)
-- **Words / Chars / Pages Ledger (Bottom Left)**: Shows live Scene words and characters, Chapter words, Book progress against word target, estimated standard print pages (`~250` words per page), and reading time.
-- **Sprint Duration Selector (`15m` / `25m` / `45m`, Bottom Right)**: Sets countdown length in minutes and resets session delta (`+0w`) to zero.
-- **`Start` / `Pause` (Bottom Right)**: Starts or pauses the sprint timer and tracks net words added during the active sprint.
-- **`Reset` (Bottom Right)**: Stops any active timer, restores the full selected interval (`15m`, `25m`, or `45m`), and resets net sprint words to `+0w`.
-
-See also [docs/FAQ-AND-CONTROLS.md](FAQ-AND-CONTROLS.md) for a searchable online catalog covering every slider, lever switch, dropdown, button, and desktop window control.
+| Linked nodes | **Story Graph** | Live interactive map linking characters, plot beats, scenes, locations, and custom nodes. |
+| Serif `T` | **Studio (Typeset & Cover)** | Interior page preview with custom fonts, Front/Back/Spine/Flaps Cover Studio, and EPUB/PDF/QVBX export. |
 
 ---
 
-## 2. File Extensions & Default Export Dropdown
+## 2. File Extensions & Protected `QVBX` Format
 
-Every native Bookvibe file stores JSON wrapped in `"magic": "BOOKVIBE_V1"` so you can inspect or back up your files in plain UTF-8 without lock-in.
+Every native Quillvibe file stores encrypted and authenticated `QVBX` binary data so external tools cannot tamper with contents or swap a locked pen-name Author Key.
 
 | Format | Default Role | When to Choose It |
 | :--- | :--- | :--- |
-| `.bookvibe` | **Master Project** | Default format. Preserves manuscript, Story Bible, Story Graph, cover layout, snapshots, proofread marks, and Author Key public seal. |
-| `.bvibe` | **Compact Project** | Short-alias equivalent of `.bookvibe`. |
-| `.bvbook` | **Manuscript Package** | Portable parts, chapters, scenes, front matter, cover, and credits without worldbuilding databases. |
-| `.bvbible` | **Story Bible DB** | Imports/merges shared Characters, Locations, Lore, and Custom Categories across sequels in a series. |
-| `.bvscene` | **Standalone Scene** | Shares or archives one single chapter scene, its annotations, proofread marks, and snapshots. |
-| `.bvstyle` | **Typeset Preset** | Applies book trim size, font family, drop caps, smart quotes, margins, and paper theme to another book. |
+| `.quillvibe` | **Master Project** | Default format. Preserves manuscript, Story Bible, Story Graph, cover layout, snapshots, proofread marks, and Author Key seal. |
+| `.qvibe` | **Compact Project** | Short-alias equivalent of `.quillvibe`. |
+| `.qvbook` | **Manuscript Package** | Portable parts, chapters, scenes, front matter, cover, and credits without worldbuilding databases. |
+| `.qvbible` | **Story Bible DB** | Imports/merges shared Characters, Locations, Lore, and Custom Categories across sequels in a series. |
+| `.qvscene` | **Standalone Scene** | Shares or archives one single chapter scene, its annotations, proofread marks, and snapshots. |
+| `.qvstyle` | **Typeset Preset** | Applies book trim size, font family, drop caps, smart quotes, margins, and paper theme to another book. |
 | `.epub` | **EPUB 3 eBook** | Release eBook archive embedding the cover PNG, copyright/credits page, and reflowable XHTML chapters. |
 | `.md` | **Markdown Manuscript** | YAML front matter + clean Markdown headings and `* * *` scene breaks. |
 | `.html` | **Standalone Web Book** | Self-contained HTML reading edition with serif styling for offline browsers. |
 | `.txt` | **Plain Text Manuscript** | Clean UTF-8 text without formatting markers. |
 
-Select any format in the topbar **Save dropdown** (`.bookvibe`, `.epub`, `.md`, etc.) to make it the default output whenever you click Save.
+Legacy `.bookvibe` / `.bv*` files are imported explicitly inside **Settings -> Publishing, Commercial & Migration -> Import**.
 
 ---
 
 ## 3. Proofreading Marks Reference
 
-In **Proofread** mode, select any word, phrase, or sentence on the page (or use **Quick Mark by Phrase** in the right ledger) and click one of the standard editorial marks:
+In **Proofread** mode, select any word, phrase, or sentence on the page and right-click to apply one of the 15 standard editorial marks:
 
 | Symbol | Name | Editorial Meaning |
 | :--- | :--- | :--- |
@@ -104,73 +81,16 @@ In **Proofread** mode, select any word, phrase, or sentence on the page (or use 
 | `bf` | **Set Bold** | Wraps selection in `**bold**` weight. |
 | `stet` | **Stet (Let Stand)** | Dotted underline keeping original text unchanged over prior edits. |
 
-### Author Approval Safety
-- Clicking **Accept** (or **Accept All**) automatically saves an immutable **Revision Snapshot** before modifying prose.
-- Clicking **Clean Preview** lets you read the page as if every open mark were already accepted.
-
 ---
 
 ## 4. Extensions, Permissions & Data Sandbox
 
-Bookvibe separates extensions into **Integrated** toolkits and **External (`.bvext`)** community plugins.
-
-### Integrated Extensions
-1. **Editorial Proofing Toolkit (`core.editorial-proofing`)**: Scans active scene text locally for repeated consecutive words, extra spaces, `--`, and weak intensifiers, proposing reviewable proofread marks.
-2. **Typographic Punctuation Cleanup (`core.typo-cleanup`)**: Converts straight quotes, double hyphens, and ellipses after creating a safety snapshot.
-3. **Readability & Pacing Ledger (`core.readability-ledger`)**: Computes word/sentence averages, dialogue percentage, and Flesch-Kincaid grade locally.
-4. **Print Trim Preset Pack (`core.print-presets`)**: Applies `6" × 9"`, `5" × 8"`, or `A5` book geometry presets.
-
-### External Extensions (`.bvext`) & Explicit Permission Consent
-When installing an external `.bvext` file (via **Extensions -> External Sandbox** or drag-and-drop), Bookvibe displays a mandatory **Permission Review** screen showing:
-- Exact author, version, and SHA-256 fingerprint.
-- **Data Usage Statement** written by the extension.
-- **Individual Permission Checkboxes** you can deny before or after installation:
-  - `read:active-scene`: Read only the scene open in the editor.
-  - `read:manuscript`: Read chapters and draft text in the active book.
-  - `read:bible`: Read Story Bible entries in the active book.
-  - `propose:proofread-marks`: Add reviewable marks only (cannot overwrite prose).
-  - `apply:text-transform`: Run built-in cleanup transforms (always creates a snapshot first).
-  - `add:export-preset`: Update trim/font/paper settings.
-- **Data Access Audit Log**: Records every time an extension reads scene data or runs a transform.
-
-### Blocked Capabilities (Hard Sandbox Guarantees)
-External `.bvext` files contain declarative JSON rules and presets—never executable JavaScript. Bookvibe blocks:
-- Network / internet requests
-- Local disk or folder scanning
-- Access to cryptographic `privateKeyJwk` author signing keys
-- Access to other books in your Library
-
-### Authoring a `.bvext` External Plugin
-```json
-{
-  "magic": "BOOKVIBE_EXT_V1",
-  "id": "ext.example-house-style",
-  "name": "Example House Style",
-  "version": "1.0.0",
-  "author": "Editorial Press",
-  "description": "Flags straight ellipses and US spelling variants as proofread marks.",
-  "kind": "external",
-  "permissions": ["read:active-scene", "propose:proofread-marks"],
-  "dataUsageSummary": "Reads active scene text only to add reviewable proofread marks.",
-  "rules": [
-    {
-      "id": "rule-grey",
-      "label": "gray -> grey",
-      "pattern": "\\bgray\\b",
-      "flags": "g",
-      "markKind": "substitute",
-      "replacement": "grey",
-      "note": "House style prefers \"grey\"."
-    }
-  ]
-}
-```
-You can download a working sample `.bvext` template directly inside **Extensions -> External Sandbox**.
+Quillvibe separates extensions into **Integrated** toolkits and **External (`.qvext` / `.bvext`)** community plugins. External extensions contain declarative JSON rules and presets—never executable JavaScript—and cannot access the internet, filesystem, or private Author Keys.
 
 ---
 
-## 5. Offline Collaboration & Author Keys
+## 5. Permanent Author Keys, Permissions & Collaboration
 
-- **Multi-Book Library & Author Keys**: Store multiple manuscripts locally. Each book carries its own **Pen Name**, typed/drawn **Signature**, and local ECDSA P-256 **Author Key**. Private keys are stripped from exported files (`.bookvibe`, `.bvbook`, `.epub`) and never exposed during LAN sync.
-- **Same-Wi-Fi LAN Sync**: Start a temporary local host bounded to your private Wi-Fi network with a 6-digit pairing PIN. Conflicting remote edits never overwrite local prose silently; older conflicts are stored inside scene Snapshots.
-- **Bluetooth / Nearby Share**: Save a `.bookvibe` package and launch your operating system transfer dialog with zero internet connection.
+- **Forever Pen-Name Author Keys**: Each pen name receives one permanent local ECDSA P-256 Author Key (`QVK-...`). Once created, it cannot be replaced or rotated for that pen name.
+- **Collaborator Restrictions**: Assign permissions per collaborator (edit prose, proofread-only, edit Story Bible/Graph, edit Cover/Typeset, export files, manage team).
+- **Offline Desktop Sync**: Same-Wi-Fi LAN PIN sync and OS Bluetooth File Transfer are available in the native desktop app; Self-Hosted HTTPS sync works on both desktop and web.

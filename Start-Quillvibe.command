@@ -5,9 +5,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 FILE_ARG="${1:-}"
-RELEASE_APP="$DIR/src-tauri/target/release/bundle/macos/Bookvibe.app/Contents/MacOS/bookvibe"
-RELEASE_BIN="$DIR/src-tauri/target/release/bookvibe"
-DEBUG_BIN="$DIR/src-tauri/target/debug/bookvibe"
+RELEASE_APP="$DIR/src-tauri/target/release/bundle/macos/Quillvibe.app/Contents/MacOS/quillvibe"
+RELEASE_BIN="$DIR/src-tauri/target/release/quillvibe"
+DEBUG_BIN="$DIR/src-tauri/target/debug/quillvibe"
 
 launch_with_arg() {
   local bin="$1"

@@ -1,4 +1,5 @@
 import type { AppActions } from '../core/app-context';
+import { isTauriRuntime } from '../core/bridge';
 import {
   ensureAuthorIdentity,
   generateAuthorKeyPair,
@@ -81,24 +82,28 @@ export function showLibraryModal(actions: AppActions): void {
                   text: 'ACTIVE',
                   style: { color: 'var(--accent-emerald)', padding: '3px 6px' },
                 }),
-            el(
-              'button',
-              {
-                className: 'bv-mini-btn',
-                tooltip: {
-                  title: 'Open in New Window',
-                  short: 'Open this manuscript in a dedicated parallel window.',
-                },
-                attrs: { type: 'button' },
-                on: {
-                  click: () => {
-                    void actions.openNewWindow(book.id);
-                  },
-                },
-              },
-              icon('window-new', 12),
-              'Window',
-            ),
+            ...(isTauriRuntime()
+              ? [
+                  el(
+                    'button',
+                    {
+                      className: 'bv-mini-btn',
+                      tooltip: {
+                        title: 'Open in New Window',
+                        short: 'Open this manuscript in a parallel desktop window.',
+                      },
+                      attrs: { type: 'button' },
+                      on: {
+                        click: () => {
+                          void actions.openNewWindow(book.id);
+                        },
+                      },
+                    },
+                    icon('window-new', 12),
+                    'Window',
+                  ),
+                ]
+              : []),
             el('button', {
               className: 'bv-mini-btn',
               text: 'Duplicate',
@@ -111,31 +116,43 @@ export function showLibraryModal(actions: AppActions): void {
                 },
               },
             }),
-            library.books.length > 1
-              ? el('button', {
-                  className: 'bv-mini-btn',
-                  tooltip: { title: 'Delete Book', short: 'Remove this manuscript from the library shelf.' },
-                  attrs: { type: 'button' },
-                  on: {
-                    click: () => {
-                      const nextLib = deleteBookFromLibrary(actions.getState().library, book.id);
-                      actions.replaceLibrary(nextLib);
-                      renderBody(modalBody);
+            ...(library.books.length > 1
+              ? [
+                  el(
+                    'button',
+                    {
+                      className: 'bv-mini-btn',
+                      tooltip: { title: 'Delete Book', short: 'Remove this manuscript from the library shelf.' },
+                      attrs: { type: 'button' },
+                      on: {
+                        click: () => {
+                          const nextLib = deleteBookFromLibrary(actions.getState().library, book.id);
+                          actions.replaceLibrary(nextLib);
+                          renderBody(modalBody);
+                        },
+                      },
                     },
-                  },
-                }, icon('trash', 12))
-              : null,
+                    icon('trash', 12),
+                  ),
+                ]
+              : []),
           ),
         ),
       );
     }
 
     // 2. Active Book Pen Name, Signature Pad & Author Key
+    const isKeyLocked = Boolean(identity.authorKeyId);
     const penNameIn = el('input', {
       className: 'bv-input',
-      attrs: { type: 'text', value: identity.penName },
+      attrs: {
+        type: 'text',
+        value: identity.penName,
+        ...(isKeyLocked ? { readonly: '' } : {}),
+      },
       on: {
         change: () => {
+          if (isKeyLocked) return;
           actions.mutateProject((prev) => {
             const next = normalizeProjectDefaults(prev);
             next.author = penNameIn.value;
@@ -165,7 +182,9 @@ export function showLibraryModal(actions: AppActions): void {
     });
     const sigCtx = sigCanvas.getContext('2d');
     if (sigCtx) {
-      sigCtx.strokeStyle = '#e8e2d5';
+      const inkColor =
+        getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#181a20';
+      sigCtx.strokeStyle = inkColor;
       sigCtx.lineWidth = 2.2;
       sigCtx.lineCap = 'round';
       sigCtx.lineJoin = 'round';
@@ -275,34 +294,59 @@ export function showLibraryModal(actions: AppActions): void {
             ),
             sigCanvas,
           ),
-          el('div', {
-            className: 'bv-mono-tag',
-            text: `Author Key ID: ${identity.authorKeyId || 'None'} · ${identity.manuscriptDigest ? `Seal ${identity.manuscriptDigest.slice(0, 14)}…` : 'Not sealed yet'}`,
-          }),
+          el(
+            'div',
+            { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+            el('div', {
+              className: 'bv-mono-tag',
+              text: `Author Key ID: ${identity.authorKeyId || 'Not created yet'} · ${identity.manuscriptDigest ? `Seal ${identity.manuscriptDigest.slice(0, 14)}…` : 'Not sealed yet'}`,
+            }),
+            ...(isKeyLocked
+              ? [el('span', { className: 'qv-key-locked-pill', text: 'Locked Forever to Pen Name' })]
+              : []),
+          ),
+          ...(isKeyLocked
+            ? [
+                el('p', {
+                  className: 'bv-label',
+                  text: `This permanent Author Key is bound forever to “${identity.penName || 'Author'}” and cannot be swapped or replaced. Create a new book for another pen name.`,
+                }),
+              ]
+            : []),
           el(
             'div',
             { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
-            el(
-              'button',
-              {
-                className: 'bv-btn',
-                attrs: { type: 'button' },
-                on: {
-                  click: async () => {
-                    const pair = await generateAuthorKeyPair();
-                    actions.mutateProject((prev) => {
-                      const next = normalizeProjectDefaults(prev);
-                      next.authorIdentity = { ...ensureAuthorIdentity(next), ...pair };
-                      return next;
-                    });
-                    renderBody(modalBody);
-                    actions.notify(`Generated Author Key ${pair.authorKeyId}`);
-                  },
-                },
-              },
-              icon('key', 14),
-              'Generate Key',
-            ),
+            ...(!isKeyLocked
+              ? [
+                  el(
+                    'button',
+                    {
+                      className: 'bv-btn',
+                      attrs: { type: 'button' },
+                      on: {
+                        click: async () => {
+                          const penName = penNameIn.value.trim() || 'Author';
+                          const pair = await generateAuthorKeyPair(penName);
+                          actions.mutateProject((prev) => {
+                            const next = normalizeProjectDefaults(prev);
+                            next.author = penName;
+                            next.authorIdentity = {
+                              ...ensureAuthorIdentity(next),
+                              penName,
+                              ...pair,
+                            };
+                            return next;
+                          });
+                          renderBody(modalBody);
+                          actions.notify(`Bound permanent Author Key ${pair.authorKeyId} to ${penName}`);
+                        },
+                      },
+                    },
+                    icon('key', 14),
+                    'Create Permanent Author Key',
+                  ),
+                ]
+              : []),
             el(
               'button',
               {

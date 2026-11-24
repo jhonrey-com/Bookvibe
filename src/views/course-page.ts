@@ -252,15 +252,17 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
     el('h3', { text: 'Knowledge Check' }),
     el('p', { text: lesson.checkpoint.question, style: { fontWeight: '600' } }),
     checkpointOptions,
-    chosenIdx !== undefined
-      ? el('div', {
-          className: 'qv-course-quiz-feedback',
-          text:
-            chosenIdx === lesson.checkpoint.correctIndex
-              ? `Correct — ${lesson.checkpoint.explanation}`
-              : `Review note: ${lesson.checkpoint.explanation}`,
-        })
-      : null,
+    ...(chosenIdx !== undefined
+      ? [
+          el('div', {
+            className: 'qv-course-quiz-feedback',
+            text:
+              chosenIdx === lesson.checkpoint.correctIndex
+                ? `Correct — ${lesson.checkpoint.explanation}`
+                : `Review note: ${lesson.checkpoint.explanation}`,
+          }),
+        ]
+      : []),
   );
 
   const mainPane = el(

@@ -35,10 +35,10 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
   },
   {
     icon: 'folder',
-    name: 'Open Quillvibe or Migration File',
+    name: 'Open Quillvibe File',
     location: 'Topbar',
     shortcut: 'Ctrl+O',
-    meaning: 'Loads .quillvibe, .qv* or legacy .bookvibe, .bv* files and .bvext extension bundles.',
+    meaning: 'Loads protected .quillvibe, .qv* files and .qvext extension bundles.',
   },
   {
     icon: 'save',
@@ -51,19 +51,19 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'extensions',
     name: 'Extensions & File Formats',
     location: 'Topbar',
-    meaning: 'Manage integrated toolkits, install external .bvext plugins with permission consent, audit data reads, and register OS extensions.',
+    meaning: 'Manage integrated toolkits, install external .qvext plugins with permission consent, and audit data reads.',
   },
   {
     icon: 'settings',
-    name: 'Settings, Tiers & Appearance',
+    name: 'Settings, Levels & Appearance',
     location: 'Topbar',
-    meaning: 'Switch Basic/Intermediate/Advanced tool tiers, Ivory/Parchment/Obsidian themes, custom fonts, and Word/Google Docs import.',
+    meaning: 'Switch Basic/Intermediate/Advanced tool levels, Ivory/Parchment/Obsidian themes, custom fonts, and Word/Google Docs/legacy .bookvibe import.',
   },
   {
     icon: 'sliders-tier',
-    name: 'Workspace Tool Tier',
+    name: 'Workspace Tool Level',
     location: 'Topbar',
-    meaning: 'Filters visible tabs and controls cleanly between Basic, Intermediate, and Advanced book production.',
+    meaning: 'Located in Settings -> Workspace & Editor (and shown on the bottom-left bar) to switch Basic, Intermediate, and Advanced tools.',
   },
   {
     icon: 'theme-sun',
@@ -75,7 +75,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'course',
     name: 'Book Writing Course',
     location: 'Topbar',
-    meaning: 'Launches the step-by-step 6-module hands-on course for writing a complete book in Quillvibe.',
+    meaning: 'Launches the 10-module hands-on course for writing, protecting, and publishing a complete book in Quillvibe.',
   },
   {
     icon: 'help',
@@ -296,7 +296,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'bluetooth',
     name: 'Bluetooth / Nearby Share',
     location: 'Publishing & Sync',
-    meaning: 'Save and merge signed .quillvibe / .bookvibe files over OS Bluetooth or Nearby Share offline.',
+    meaning: 'Save and merge signed .quillvibe files over OS Bluetooth or Nearby Share offline (Desktop App).',
   },
   {
     icon: 'layers',
@@ -308,13 +308,13 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'shield',
     name: 'External Extension Sandbox',
     location: 'Publishing & Sync',
-    meaning: 'Consent-gated loader for .bvext bundles with per-permission toggles and read audit log.',
+    meaning: 'Consent-gated loader for .qvext bundles with per-permission toggles and read audit log.',
   },
   {
     icon: 'file-code',
     name: 'Official Document Formats',
     location: 'Publishing & Sync',
-    meaning: 'Overview and OS shell association status for Quillvibe (.quillvibe/.qv*) and legacy Bookvibe formats.',
+    meaning: 'Overview and OS association status for protected QVBX Quillvibe formats (.quillvibe, .qv*).',
   },
   {
     icon: 'server',
