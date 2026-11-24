@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
-# Terminal installer for Bookvibe (macOS & Linux)
-# Usage: curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.sh | sh
+# Terminal installer for Quillvibe (macOS & Linux)
+# Usage: curl -fsSL https://raw.githubusercontent.com/jhonrey-com/Quillvibe/main/scripts/install.sh | sh
 
 set -eu
 
-REPO="jhonrey-com/Bookvibe"
-INSTALL_DIR="${BOOKVIBE_INSTALL_DIR:-$HOME/.local/share/bookvibe}"
+REPO="jhonrey-com/Quillvibe"
+INSTALL_DIR="${QUILLVIBE_INSTALL_DIR:-$HOME/.local/share/quillvibe}"
 BIN_DIR="${HOME}/.local/bin"
 FROM_SOURCE=0
 
@@ -16,7 +16,7 @@ for arg in "$@"; do
 done
 
 OS="$(uname -s)"
-echo "Bookvibe Terminal Installer (${OS})"
+echo "Quillvibe Terminal Installer (${OS})"
 
 if [ "$FROM_SOURCE" -eq 0 ]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
@@ -41,22 +41,22 @@ if [ "$FROM_SOURCE" -eq 0 ]; then
     curl -fL "$ASSET_URL" -o "$OUT_FILE"
     if [ "$OS" = "Linux" ]; then
       chmod +x "$OUT_FILE"
-      ln -sf "$OUT_FILE" "${BIN_DIR}/bookvibe"
-      echo "Installed to ${BIN_DIR}/bookvibe"
+      ln -sf "$OUT_FILE" "${BIN_DIR}/quillvibe"
+      echo "Installed to ${BIN_DIR}/quillvibe"
     else
       open "$OUT_FILE"
       echo "Opened macOS disk image at ${OUT_FILE}"
     fi
     exit 0
   else
-    echo "No public release asset found yet (Bookvibe is currently in beta testing)."
+    echo "No public release asset found on GitHub Releases."
   fi
 fi
 
-echo "Preparing Bookvibe source checkout at ${INSTALL_DIR}..."
+echo "Preparing Quillvibe source checkout at ${INSTALL_DIR}..."
 for cmd in git npm; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing '${cmd}'. Install Git and Node.js 22+ to run Bookvibe from source." >&2
+    echo "Missing '${cmd}'. Install Git and Node.js 22+ to run Quillvibe from source." >&2
     exit 1
   fi
 done
@@ -70,5 +70,5 @@ fi
 
 cd "$INSTALL_DIR"
 npm install
-echo "Bookvibe is ready in ${INSTALL_DIR}."
+echo "Quillvibe is ready in ${INSTALL_DIR}."
 echo "Run 'npm run dev' or 'npm run tauri:dev' to start."

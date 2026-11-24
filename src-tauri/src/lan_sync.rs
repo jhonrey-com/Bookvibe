@@ -526,7 +526,7 @@ pub fn launch_os_bluetooth_share(
                     ));
                 }
                 return Ok(String::from(
-                    "Opened Windows Bluetooth File Transfer (Send files). Choose a paired device and select your saved .bookvibe file.",
+                    "Opened Windows Bluetooth File Transfer (Send files). Choose a paired device and select your saved .quillvibe file.",
                 ));
             }
             Err(_) => {
@@ -534,7 +534,7 @@ pub fn launch_os_bluetooth_share(
                     .args(["/C", "start", "", "ms-settings:bluetooth"])
                     .spawn();
                 return Ok(String::from(
-                    "Opened Windows Bluetooth settings. Share or receive the .bookvibe file via Bluetooth or Nearby Sharing.",
+                    "Opened Windows Bluetooth settings. Share or receive the .quillvibe file via Bluetooth or Nearby Sharing.",
                 ));
             }
         }
@@ -550,7 +550,7 @@ pub fn launch_os_bluetooth_share(
                     .is_ok()
                 {
                     return Ok(String::from(
-                        "Opened macOS Bluetooth File Exchange with your saved .bookvibe file.",
+                        "Opened macOS Bluetooth File Exchange with your saved .quillvibe file.",
                     ));
                 }
                 let _ = Command::new("open").arg("-R").arg(p).spawn();
@@ -577,16 +577,16 @@ pub fn launch_os_bluetooth_share(
         if !receive_mode {
             if let Some(ref p) = clean_path {
                 if Command::new("bluetooth-sendto").arg(p).spawn().is_ok() {
-                    return Ok(String::from("Opened Bluetooth Send dialog with your .bookvibe file."));
+                    return Ok(String::from("Opened Bluetooth Send dialog with your .quillvibe file."));
                 }
                 if Command::new("blueman-sendto").arg(p).spawn().is_ok() {
-                    return Ok(String::from("Opened Blueman Bluetooth Send dialog with your .bookvibe file."));
+                    return Ok(String::from("Opened Blueman Bluetooth Send dialog with your .quillvibe file."));
                 }
                 if let Some(parent) = std::path::Path::new(p).parent() {
                     let _ = Command::new("xdg-open").arg(parent).spawn();
                 }
                 return Ok(String::from(
-                    "Opened sync folder. Send the .bookvibe file via Bluetooth or Nearby Share.",
+                    "Opened sync folder. Send the .quillvibe file via Bluetooth or Nearby Share.",
                 ));
             }
             if Command::new("bluetooth-sendto").spawn().is_ok()
@@ -599,7 +599,7 @@ pub fn launch_os_bluetooth_share(
             .spawn()
             .or_else(|_| Command::new("gnome-control-center").arg("bluetooth").spawn());
         return Ok(String::from(
-            "Opened Bluetooth manager. Receive the .bookvibe file, then click Pick & Merge Peer File.",
+            "Opened Bluetooth manager. Receive the .quillvibe file, then click Pick & Merge Peer File.",
         ));
     }
 }

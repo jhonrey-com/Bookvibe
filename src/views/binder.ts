@@ -5,10 +5,13 @@ import {
   addSceneToChapter,
   deleteChapterFromProject,
   deleteSceneFromProject,
+  findSceneContext,
   getChapterWordCount,
   countWords,
   moveScene,
+  newId,
 } from '../core/manuscript';
+import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
 
 export function renderBinder(container: HTMLElement, actions: AppActions): void {
@@ -203,10 +206,18 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                       actions.notify('A manuscript must contain at least one chapter.');
                       return;
                     }
+                    const currentActiveId = actions.getState().activeSceneId;
                     const res = deleteChapterFromProject(actions.getState().project, chapter.id);
-                    actions.mutateProject(() => res.project, false);
-                    if (res.fallbackSceneId) {
-                      actions.selectScene(res.fallbackSceneId, false);
+                    const activeStillExists = Boolean(currentActiveId && findSceneContext(res.project, currentActiveId));
+                    if (activeStillExists) {
+                      actions.mutateProject(() => res.project, true);
+                    } else {
+                      actions.mutateProject(() => res.project, false);
+                      if (res.fallbackSceneId) {
+                        actions.selectScene(res.fallbackSceneId, false);
+                      } else {
+                        actions.setState({ activeSceneId: '' }, true);
+                      }
                     }
                   },
                 },
@@ -217,6 +228,71 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         );
 
         chapWrap.appendChild(chapRow);
+
+        attachContextMenu(chapRow, () => [
+          {
+            heading: chapter.title,
+            items: [
+              {
+                label: 'Add Scene to Chapter',
+                icon: 'plus',
+                onSelect: () => {
+                  const res = addSceneToChapter(actions.getState().project, chapter.id);
+                  actions.mutateProject(() => res.project, false);
+                  actions.selectScene(res.sceneId, true);
+                },
+              },
+              {
+                label: 'Add New Chapter',
+                icon: 'book',
+                onSelect: () => {
+                  const res = addChapterToPart(actions.getState().project, part.id);
+                  actions.mutateProject(() => res.project, false);
+                  actions.selectScene(res.sceneId, true);
+                },
+              },
+              {
+                label: chapter.collapsed ? 'Expand Chapter' : 'Collapse Chapter',
+                icon: chapter.collapsed ? 'chevron-down' : 'chevron-right',
+                onSelect: () => {
+                  actions.mutateProject((prev) => {
+                    const next = structuredClone(prev);
+                    for (const p of next.parts) {
+                      const c = p.chapters.find((ch) => ch.id === chapter.id);
+                      if (c) c.collapsed = !c.collapsed;
+                    }
+                    return next;
+                  });
+                },
+              },
+            ],
+          },
+          {
+            items: [
+              {
+                label: 'Delete Chapter',
+                icon: 'trash',
+                danger: true,
+                disabled: part.chapters.length <= 1 && project.parts.length <= 1,
+                onSelect: () => {
+                  const currentActiveId = actions.getState().activeSceneId;
+                  const res = deleteChapterFromProject(actions.getState().project, chapter.id);
+                  const activeStillExists = Boolean(currentActiveId && findSceneContext(res.project, currentActiveId));
+                  if (activeStillExists) {
+                    actions.mutateProject(() => res.project, true);
+                  } else {
+                    actions.mutateProject(() => res.project, false);
+                    if (res.fallbackSceneId) {
+                      actions.selectScene(res.fallbackSceneId, false);
+                    } else {
+                      actions.setState({ activeSceneId: '' }, true);
+                    }
+                  }
+                },
+              },
+            ],
+          },
+        ]);
 
         if (!chapter.collapsed) {
           chapter.scenes.forEach((scene, sIdx) => {
@@ -270,12 +346,12 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                   'button',
                   {
                     className: 'bv-icon-tiny',
-                    tooltip: { title: 'Export .bvscene', short: 'Save scene as standalone .bvscene file.' },
+                    tooltip: { title: 'Export .qvscene', short: 'Save scene as standalone .qvscene file.' },
                     attrs: { type: 'button' },
                     on: {
                       click: (e) => {
                         e.stopPropagation();
-                        void actions.exportAsExtension('.bvscene', { sceneId: scene.id });
+                        void actions.exportAsExtension('.qvscene', { sceneId: scene.id });
                       },
                     },
                   },
@@ -290,10 +366,18 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                     on: {
                       click: (e) => {
                         e.stopPropagation();
+                        const currentActiveId = actions.getState().activeSceneId;
                         const res = deleteSceneFromProject(actions.getState().project, scene.id);
-                        actions.mutateProject(() => res.project, false);
-                        if (res.fallbackSceneId) {
-                          actions.selectScene(res.fallbackSceneId, false);
+                        const activeStillExists = Boolean(currentActiveId && findSceneContext(res.project, currentActiveId));
+                        if (activeStillExists) {
+                          actions.mutateProject(() => res.project, true);
+                        } else {
+                          actions.mutateProject(() => res.project, false);
+                          if (res.fallbackSceneId) {
+                            actions.selectScene(res.fallbackSceneId, false);
+                          } else {
+                            actions.setState({ activeSceneId: '' }, true);
+                          }
                         }
                       },
                     },
@@ -303,6 +387,84 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               ),
             );
             chapWrap.appendChild(sceneRow);
+            attachContextMenu(sceneRow, () => [
+              {
+                heading: scene.title || 'Untitled Scene',
+                items: [
+                  {
+                    label: 'Open in Draft Editor',
+                    icon: 'draft-sheet',
+                    onSelect: () => {
+                      actions.setState({ editorSubMode: 'draft' }, false);
+                      actions.selectScene(scene.id, true);
+                    },
+                  },
+                  {
+                    label: 'Open in Proofread Markup',
+                    icon: 'proofread',
+                    onSelect: () => {
+                      actions.setState({ editorSubMode: 'proofread' }, false);
+                      actions.selectScene(scene.id, true);
+                    },
+                  },
+                  {
+                    label: 'Duplicate Scene',
+                    icon: 'copy-layer',
+                    onSelect: () => {
+                      const copyId = newId('scene');
+                      actions.mutateProject((prev) => {
+                        const next = structuredClone(prev);
+                        for (const p of next.parts) {
+                          const c = p.chapters.find((ch) => ch.id === chapter.id);
+                          if (!c) continue;
+                          const idx = c.scenes.findIndex((s) => s.id === scene.id);
+                          if (idx >= 0) {
+                            const cloned = structuredClone(c.scenes[idx]);
+                            cloned.id = copyId;
+                            cloned.title = `${cloned.title || 'Scene'} (Copy)`;
+                            cloned.updatedAt = new Date().toISOString();
+                            c.scenes.splice(idx + 1, 0, cloned);
+                            break;
+                          }
+                        }
+                        return next;
+                      }, false);
+                      actions.selectScene(copyId, true);
+                      actions.notify('Duplicated scene');
+                    },
+                  },
+                  {
+                    label: 'Export Standalone (.qvscene)',
+                    icon: 'file',
+                    onSelect: () => void actions.exportAsExtension('.qvscene', { sceneId: scene.id }),
+                  },
+                ],
+              },
+              {
+                items: [
+                  {
+                    label: 'Delete Scene',
+                    icon: 'trash',
+                    danger: true,
+                    onSelect: () => {
+                      const currentActiveId = actions.getState().activeSceneId;
+                      const res = deleteSceneFromProject(actions.getState().project, scene.id);
+                      const activeStillExists = Boolean(currentActiveId && findSceneContext(res.project, currentActiveId));
+                      if (activeStillExists) {
+                        actions.mutateProject(() => res.project, true);
+                      } else {
+                        actions.mutateProject(() => res.project, false);
+                        if (res.fallbackSceneId) {
+                          actions.selectScene(res.fallbackSceneId, false);
+                        } else {
+                          actions.setState({ activeSceneId: '' }, true);
+                        }
+                      }
+                    },
+                  },
+                ],
+              },
+            ]);
           });
         }
         partWrap.appendChild(chapWrap);

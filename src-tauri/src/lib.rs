@@ -15,12 +15,17 @@ use lan_sync::{
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 
+static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
 const MAX_PROJECT_BYTES: u64 = 50 * 1024 * 1024;
-const DEFAULT_PROJECT_FILENAME: &str = "current-project.bookvibe";
-const LIBRARY_FILENAME: &str = "bookvibe-library.json";
+const DEFAULT_PROJECT_FILENAME: &str = "current-project.quillvibe";
+const LEGACY_PROJECT_FILENAME: &str = "current-project.bookvibe";
+const LIBRARY_FILENAME: &str = "quillvibe-library.json";
+const LEGACY_LIBRARY_FILENAME: &str = "bookvibe-library.json";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,7 +105,12 @@ fn get_startup_opened_file(state: State<'_, StartupFileState>) -> Option<OpenedF
 
 #[tauri::command]
 fn load_default_project(app: AppHandle) -> Result<Option<String>, String> {
-    let path = default_project_path(&app)?;
+    let primary = default_project_path(&app)?;
+    let path = if primary.exists() {
+        primary
+    } else {
+        primary.with_file_name(LEGACY_PROJECT_FILENAME)
+    };
     if !path.exists() {
         return Ok(None);
     }
@@ -124,7 +134,12 @@ fn load_book_library(app: AppHandle) -> Result<Option<String>, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Cannot resolve app data directory: {e}"))?;
-    let path = dir.join(LIBRARY_FILENAME);
+    let primary = dir.join(LIBRARY_FILENAME);
+    let path = if primary.exists() {
+        primary
+    } else {
+        dir.join(LEGACY_LIBRARY_FILENAME)
+    };
     if !path.exists() {
         return Ok(None);
     }
@@ -149,13 +164,14 @@ fn save_book_library(app: AppHandle, payload: String) -> Result<(), String> {
 fn open_bookvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
     let exts: Vec<&str> = BOOKVIBE_EXTENSION_SPECS.iter().map(|s| s.bare_ext).collect();
     let picked = rfd::FileDialog::new()
-        .set_title("Open Bookvibe File")
-        .add_filter("All Bookvibe Formats", &exts)
-        .add_filter("Bookvibe Master Project (.bookvibe, .bvibe)", &["bookvibe", "bvibe"])
-        .add_filter("Bookvibe Manuscript (.bvbook)", &["bvbook"])
-        .add_filter("Bookvibe Story Bible (.bvbible)", &["bvbible"])
-        .add_filter("Bookvibe Scene Draft (.bvscene)", &["bvscene"])
-        .add_filter("Bookvibe Typeset Style (.bvstyle)", &["bvstyle"])
+        .set_title("Open Quillvibe File")
+        .add_filter("All Quillvibe & Bookvibe Formats", &exts)
+        .add_filter("Quillvibe Master Project (.quillvibe, .qvibe)", &["quillvibe", "qvibe"])
+        .add_filter("Quillvibe Manuscript (.qvbook)", &["qvbook"])
+        .add_filter("Quillvibe Story Bible (.qvbible)", &["qvbible"])
+        .add_filter("Quillvibe Scene Draft (.qvscene)", &["qvscene"])
+        .add_filter("Quillvibe Typeset Style (.qvstyle)", &["qvstyle"])
+        .add_filter("Legacy Bookvibe (.bookvibe, .bv*)", &["bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle"])
         .pick_file();
 
     match picked {
@@ -303,6 +319,49 @@ fn launch_os_bluetooth_share_cmd(
     launch_os_bluetooth_share(file_path, mode)
 }
 
+#[tauri::command]
+fn open_book_in_new_window(
+    app: AppHandle,
+    book_id: Option<String>,
+    title: Option<String>,
+) -> Result<String, String> {
+    let idx = WINDOW_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let label = format!("quillvibe-win-{idx}");
+    let clean_book_id: String = book_id
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(80)
+        .collect();
+    let app_url = if clean_book_id.is_empty() {
+        String::from("index.html")
+    } else {
+        format!("index.html?bookId={clean_book_id}")
+    };
+    let clean_title = title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Quillvibe");
+
+    let builder = tauri::WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::App(app_url.into()),
+    )
+    .title(clean_title)
+    .inner_size(1440.0, 900.0)
+    .min_inner_size(640.0, 520.0)
+    .resizable(true)
+    .decorations(false);
+
+    builder
+        .build()
+        .map_err(|e| format!("Could not open new desktop window: {e}"))?;
+
+    Ok(label)
+}
+
 fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
     for arg in std::env::args_os().skip(1) {
         let candidate = PathBuf::from(&arg);
@@ -347,8 +406,9 @@ pub fn run() {
             poll_lan_incoming_sync_cmd,
             pull_book_from_lan_peer_cmd,
             push_book_to_lan_peer_cmd,
-            launch_os_bluetooth_share_cmd
+            launch_os_bluetooth_share_cmd,
+            open_book_in_new_window
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Bookvibe");
+        .expect("error while running Quillvibe");
 }

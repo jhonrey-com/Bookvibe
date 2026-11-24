@@ -20,7 +20,9 @@ import {
   updateProofreadMarkNote,
 } from '../core/proofread';
 import { computeWordDiff, restoreSnapshotToScene } from '../core/snapshots';
+import { isTierAtLeast } from '../core/settings';
 import type { PaperTheme, ProofreadMark, ProofreadMarkKind } from '../core/types';
+import { attachContextMenu, type ContextMenuGroup } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
@@ -140,7 +142,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   }
 
   const { part, chapter, scene } = ctx;
-  const isProofMode = state.editorSubMode === 'proofread';
+  const tier = state.settings.toolTier;
+  const allowIntermediate = isTierAtLeast(tier, 'intermediate');
+  const allowAdvanced = isTierAtLeast(tier, 'advanced');
+  const isProofMode = allowIntermediate && state.editorSubMode === 'proofread';
 
   const proseTextarea = el('textarea', {
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
@@ -172,6 +177,139 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       wrapSelection(proseTextarea, '*', '*', actions);
       syncTextareaHeight();
     }
+  });
+
+  attachContextMenu(proseTextarea, () => {
+    const start = proseTextarea.selectionStart;
+    const end = proseTextarea.selectionEnd;
+    const hasSelection = end > start;
+    const groups: ContextMenuGroup[] = [
+      {
+        heading: 'Writing & Selection',
+        items: [
+          {
+            label: 'Cut Selection',
+            disabled: !hasSelection,
+            shortcut: 'Ctrl+X',
+            onSelect: () => {
+              const selText = proseTextarea.value.slice(start, end);
+              void navigator.clipboard?.writeText(selText);
+              const nextVal = proseTextarea.value.slice(0, start) + proseTextarea.value.slice(end);
+              proseTextarea.value = nextVal;
+              proseTextarea.setSelectionRange(start, start);
+              syncTextareaHeight();
+              actions.updateActiveSceneTextQuietly('content', nextVal);
+            },
+          },
+          {
+            label: 'Copy Selection',
+            disabled: !hasSelection,
+            shortcut: 'Ctrl+C',
+            onSelect: () => {
+              const selText = proseTextarea.value.slice(start, end);
+              void navigator.clipboard?.writeText(selText);
+              actions.notify('Copied selection');
+            },
+          },
+          {
+            label: 'Paste Plain Text',
+            shortcut: 'Ctrl+V',
+            onSelect: () => {
+              void navigator.clipboard?.readText().then((clip) => {
+                if (!clip) return;
+                const nextVal = proseTextarea.value.slice(0, start) + clip + proseTextarea.value.slice(end);
+                proseTextarea.value = nextVal;
+                proseTextarea.setSelectionRange(start + clip.length, start + clip.length);
+                syncTextareaHeight();
+                actions.updateActiveSceneTextQuietly('content', nextVal);
+              });
+            },
+          },
+        ],
+      },
+      {
+        heading: 'Formatting',
+        items: [
+          {
+            label: 'Bold (**text**)',
+            shortcut: 'Ctrl+B',
+            onSelect: () => {
+              wrapSelection(proseTextarea, '**', '**', actions);
+              syncTextareaHeight();
+            },
+          },
+          {
+            label: 'Italic (*text*)',
+            shortcut: 'Ctrl+I',
+            onSelect: () => {
+              wrapSelection(proseTextarea, '*', '*', actions);
+              syncTextareaHeight();
+            },
+          },
+          {
+            label: 'Heading (##)',
+            onSelect: () => {
+              insertAtLineStart(proseTextarea, '## ', actions);
+              syncTextareaHeight();
+            },
+          },
+          {
+            label: 'Epigraph / Blockquote (>)',
+            onSelect: () => {
+              insertAtLineStart(proseTextarea, '> ', actions);
+              syncTextareaHeight();
+            },
+          },
+          {
+            label: 'Insert Scene Break (* * *)',
+            onSelect: () => {
+              const insertion = '\n\n* * *\n\n';
+              const nextVal = proseTextarea.value.slice(0, start) + insertion + proseTextarea.value.slice(end);
+              proseTextarea.value = nextVal;
+              proseTextarea.setSelectionRange(start + insertion.length, start + insertion.length);
+              syncTextareaHeight();
+              actions.updateActiveSceneTextQuietly('content', nextVal);
+            },
+          },
+        ],
+      },
+      {
+        heading: 'Scene Actions',
+        items: [
+          {
+            label: 'Split Scene at Cursor',
+            icon: 'split-scene',
+            onSelect: () => {
+              const res = splitSceneAtOffset(actions.getState().project, scene.id, proseTextarea.selectionStart);
+              if (!res.newSceneId) {
+                actions.notify('Place cursor inside prose before splitting.');
+                return;
+              }
+              actions.mutateProject(() => res.project, false);
+              actions.selectScene(res.newSceneId, true);
+              actions.notify('Scene split at cursor');
+            },
+          },
+          {
+            label: 'Capture Revision Snapshot',
+            icon: 'camera',
+            shortcut: 'Ctrl+S',
+            onSelect: () => actions.createSnapshot(),
+          },
+          {
+            label: 'Switch to Proofread Markup',
+            icon: 'proofread',
+            onSelect: () => {
+              if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
+                actions.updateSettings({ toolTier: 'intermediate' });
+              }
+              actions.setState({ editorSubMode: 'proofread' }, true);
+            },
+          },
+        ],
+      },
+    ];
+    return groups;
   });
 
   const sceneHeading = el('input', {
@@ -208,24 +346,54 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     el('option', { text: 'Ivory', attrs: { value: 'ivory', selected: state.project.paperTheme === 'ivory' } }),
   );
 
+  const subModeOptions: Array<{
+    id: EditorSubMode;
+    label: string;
+    icon: 'draft-sheet' | 'proofread' | 'split' | 'diff';
+    tooltip: typeof TOOLTIP_CATALOG.modeDraft;
+  }> = [
+    { id: 'draft', label: 'Draft', icon: 'draft-sheet', tooltip: TOOLTIP_CATALOG.modeDraft },
+  ];
+  if (allowIntermediate) {
+    subModeOptions.push({
+      id: 'proofread',
+      label: 'Proofread',
+      icon: 'proofread',
+      tooltip: TOOLTIP_CATALOG.modeProofread,
+    });
+  }
+  if (allowAdvanced) {
+    subModeOptions.push(
+      { id: 'split', label: 'Split View', icon: 'split', tooltip: TOOLTIP_CATALOG.modeSplit },
+      { id: 'diff', label: 'Revision Diff', icon: 'diff', tooltip: TOOLTIP_CATALOG.modeDiff },
+    );
+  }
+  const effectiveSubMode: EditorSubMode = subModeOptions.some((o) => o.id === state.editorSubMode)
+    ? state.editorSubMode
+    : 'draft';
+
   const subModeControl = new LiquidGlassControl<EditorSubMode>({
     ariaLabel: 'Editor pane mode',
     surface: 'clear',
     compact: true,
     iconOnly: true,
-    value: state.editorSubMode,
-    options: [
-      { id: 'draft', label: 'Draft', icon: 'draft-sheet', tooltip: TOOLTIP_CATALOG.modeDraft },
-      { id: 'proofread', label: 'Proofread', icon: 'proofread', tooltip: TOOLTIP_CATALOG.modeProofread },
-      { id: 'split', label: 'Split View', icon: 'split', tooltip: TOOLTIP_CATALOG.modeSplit },
-      { id: 'diff', label: 'Revision Diff', icon: 'diff', tooltip: TOOLTIP_CATALOG.modeDiff },
-    ],
+    value: effectiveSubMode,
+    options: subModeOptions,
     onChange: (mode) => {
       pendingComposer = null;
       actions.setState({ editorSubMode: mode }, true);
     },
   });
   activeEditorGlass = subModeControl;
+
+  const ensureDraftEditable = (): boolean => {
+    if (isProofMode || state.editorSubMode === 'diff') {
+      actions.setState({ editorSubMode: 'draft' }, true);
+      actions.notify('Switched to Draft mode for text editing.');
+      return false;
+    }
+    return true;
+  };
 
   // Fixed formatting & tool controls (icon-only where iconic, short symbol glyphs for B/I/H2/* * *)
   const subbar = el(
@@ -242,8 +410,9 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         style: { fontWeight: '700' },
         on: {
           click: () => {
-            if (isProofMode) actions.setState({ editorSubMode: 'draft' }, true);
-            else wrapSelection(proseTextarea, '**', '**', actions);
+            if (!ensureDraftEditable()) return;
+            wrapSelection(proseTextarea, '**', '**', actions);
+            syncTextareaHeight();
           },
         },
       }),
@@ -255,8 +424,9 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         style: { fontStyle: 'italic' },
         on: {
           click: () => {
-            if (isProofMode) actions.setState({ editorSubMode: 'draft' }, true);
-            else wrapSelection(proseTextarea, '*', '*', actions);
+            if (!ensureDraftEditable()) return;
+            wrapSelection(proseTextarea, '*', '*', actions);
+            syncTextareaHeight();
           },
         },
       }),
@@ -265,14 +435,26 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         text: 'H2',
         tooltip: TOOLTIP_CATALOG.heading,
         attrs: { type: 'button', 'aria-label': 'Section Heading' },
-        on: { click: () => insertAtLineStart(proseTextarea, '## ', actions) },
+        on: {
+          click: () => {
+            if (!ensureDraftEditable()) return;
+            insertAtLineStart(proseTextarea, '## ', actions);
+            syncTextareaHeight();
+          },
+        },
       }),
       el('button', {
         className: 'bv-fmt-btn',
         text: '❝',
         tooltip: TOOLTIP_CATALOG.quote,
         attrs: { type: 'button', 'aria-label': 'Epigraph Blockquote' },
-        on: { click: () => insertAtLineStart(proseTextarea, '> ', actions) },
+        on: {
+          click: () => {
+            if (!ensureDraftEditable()) return;
+            insertAtLineStart(proseTextarea, '> ', actions);
+            syncTextareaHeight();
+          },
+        },
       }),
       el('button', {
         className: 'bv-fmt-btn',
@@ -281,6 +463,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         attrs: { type: 'button', 'aria-label': 'Insert Scene Break' },
         on: {
           click: () => {
+            if (!ensureDraftEditable()) return;
             const pos = proseTextarea.selectionStart;
             const cur = proseTextarea.value;
             const insertion = '\n\n* * *\n\n';
@@ -288,53 +471,59 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             proseTextarea.value = nextVal;
             proseTextarea.focus();
             proseTextarea.setSelectionRange(pos + insertion.length, pos + insertion.length);
+            syncTextareaHeight();
             actions.updateActiveSceneTextQuietly('content', nextVal);
           },
         },
       }),
-      el(
-        'button',
-        {
-          className: 'bv-fmt-btn bv-btn-compact-icon',
-          tooltip: TOOLTIP_CATALOG.splitScene,
-          attrs: { type: 'button', 'aria-label': 'Split Scene at Cursor' },
-          on: {
-            click: () => {
-              const res = splitSceneAtOffset(
-                actions.getState().project,
-                scene.id,
-                proseTextarea.selectionStart,
-              );
-              if (!res.newSceneId) {
-                actions.notify('Place cursor inside Draft prose before splitting.');
-                return;
-              }
-              actions.mutateProject(() => res.project, false);
-              actions.selectScene(res.newSceneId, true);
-              actions.notify('Scene split at cursor');
+      allowIntermediate
+        ? el(
+            'button',
+            {
+              className: 'bv-fmt-btn bv-btn-compact-icon',
+              tooltip: TOOLTIP_CATALOG.splitScene,
+              attrs: { type: 'button', 'aria-label': 'Split Scene at Cursor' },
+              on: {
+                click: () => {
+                  if (!ensureDraftEditable()) return;
+                  const res = splitSceneAtOffset(
+                    actions.getState().project,
+                    scene.id,
+                    proseTextarea.selectionStart,
+                  );
+                  if (!res.newSceneId) {
+                    actions.notify('Place cursor inside Draft prose before splitting.');
+                    return;
+                  }
+                  actions.mutateProject(() => res.project, false);
+                  actions.selectScene(res.newSceneId, true);
+                  actions.notify('Scene split at cursor');
+                },
+              },
             },
-          },
-        },
-        icon('split-scene', 14),
-      ),
+            icon('split-scene', 14),
+          )
+        : null,
     ),
     el(
       'div',
       { className: 'bv-subbar-group' },
       paperSelect,
-      el(
-        'button',
-        {
-          className: `bv-fmt-btn bv-btn-compact-icon${state.typewriterMode ? ' is-active' : ''}`,
-          tooltip: TOOLTIP_CATALOG.typewriter,
-          attrs: { type: 'button', 'aria-label': 'Toggle Typewriter Scrolling' },
-          on: {
-            click: () =>
-              actions.setState({ typewriterMode: !actions.getState().typewriterMode }, true),
-          },
-        },
-        icon('typewriter', 14),
-      ),
+      allowIntermediate
+        ? el(
+            'button',
+            {
+              className: `bv-fmt-btn bv-btn-compact-icon${state.typewriterMode ? ' is-active' : ''}`,
+              tooltip: TOOLTIP_CATALOG.typewriter,
+              attrs: { type: 'button', 'aria-label': 'Toggle Typewriter Scrolling' },
+              on: {
+                click: () =>
+                  actions.setState({ typewriterMode: !actions.getState().typewriterMode }, true),
+              },
+            },
+            icon('typewriter', 14),
+          )
+        : null,
       el(
         'button',
         {
@@ -347,16 +536,18 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         },
         icon('zen', 14),
       ),
-      el(
-        'button',
-        {
-          className: 'bv-fmt-btn bv-btn-compact-icon',
-          tooltip: TOOLTIP_CATALOG.snapshot,
-          attrs: { type: 'button', 'aria-label': 'Capture Revision Snapshot' },
-          on: { click: () => actions.createSnapshot() },
-        },
-        icon('camera', 14),
-      ),
+      allowIntermediate
+        ? el(
+            'button',
+            {
+              className: 'bv-fmt-btn bv-btn-compact-icon',
+              tooltip: TOOLTIP_CATALOG.snapshot,
+              attrs: { type: 'button', 'aria-label': 'Capture Revision Snapshot' },
+              on: { click: () => actions.createSnapshot() },
+            },
+            icon('camera', 14),
+          )
+        : null,
     ),
   );
 
@@ -378,7 +569,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   );
 
   const panes = el('div', {
-    className: `bv-editor-panes${state.editorSubMode !== 'draft' ? ' has-split' : ''}`,
+    className: `bv-editor-panes${effectiveSubMode !== 'draft' ? ' has-split' : ''}`,
   });
 
   if (isProofMode) {
@@ -417,9 +608,9 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
 
   panes.appendChild(paperScroll);
 
-  if (state.editorSubMode === 'split') {
+  if (effectiveSubMode === 'split') {
     panes.appendChild(renderSplitReferencePane(actions));
-  } else if (state.editorSubMode === 'diff') {
+  } else if (effectiveSubMode === 'diff') {
     panes.appendChild(renderRevisionDiffPane(actions, scene));
   }
 
@@ -618,6 +809,94 @@ function renderProofreadWorkspace(
       actions.setState({ activeProofreadMarkId: markId }, true);
     });
   }
+
+  attachContextMenu(proseSurface, (e) => {
+    const resolved = resolveSelectionFromProofSheet(proseSurface);
+    if (resolved) lastKnownRange = resolved;
+
+    const hitMarkEl = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-mark-id]');
+    const hitMarkId = hitMarkEl?.dataset.markId;
+    const hitMark = hitMarkId ? (scene.proofreadMarks ?? []).find((m) => m.id === hitMarkId) : undefined;
+
+    const groups: ContextMenuGroup[] = [];
+    if (hitMark) {
+      const hitSpec = PROOFREAD_MARK_SPECS[hitMark.kind];
+      groups.push({
+        heading: `Mark · ${hitSpec.label}`,
+        items: [
+          {
+            label: 'Accept Mark',
+            icon: 'check',
+            onSelect: () => {
+              const res = acceptProofreadMark(actions.getState().project, scene.id, hitMark.id);
+              actions.mutateProject(() => res.project);
+              actions.notify(res.applied ? `Accepted ${hitSpec.label}` : 'Target shifted');
+            },
+          },
+          {
+            label: 'Mark Stet (Let Stand)',
+            onSelect: () => {
+              actions.mutateProject((prev) => stetProofreadMark(prev, scene.id, hitMark.id));
+              actions.notify('Marked stet');
+            },
+          },
+          {
+            label: 'Reject Mark',
+            icon: 'trash',
+            danger: true,
+            onSelect: () => actions.mutateProject((prev) => rejectProofreadMark(prev, scene.id, hitMark.id)),
+          },
+        ],
+      });
+    }
+
+    groups.push({
+      heading: 'Proofread Markup',
+      items: (['delete', 'insert', 'substitute', 'comment', 'highlight', 'transpose', 'stet'] as ProofreadMarkKind[]).map(
+        (kind) => ({
+          label: `${PROOFREAD_MARK_SPECS[kind].symbol}  ${PROOFREAD_MARK_SPECS[kind].label}`,
+          onSelect: () => triggerMarkAction(kind),
+        }),
+      ),
+    });
+
+    groups.push({
+      heading: 'Typography & Spacing Marks',
+      items: (['capitalize', 'lowercase', 'italic', 'bold', 'paragraph', 'run-in', 'closeup', 'space'] as ProofreadMarkKind[]).map(
+        (kind) => ({
+          label: `${PROOFREAD_MARK_SPECS[kind].symbol}  ${PROOFREAD_MARK_SPECS[kind].label}`,
+          onSelect: () => triggerMarkAction(kind),
+        }),
+      ),
+    });
+
+    groups.push({
+      heading: 'Review Controls',
+      items: [
+        {
+          label: state.proofreadPreviewClean ? 'Exit Clean Preview' : 'Toggle Clean Preview',
+          icon: state.proofreadPreviewClean ? 'eye-off' : 'eye',
+          checked: state.proofreadPreviewClean,
+          onSelect: () => actions.setState({ proofreadPreviewClean: !state.proofreadPreviewClean }, true),
+        },
+        {
+          label: 'Accept All Open Marks',
+          icon: 'check',
+          onSelect: () => {
+            actions.mutateProject((prev) => acceptAllProofreadMarks(prev, scene.id));
+            actions.notify('Accepted open marks (snapshot saved)');
+          },
+        },
+        {
+          label: 'Return to Draft Mode',
+          icon: 'draft-sheet',
+          onSelect: () => actions.setState({ editorSubMode: 'draft' }, true),
+        },
+      ],
+    });
+
+    return groups;
+  });
 
   // Optional inline mark composer when a replacement/comment tool was clicked
   let composerStrip: HTMLElement | null = null;

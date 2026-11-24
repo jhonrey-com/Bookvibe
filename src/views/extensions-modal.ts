@@ -667,13 +667,13 @@ export async function showExtensionsModal(
           ),
           el('p', {
             className: 'bv-label',
-            text: 'Registering .bookvibe and companion extensions with Windows Explorer, macOS Finder, or Linux MIME requires the native desktop installer. Exporting and opening files works directly in browser mode.',
+            text: 'Registering .quillvibe and legacy .bookvibe companion extensions with Windows Explorer, macOS Finder, or Linux MIME requires the native desktop installer. Exporting and opening files works directly in browser mode.',
           }),
           el('a', {
             className: 'bv-btn bv-btn-primary',
             text: 'Download Desktop App',
             attrs: {
-              href: 'https://github.com/jhonrey-com/Bookvibe/releases/latest',
+              href: 'https://github.com/jhonrey-com/Quillvibe/releases/latest',
               target: '_blank',
               rel: 'noopener noreferrer',
             },
@@ -848,6 +848,7 @@ export async function showExtensionsModal(
     },
     modal,
   );
+  backdrop.addEventListener('bv-close-modal', closeModal);
 
   document.body.appendChild(backdrop);
   renderContent();

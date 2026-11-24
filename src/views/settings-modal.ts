@@ -1,4 +1,6 @@
 import type { AppActions } from '../core/app-context';
+import { ALARM_RINGTONES, playRingtonePreview } from '../core/alarm';
+import { isTauriRuntime } from '../core/bridge';
 import { EXPORT_FORMAT_OPTIONS } from '../core/export';
 import {
   getAllAvailableFontChoices,
@@ -12,7 +14,16 @@ import { getAllScenes } from '../core/manuscript';
 import { buildEditorialHandoffReport, importAnyExternalDocumentFile } from '../core/migrate';
 import { loadExtensionAuditLog } from '../core/plugins';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../core/provenance';
-import type { EditorialStage, ExportFormatId } from '../core/types';
+import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../core/settings';
+import type {
+  AlarmRingtoneId,
+  AppThemeId,
+  EditorialStage,
+  ExportFormatId,
+  ToolbarDisplayMode,
+  ToolTier,
+  WindowTitleMode,
+} from '../core/types';
 import { el, icon } from '../ui/dom';
 
 export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
@@ -281,6 +292,60 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
     }
 
     if (activeTab === 'editor') {
+      const themeSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          id: 'bv-set-theme',
+          on: {
+            change: () => {
+              const appTheme = themeSel.value as AppThemeId;
+              actions.updateSettings({ appTheme });
+              actions.setState({}, true);
+            },
+          },
+        },
+        el('option', { text: 'Ivory Light (Default Writing Studio)', attrs: { value: 'ivory', selected: settings.appTheme === 'ivory' } }),
+        el('option', { text: 'Warm Parchment Paper', attrs: { value: 'parchment', selected: settings.appTheme === 'parchment' } }),
+        el('option', { text: 'Obsidian Dark Studio', attrs: { value: 'obsidian', selected: settings.appTheme === 'obsidian' } }),
+      );
+
+      const tierSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          id: 'bv-set-tier',
+          on: {
+            change: () => {
+              const toolTier = tierSel.value as ToolTier;
+              actions.updateSettings({ toolTier });
+              actions.setState({}, true);
+              renderBody();
+            },
+          },
+        },
+        el('option', { text: 'Basic — Calm Document & Notes (Word / Docs style)', attrs: { value: 'basic', selected: settings.toolTier === 'basic' } }),
+        el('option', { text: 'Intermediate — Author Planning, Proofread & Typeset', attrs: { value: 'intermediate', selected: settings.toolTier === 'intermediate' } }),
+        el('option', { text: 'Advanced — Full Publishing, Bible, Graph & Cover Studio', attrs: { value: 'advanced', selected: settings.toolTier === 'advanced' } }),
+      );
+
+      const toolbarModeSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          id: 'bv-set-toolbar-mode',
+          on: {
+            change: () => {
+              actions.updateSettings({ toolbarDisplayMode: toolbarModeSel.value as ToolbarDisplayMode });
+              actions.setState({}, true);
+            },
+          },
+        },
+        el('option', { text: 'Icons Only (Minimal Chrome)', attrs: { value: 'icons', selected: settings.toolbarDisplayMode === 'icons' } }),
+        el('option', { text: 'Balanced (Icons + Key Labels)', attrs: { value: 'balanced', selected: settings.toolbarDisplayMode === 'balanced' } }),
+        el('option', { text: 'Full Details (Icons + Full Descriptions)', attrs: { value: 'detailed', selected: settings.toolbarDisplayMode === 'detailed' } }),
+      );
+
       const densitySel = el(
         'select',
         {
@@ -359,7 +424,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
       };
       const widthSlider = el('input', {
         id: 'bv-set-sheetwidth',
-        attrs: { type: 'range', min: 540, max: 980, step: 20, value: settings.editorSheetMaxWidthPx },
+        attrs: { type: 'range', min: 540, max: 1080, step: 20, value: settings.editorSheetMaxWidthPx },
         on: { input: syncSheetWidth, change: syncSheetWidth },
       });
 
@@ -386,14 +451,131 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         on: { change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }) },
       });
 
-      bodyWrap.appendChild(
+      const titlePreviewEl = el('div', {
+        className: 'bv-mono-tag',
+        text: `Preview: ${formatAppWindowTitle(settings, project, state.activeView, state.typesetSubTab, isTauriRuntime())}`,
+      });
+
+      const titleCustomIn = el('input', {
+        className: 'bv-input',
+        id: 'qv-set-title-custom',
+        attrs: {
+          type: 'text',
+          value: settings.windowTitleCustom,
+          placeholder: 'e.g. Quillvibe · {book} ({section})',
+        },
+        style: { display: settings.windowTitleMode === 'custom' ? '' : 'none' },
+        on: {
+          input: () => {
+            actions.updateSettings({ windowTitleCustom: titleCustomIn.value });
+            titlePreviewEl.textContent = `Preview: ${formatAppWindowTitle(
+              actions.getState().settings,
+              project,
+              actions.getState().activeView,
+              actions.getState().typesetSubTab,
+              isTauriRuntime(),
+            )}`;
+          },
+        },
+      });
+
+      const titleModeSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          id: 'qv-set-title-mode',
+          on: {
+            change: () => {
+              const mode = titleModeSel.value as WindowTitleMode;
+              titleCustomIn.style.display = mode === 'custom' ? '' : 'none';
+              actions.updateSettings({ windowTitleMode: mode });
+              titlePreviewEl.textContent = `Preview: ${formatAppWindowTitle(
+                actions.getState().settings,
+                project,
+                actions.getState().activeView,
+                actions.getState().typesetSubTab,
+                isTauriRuntime(),
+              )}`;
+            },
+          },
+        },
+        el('option', { text: 'Quillvibe - <Book Name> (Recommended)', attrs: { value: 'book', selected: settings.windowTitleMode === 'book' } }),
+        el('option', { text: 'Quillvibe - <Author / Pen Name>', attrs: { value: 'author', selected: settings.windowTitleMode === 'author' } }),
+        el('option', { text: 'Quillvibe - <Current Section>', attrs: { value: 'section', selected: settings.windowTitleMode === 'section' } }),
+        el('option', { text: 'Quillvibe Only', attrs: { value: 'brand', selected: settings.windowTitleMode === 'brand' } }),
+        el('option', { text: 'Custom Title Template…', attrs: { value: 'custom', selected: settings.windowTitleMode === 'custom' } }),
+      );
+
+      const immClockChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowClock },
+        on: { change: () => actions.updateSettings({ immersiveShowClock: immClockChk.checked }) },
+      });
+      const immTimerChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowTimer },
+        on: { change: () => actions.updateSettings({ immersiveShowTimer: immTimerChk.checked }) },
+      });
+      const immWordsChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowWords },
+        on: { change: () => actions.updateSettings({ immersiveShowWords: immWordsChk.checked }) },
+      });
+      const immAlarmChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowAlarm },
+        on: { change: () => actions.updateSettings({ immersiveShowAlarm: immAlarmChk.checked }) },
+      });
+
+      const ringtoneSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          id: 'qv-set-ringtone',
+          on: {
+            change: () => {
+              const id = ringtoneSel.value as AlarmRingtoneId;
+              actions.updateSettings({ alarmRingtone: id });
+              playRingtonePreview(id, actions.getState().settings.alarmVolume);
+            },
+          },
+        },
+        ...ALARM_RINGTONES.map((rt) =>
+          el('option', {
+            text: rt.label,
+            attrs: { value: rt.id, selected: settings.alarmRingtone === rt.id },
+          }),
+        ),
+      );
+
+      const volLabel = el('label', {
+        className: 'bv-label',
+        attrs: { for: 'qv-set-alarm-vol' },
+        text: `Alarm Volume (${Math.round(settings.alarmVolume * 100)}%)`,
+      });
+      const volSlider = el('input', {
+        id: 'qv-set-alarm-vol',
+        attrs: { type: 'range', min: 10, max: 100, step: 5, value: Math.round(settings.alarmVolume * 100) },
+        on: {
+          input: () => {
+            const pct = Number(volSlider.value) || 65;
+            volLabel.textContent = `Alarm Volume (${pct}%)`;
+            actions.updateSettings({ alarmVolume: pct / 100 });
+          },
+        },
+      });
+
+      bodyWrap.append(
         el(
           'div',
           { className: 'bv-two-col' },
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Draft Canvas Typography' }),
+            el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Complexity' }),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-theme' }, text: 'Application Theme' }), themeSel),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-tier' }, text: 'Active Tool Tier' }), tierSel),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-toolbar-mode' }, text: 'Toolbar Detail Mode' }), toolbarModeSel),
             el('div', { className: 'bv-field' }, fontSizeLabel, fontSizeSlider),
             el('div', { className: 'bv-field' }, lhLabel, lhSlider),
             el('div', { className: 'bv-field' }, widthLabel, widthSlider),
@@ -401,12 +583,78 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Interface & Save Preferences' }),
+            el('span', { className: 'bv-panel-title', text: 'Interface, Split Panes & Save' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-density' }, text: 'Workspace Density' }), densitySel),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-motion' }, text: 'Motion' }), motionSel),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-default-fmt' }, text: 'Default Save / Export Extension' }), defaultFmtSel),
             el('div', { className: 'bv-field' }, saveDelayLabel, saveDelaySlider),
-            el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-tours' } }, tourChk, el('span', { text: 'Show interactive tour on first entry per section' })),
+            el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-tours' } }, tourChk, el('span', { text: 'Show interactive hints & course tips' })),
+            el(
+              'button',
+              {
+                className: 'bv-mini-btn',
+                text: 'Reset Resizable Panel Widths',
+                attrs: { type: 'button' },
+                on: {
+                  click: () => {
+                    actions.updateSettings({
+                      binderWidthPx: DEFAULT_SETTINGS.binderWidthPx,
+                      inspectorWidthPx: DEFAULT_SETTINGS.inspectorWidthPx,
+                      studioLeftWidthPx: DEFAULT_SETTINGS.studioLeftWidthPx,
+                      studioRightWidthPx: DEFAULT_SETTINGS.studioRightWidthPx,
+                    });
+                    actions.notify('Panel split widths restored to defaults');
+                  },
+                },
+              },
+            ),
+          ),
+        ),
+        el(
+          'div',
+          { className: 'bv-two-col', style: { marginTop: '12px' } },
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el('span', { className: 'bv-panel-title', text: 'Window & Taskbar Title' }),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'qv-set-title-mode' }, text: 'Display Format (Website Tab & Desktop Window Hover)' }), titleModeSel),
+            titleCustomIn,
+            el('p', { className: 'bv-label', text: 'Custom placeholders: {book}, {author}, and {section}.' }),
+            titlePreviewEl,
+          ),
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el('span', { className: 'bv-panel-title', text: 'Immersive Fullscreen & Alarm Ringtones' }),
+            el('label', { className: 'bv-check-row' }, immClockChk, el('span', { text: 'Show live wall clock in Immersive Mode' })),
+            el('label', { className: 'bv-check-row' }, immTimerChk, el('span', { text: 'Show writing sprint timer in Immersive Mode' })),
+            el('label', { className: 'bv-check-row' }, immWordsChk, el('span', { text: 'Show word count progress in Immersive Mode' })),
+            el('label', { className: 'bv-check-row' }, immAlarmChk, el('span', { text: 'Show alarm clock pill in Immersive Mode' })),
+            el(
+              'div',
+              { className: 'bv-field' },
+              el('label', { className: 'bv-label', attrs: { for: 'qv-set-ringtone' }, text: 'Alarm Clock Ringtone' }),
+              el(
+                'div',
+                { style: { display: 'flex', gap: '6px' } },
+                ringtoneSel,
+                el(
+                  'button',
+                  {
+                    className: 'bv-mini-btn',
+                    text: 'Preview',
+                    attrs: { type: 'button' },
+                    on: {
+                      click: () => {
+                        const s = actions.getState().settings;
+                        playRingtonePreview(s.alarmRingtone, s.alarmVolume);
+                      },
+                    },
+                  },
+                ),
+              ),
+            ),
+            el('div', { className: 'bv-field' }, volLabel, volSlider),
           ),
         ),
       );

@@ -37,6 +37,7 @@ export interface AppState {
   sprintDurationMin: number;
   sprintRemainingSec: number;
   sprintStartWords: number;
+  immersiveMode: boolean;
   saveStatusLabel: string;
 }
 
@@ -52,7 +53,11 @@ export interface AppActions {
   openLibraryModal(): void;
   openCollabModal(): void;
   openSettingsModal(initialTab?: 'fonts' | 'editor' | 'publishing' | 'developer'): void;
-  openHelpModal(initialTab?: 'tour' | 'icons' | 'guides' | 'reference'): void;
+  openHelpModal(initialTab?: 'controls' | 'tour' | 'icons' | 'guides' | 'course' | 'reference'): void;
+  openCoursePage(moduleId?: string): void;
+  startInteractiveCourse(moduleIdx?: number): void;
+  toggleImmersiveMode(force?: boolean): Promise<void>;
+  openNewWindow(bookId?: string): Promise<void>;
   replayWalkthrough(): void;
   importExternalDocument(): Promise<void>;
   switchBook(bookId: string): void;

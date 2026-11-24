@@ -275,8 +275,9 @@ export function renderBibleView(container: HTMLElement, actions: AppActions): vo
         attrs: { draggable: true },
         on: {
           click: () => actions.setState({ activeBibleId: item.id }, true),
-          dragstart: () => {
+          dragstart: (e) => {
             dragFromIdx = idx;
+            e.dataTransfer?.setData('text/plain', item.id);
           },
           dragover: (e) => {
             if (dragFromIdx < 0 || dragFromIdx === idx) return;

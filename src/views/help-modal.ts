@@ -1,16 +1,23 @@
 import type { AppActions } from '../core/app-context';
-import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
+import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import {
   CONTROL_CATEGORIES,
   CONTROL_REFERENCE_ITEMS,
   type ControlCategory,
 } from '../ui/controls-catalog';
+import {
+  COURSE_MODULES,
+  getCourseCompletionSummary,
+  openInteractiveCourseDrawer,
+  readCompletedCourseLessons,
+} from '../ui/course';
 import { el, icon } from '../ui/dom';
 import { ICON_DIRECTORY, type IconDirectoryEntry } from '../ui/icon-directory';
 
-export type HelpTab = 'controls' | 'tour' | 'icons' | 'guides' | 'reference';
+export type HelpTab = 'controls' | 'course' | 'tour' | 'icons' | 'guides' | 'reference';
 
 const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
+  { id: 'course', label: 'Book Writing Course' },
   { id: 'controls', label: 'Controls & Sliders' },
   { id: 'icons', label: 'Icon Legend' },
   { id: 'guides', label: 'Basic to Pro Guides' },
@@ -20,11 +27,12 @@ const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
 
 const SHORTCUT_LIST: Array<{ keys: string; action: string }> = [
   { keys: 'Ctrl / Cmd + S', action: 'Capture a Revision Snapshot in Manuscript view, or export default file elsewhere' },
-  { keys: 'Ctrl / Cmd + O', action: 'Open any .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle, or .bvext file' },
+  { keys: 'Ctrl / Cmd + O', action: 'Open any .quillvibe, .qv* or legacy .bookvibe, .bv* or .bvext file' },
   { keys: 'Ctrl / Cmd + B / I', action: 'Wrap selected draft prose in **bold** or *italic* Markdown' },
   { keys: 'Ctrl / Cmd + Shift + F', action: 'Toggle Zen Focus Mode (hides binder and inspector sidebars)' },
-  { keys: 'F1', action: 'Open or focus the Bookvibe Help manual' },
-  { keys: 'Esc', action: 'Close open dialogs, exit active walkthrough, or leave Zen Focus Mode' },
+  { keys: 'Right-Click Anywhere', action: 'Open contextual formatting, 15 proofread marks, layer tools, or scene actions' },
+  { keys: 'F1', action: 'Open or focus the Quillvibe Help manual' },
+  { keys: 'Esc', action: 'Close open dialogs, context menus, walkthroughs, or leave Zen Focus Mode' },
   { keys: 'Mouse Wheel (Story Graph)', action: 'Zoom smoothly toward or away from graph nodes around cursor' },
   { keys: 'Drag Node Port ● (Graph)', action: 'Draw a live relationship line directly onto another graph card' },
 ];
@@ -540,9 +548,109 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
       return;
     }
 
+    if (activeTab === 'course') {
+      const progress = getCourseCompletionSummary();
+      const done = readCompletedCourseLessons();
+
+      bodyWrap.appendChild(
+        el(
+          'section',
+          { className: 'bv-cork-card', style: { marginBottom: '12px' } },
+          el(
+            'div',
+            { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
+            el(
+              'div',
+              {},
+              el('span', { className: 'bv-mono-tag', text: `COURSE PROGRESS · ${progress.completed}/${progress.total} LESSONS (${progress.pct}%)` }),
+              el('h3', { text: 'Complete Guide: Writing & Publishing a Book in Quillvibe', style: { margin: '4px 0 2px', fontSize: '15px' } }),
+              el('p', { className: 'bv-label', text: 'Follow each module hands-on inside your live workspace. Click Launch Interactive Coach to keep the checklist floating beside you as you practice.', style: { margin: '0' } }),
+            ),
+            el(
+              'div',
+              { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+              el(
+                'button',
+                {
+                  className: 'bv-btn bv-btn-primary',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      closeModal();
+                      actions.openCoursePage();
+                    },
+                  },
+                },
+                icon('course', 14),
+                'Open Full Course Page (/course)',
+              ),
+              el(
+                'button',
+                {
+                  className: 'bv-btn',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      closeModal();
+                      openInteractiveCourseDrawer(actions, 0);
+                    },
+                  },
+                },
+                'Practice Coach Drawer',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      for (const mod of COURSE_MODULES) {
+        const lessonsEl = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' } });
+        for (const lesson of mod.lessons) {
+          const isDone = done.has(lesson.id);
+          lessonsEl.appendChild(
+            el(
+              'div',
+              { className: 'bv-list-card' },
+              el(
+                'div',
+                { style: { flex: '1', minWidth: '0' } },
+                el('strong', { text: `${isDone ? '✓ ' : ''}${lesson.title}`, style: { fontSize: '12.5px' } }),
+                el('div', { className: 'bv-label', text: lesson.instruction }),
+              ),
+              el(
+                'button',
+                {
+                  className: 'bv-mini-btn',
+                  text: 'Practice',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      closeModal();
+                      openInteractiveCourseDrawer(actions, mod.number - 1);
+                    },
+                  },
+                },
+              ),
+            ),
+          );
+        }
+        bodyWrap.appendChild(
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el('div', { className: 'bv-mono-tag', text: `MODULE ${mod.number}`, style: { color: 'var(--accent-amber)' } }),
+            el('strong', { text: mod.title, style: { fontSize: '14px' } }),
+            el('p', { className: 'bv-label', text: mod.summary, style: { margin: '2px 0 4px' } }),
+            lessonsEl,
+          ),
+        );
+      }
+      return;
+    }
+
     // Reference tab
     const fmtGrid = el('div', { className: 'bv-two-col' });
-    for (const item of BOOKVIBE_EXTENSIONS) {
+    for (const item of QUILLVIBE_EXTENSIONS) {
       fmtGrid.appendChild(
         el(
           'div',
@@ -572,7 +680,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     }
 
     bodyWrap.append(
-      el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Bookvibe File Extensions' }), fmtGrid),
+      el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Quillvibe File Extensions (.quillvibe & Legacy .bookvibe)' }), fmtGrid),
       el('section', { className: 'bv-cork-card' }, el('span', { className: 'bv-panel-title', text: 'Keyboard & Canvas Shortcuts' }), kbdWrap),
     );
   };
@@ -581,12 +689,12 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     'div',
     {
       className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Bookvibe Help and Icon Directory' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Help, Course and Icon Directory' },
     },
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Bookvibe Manual, Controls, Icons & Searchable FAQ' }),
+      el('span', { className: 'bv-panel-title', text: 'Quillvibe Book Course, Controls, Icons & Reference' }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',

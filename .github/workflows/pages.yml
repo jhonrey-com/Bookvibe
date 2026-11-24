@@ -1,4 +1,4 @@
-name: Deploy Bookvibe Web to GitHub Pages
+name: Deploy Quillvibe Web to GitHub Pages
 
 on:
   push:

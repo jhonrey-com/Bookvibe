@@ -19,6 +19,18 @@ import {
   mergeBookRevisions,
   removeCollaborator,
 } from '../core/collab';
+import {
+  ENTERPRISE_SERVER_CONTRACT_DOC,
+  computeSha256Hex,
+  loadEnterpriseSessionToken,
+  loadEnterpriseSyncConfig,
+  pullBookFromEnterpriseServer,
+  pushBookToEnterpriseServer,
+  saveEnterpriseSessionToken,
+  saveEnterpriseSyncConfig,
+  testEnterpriseServer,
+  type EnterpriseSyncConfig,
+} from '../core/enterprise-sync';
 import { parseExtensionFile, serializeExtensionFile } from '../core/extensions';
 import { normalizeProjectDefaults } from '../core/library';
 import type { CollaboratorRole, LanSessionInfo } from '../core/types';
@@ -26,7 +38,7 @@ import { el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
-type CollabTab = 'credits' | 'wifi' | 'bluetooth';
+type CollabTab = 'credits' | 'wifi' | 'bluetooth' | 'server';
 
 export function showCollabModal(actions: AppActions): void {
   const existing = document.getElementById('bv-collab-modal');
@@ -36,8 +48,15 @@ export function showCollabModal(actions: AppActions): void {
   let activeGlass: LiquidGlassControl<CollabTab> | null = null;
   let lanSession: LanSessionInfo | null = null;
   let lanPollTimer: number | null = null;
+  let autoMergeLan = false;
   let savedPeerAddr = '192.168.1.';
   let savedPeerPin = '';
+
+  const initialProj = normalizeProjectDefaults(actions.getState().project);
+  let serverCfg: EnterpriseSyncConfig = loadEnterpriseSyncConfig(initialProj.id);
+  let serverToken = loadEnterpriseSessionToken();
+  let serverStatusMessage = '';
+  let serverStatusOk: boolean | null = null;
 
   const clearLanPolling = () => {
     if (lanPollTimer !== null) {
@@ -50,8 +69,13 @@ export function showCollabModal(actions: AppActions): void {
 
   const mergeIncomingRaw = (rawJson: string, filenameHint: string, peerLabel: string) => {
     const parsed = parseExtensionFile(rawJson, filenameHint);
-    if (parsed.extension !== '.bookvibe' && parsed.extension !== '.bvibe') {
-      actions.notify('Peer file must be a .bookvibe or .bvibe book package.');
+    const valid =
+      parsed.extension === '.quillvibe' ||
+      parsed.extension === '.qvibe' ||
+      parsed.extension === '.bookvibe' ||
+      parsed.extension === '.bvibe';
+    if (!valid) {
+      actions.notify('Peer file must be a .quillvibe, .qvibe, .bookvibe, or .bvibe book package.');
       return;
     }
     const summary = mergeBookRevisions(actions.getState().project, parsed.payload, peerLabel);
@@ -76,7 +100,7 @@ export function showCollabModal(actions: AppActions): void {
         className: 'bv-btn bv-btn-primary',
         text: 'Download Desktop App',
         attrs: {
-          href: 'https://github.com/jhonrey-com/Bookvibe/releases/latest',
+          href: 'https://github.com/jhonrey-com/Quillvibe/releases/latest',
           target: '_blank',
           rel: 'noopener noreferrer',
         },
@@ -252,12 +276,33 @@ export function showCollabModal(actions: AppActions): void {
         text: `Pending peer pushes: ${lanSession?.incomingCount ?? 0}`,
       });
 
+      const autoMergeChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: autoMergeLan, disabled: !desktopMode },
+        on: {
+          change: () => {
+            autoMergeLan = autoMergeChk.checked;
+            actions.notify(autoMergeLan ? 'Auto-merge enabled while LAN host runs.' : 'Manual merge mode active.');
+          },
+        },
+      });
+
       if (desktopMode && lanSession?.active) {
         lanPollTimer = window.setInterval(() => {
-          void getLanSyncStatus().then((latest) => {
+          void getLanSyncStatus().then(async (latest) => {
             if (!latest || !pendingStatusEl.isConnected) return;
             lanSession = latest;
             pendingStatusEl.textContent = `Pending peer pushes: ${latest.incomingCount}`;
+            if (autoMergeLan && latest.incomingCount > 0) {
+              while (true) {
+                const incoming = await pollLanIncomingSync();
+                if (!incoming) break;
+                mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
+              }
+              await updateLanSyncHostBook(
+                serializeExtensionFile('.quillvibe', actions.getState().project),
+              );
+            }
           });
         }, 3000);
       }
@@ -266,7 +311,7 @@ export function showCollabModal(actions: AppActions): void {
         contentArea.appendChild(
           buildDesktopBanner(
             'Same-Wi-Fi LAN Sync — Desktop App Only',
-            'Web browsers block raw local Wi-Fi TCP servers and peer sockets. Install the Windows, macOS, or Linux desktop app on both computers to pair over Wi-Fi, or use the Bluetooth / Nearby Share tab.',
+            'Web browsers block raw local Wi-Fi TCP servers and peer sockets. Install the Windows, macOS, or Linux desktop app to pair over local Wi-Fi, or use the Enterprise / Website Sync tab directly from any browser.',
           ),
         );
       }
@@ -284,7 +329,7 @@ export function showCollabModal(actions: AppActions): void {
             el('span', { className: 'bv-panel-title', text: 'Host Offline Same-Wi-Fi Session' }),
             el('p', {
               className: 'bv-label',
-              text: 'Shares this book directly over your local Wi-Fi router without internet. Teammates enter your LAN address and 6-digit PIN.',
+              text: 'Shares this book directly over your local private Wi-Fi router with constant-time 6-digit PIN verification and automatic conflict snapshots.',
             }),
             lanSession?.active
               ? el(
@@ -305,7 +350,7 @@ export function showCollabModal(actions: AppActions): void {
                     ? el('div', {
                         className: 'bv-label',
                         text: 'Loopback only detected. Connect to a Wi-Fi router or hotspot and click Restart Host.',
-                        style: { color: 'var(--accent-gold, #e5c07b)' },
+                        style: { color: 'var(--accent-amber)' },
                       })
                     : null,
                   el('div', {
@@ -316,6 +361,7 @@ export function showCollabModal(actions: AppActions): void {
                   pendingStatusEl,
                 )
               : null,
+            el('label', { className: 'bv-check-row' }, autoMergeChk, el('span', { text: 'Auto-merge incoming peer pushes' })),
             el(
               'div',
               { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
@@ -329,10 +375,10 @@ export function showCollabModal(actions: AppActions): void {
                         click: async () => {
                           try {
                             const latest = actions.getState().project;
-                            const json = serializeExtensionFile('.bookvibe', latest);
+                            const json = serializeExtensionFile('.quillvibe', latest);
                             lanSession = await startLanSyncHost(
                               json,
-                              latest.activeAuthorLabel || 'Bookvibe Host',
+                              latest.activeAuthorLabel || 'Quillvibe Host',
                             );
                             void renderTabContent();
                             actions.notify(`LAN Host active at ${lanSession.hostIp}:${lanSession.port}`);
@@ -386,7 +432,7 @@ export function showCollabModal(actions: AppActions): void {
                     attrs: { type: 'button' },
                     on: {
                       click: async () => {
-                        const json = serializeExtensionFile('.bookvibe', actions.getState().project);
+                        const json = serializeExtensionFile('.quillvibe', actions.getState().project);
                         const ok = await updateLanSyncHostBook(json);
                         actions.notify(
                           ok
@@ -408,7 +454,7 @@ export function showCollabModal(actions: AppActions): void {
                         while (true) {
                           const incoming = await pollLanIncomingSync();
                           if (!incoming) break;
-                          mergeIncomingRaw(incoming, 'peer.bookvibe', 'Wi-Fi Peer');
+                          mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
                           mergedCount++;
                         }
                         if (mergedCount === 0) {
@@ -416,7 +462,7 @@ export function showCollabModal(actions: AppActions): void {
                           return;
                         }
                         await updateLanSyncHostBook(
-                          serializeExtensionFile('.bookvibe', actions.getState().project),
+                          serializeExtensionFile('.quillvibe', actions.getState().project),
                         );
                         void renderTabContent();
                       },
@@ -442,7 +488,7 @@ export function showCollabModal(actions: AppActions): void {
                   click: async () => {
                     try {
                       const raw = await pullFromLanPeer(peerAddrIn.value, peerPinIn.value);
-                      mergeIncomingRaw(raw, 'lan-peer.bookvibe', peerAddrIn.value.trim());
+                      mergeIncomingRaw(raw, 'lan-peer.quillvibe', peerAddrIn.value.trim());
                     } catch (err) {
                       actions.notify(err instanceof Error ? err.message : 'LAN pull failed.');
                     }
@@ -456,7 +502,7 @@ export function showCollabModal(actions: AppActions): void {
                 on: {
                   click: async () => {
                     try {
-                      const json = serializeExtensionFile('.bookvibe', actions.getState().project);
+                      const json = serializeExtensionFile('.quillvibe', actions.getState().project);
                       await pushToLanPeer(peerAddrIn.value, peerPinIn.value, json);
                       actions.notify('Sent book edits to LAN host');
                     } catch (err) {
@@ -472,14 +518,273 @@ export function showCollabModal(actions: AppActions): void {
       return;
     }
 
-    // Bluetooth / Nearby Share Sync
-    if (!desktopMode) {
-      contentArea.appendChild(
-        buildDesktopBanner(
-          'Native OS Bluetooth Wizard — Desktop App Only',
-          'Direct launching of Windows Bluetooth File Transfer (fsquirt.exe), macOS Bluetooth File Exchange, or Linux bluetooth-sendto requires the desktop app. In browser mode you can share/download a .bookvibe file and merge received peer files below.',
+    if (activeTab === 'bluetooth') {
+      const fingerprintEl = el('div', {
+        className: 'bv-mono-tag',
+        text: 'Computing package SHA-256 checksum…',
+      });
+      const currentPayload = serializeExtensionFile('.quillvibe', project);
+      void computeSha256Hex(currentPayload).then((hex) => {
+        if (fingerprintEl.isConnected) {
+          fingerprintEl.textContent = `Package SHA-256: ${hex.slice(0, 16).toUpperCase()} · ${Math.round(currentPayload.length / 1024)} KB`;
+        }
+      });
+
+      if (!desktopMode) {
+        contentArea.appendChild(
+          buildDesktopBanner(
+            'Native OS Bluetooth Wizard — Desktop App Only',
+            'Direct launching of Windows Bluetooth File Transfer (fsquirt.exe), macOS Bluetooth File Exchange, or Linux bluetooth-sendto requires the desktop app. In browser mode you can share/download a .quillvibe file and merge received peer files below.',
+          ),
+        );
+      }
+
+      contentArea.append(
+        el(
+          'div',
+          { className: 'bv-two-col' },
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el('span', { className: 'bv-panel-title', text: 'Send via Bluetooth / Nearby Share' }),
+            el('p', {
+              className: 'bv-label',
+              text: desktopMode
+                ? 'Save a .quillvibe revision package and immediately launch your OS Bluetooth File Transfer wizard to send it without internet.'
+                : 'Share a .quillvibe revision package through your system share sheet (Bluetooth / Nearby Share / AirDrop when supported) or download for transfer.',
+            }),
+            fingerprintEl,
+            el(
+              'div',
+              { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+              el(
+                'button',
+                {
+                  className: 'bv-btn bv-btn-primary',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: async () => {
+                      const current = actions.getState().project;
+                      const payload = serializeExtensionFile('.quillvibe', current);
+                      const filename = `${sanitizeSlug(current.title)}.quillvibe`;
+                      if (desktopMode) {
+                        const savedPath = await saveBookvibeExtensionFile('.quillvibe', payload, current.title);
+                        if (!savedPath) {
+                          actions.notify('Bluetooth export cancelled.');
+                          return;
+                        }
+                        try {
+                          await navigator.clipboard?.writeText(savedPath);
+                        } catch {
+                          // Clipboard optional
+                        }
+                        const msg = await launchBluetoothShare({ filePath: savedPath, mode: 'send' });
+                        actions.notify(msg);
+                        return;
+                      }
+                      const msg = await launchBluetoothShare({
+                        mode: 'send',
+                        filename,
+                        payload,
+                        title: current.title,
+                      });
+                      actions.notify(msg);
+                    },
+                  },
+                },
+                icon('bluetooth', 14),
+                'Save & Open Bluetooth Share',
+              ),
+              desktopMode
+                ? el(
+                    'button',
+                    {
+                      className: 'bv-btn',
+                      text: 'Open Bluetooth Transfer',
+                      attrs: { type: 'button' },
+                      on: {
+                        click: async () => {
+                          const msg = await launchBluetoothShare({ mode: 'send' });
+                          actions.notify(msg);
+                        },
+                      },
+                    },
+                  )
+                : null,
+            ),
+          ),
+          el(
+            'section',
+            { className: 'bv-cork-card' },
+            el('span', { className: 'bv-panel-title', text: 'Merge Received Bluetooth / AirDrop File' }),
+            el('p', {
+              className: 'bv-label',
+              text: 'Import a co-author or proofreader’s .quillvibe or legacy .bookvibe file received over Bluetooth or USB. Conflicting scene edits are preserved as snapshots.',
+            }),
+            el(
+              'div',
+              { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+              desktopMode
+                ? el(
+                    'button',
+                    {
+                      className: 'bv-btn',
+                      attrs: { type: 'button' },
+                      on: {
+                        click: async () => {
+                          const msg = await launchBluetoothShare({ mode: 'receive' });
+                          actions.notify(msg);
+                        },
+                      },
+                    },
+                    icon('bluetooth', 14),
+                    'Open Bluetooth Receive',
+                  )
+                : null,
+              el(
+                'button',
+                {
+                  className: desktopMode ? 'bv-btn bv-btn-primary' : 'bv-btn',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: async () => {
+                      const opened = await openBookvibeFile();
+                      if (!opened) return;
+                      mergeIncomingRaw(opened.content, opened.filename, opened.filename);
+                    },
+                  },
+                },
+                icon('folder', 14),
+                'Pick & Merge Peer File…',
+              ),
+            ),
+          ),
         ),
       );
+      return;
+    }
+
+    // 4. Enterprise / Self-Hosted Server & Custom Website Sync
+    const urlIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'url',
+        value: serverCfg.baseUrl,
+        placeholder: 'https://sync.yourcompany.com/api (or http://192.168.1.10:8080)',
+      },
+      on: {
+        change: () => {
+          serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim() };
+          saveEnterpriseSyncConfig(serverCfg);
+        },
+      },
+    });
+
+    const bookSyncIdIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'text',
+        value: serverCfg.bookSyncId || project.id,
+        placeholder: 'Remote book channel ID (e.g. novel-manuscript-1)',
+      },
+      on: {
+        change: () => {
+          serverCfg = { ...serverCfg, bookSyncId: bookSyncIdIn.value.trim() || project.id };
+          saveEnterpriseSyncConfig(serverCfg);
+        },
+      },
+    });
+
+    const headerNameIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'text',
+        value: serverCfg.headerName,
+        placeholder: 'X-API-Key',
+      },
+      style: { display: serverCfg.authType === 'api-key' ? '' : 'none' },
+      on: {
+        change: () => {
+          serverCfg = { ...serverCfg, headerName: headerNameIn.value.trim() || 'X-API-Key' };
+          saveEnterpriseSyncConfig(serverCfg);
+        },
+      },
+    });
+
+    const authSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: {
+          change: () => {
+            const val = authSel.value as EnterpriseSyncConfig['authType'];
+            serverCfg = { ...serverCfg, authType: val };
+            headerNameIn.style.display = val === 'api-key' ? '' : 'none';
+            saveEnterpriseSyncConfig(serverCfg);
+          },
+        },
+      },
+      el('option', { text: 'Bearer Token (Authorization: Bearer)', attrs: { value: 'bearer', selected: serverCfg.authType === 'bearer' } }),
+      el('option', { text: 'Custom API Key Header', attrs: { value: 'api-key', selected: serverCfg.authType === 'api-key' } }),
+      el('option', { text: 'Open LAN / No Auth Header', attrs: { value: 'none', selected: serverCfg.authType === 'none' } }),
+    );
+
+    const tokenIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'password',
+        value: serverToken,
+        placeholder: 'API key or Bearer token (session-only, never exported)',
+        autocomplete: 'off',
+      },
+      on: {
+        input: () => {
+          serverToken = tokenIn.value;
+          saveEnterpriseSessionToken(serverToken);
+        },
+      },
+    });
+
+    const autoPullSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: {
+          change: () => {
+            serverCfg = { ...serverCfg, autoPullSec: Number(autoPullSel.value) || 0 };
+            saveEnterpriseSyncConfig(serverCfg);
+            void renderTabContent();
+          },
+        },
+      },
+      el('option', { text: 'Manual Pull & Push Only', attrs: { value: '0', selected: serverCfg.autoPullSec === 0 } }),
+      el('option', { text: 'Auto-Pull Every 15 Seconds (While Open)', attrs: { value: '15', selected: serverCfg.autoPullSec === 15 } }),
+      el('option', { text: 'Auto-Pull Every 60 Seconds (While Open)', attrs: { value: '60', selected: serverCfg.autoPullSec === 60 } }),
+    );
+
+    const statusTag = el('div', {
+      className: 'bv-mono-tag',
+      text: serverStatusMessage || 'Ready to connect over HTTPS (or private LAN HTTP).',
+      style: {
+        color:
+          serverStatusOk === true
+            ? 'var(--accent-emerald)'
+            : serverStatusOk === false
+              ? 'var(--accent-crimson)'
+              : 'var(--text-secondary)',
+      },
+    });
+
+    if (serverCfg.autoPullSec > 0 && serverCfg.baseUrl.trim()) {
+      lanPollTimer = window.setInterval(() => {
+        void pullBookFromEnterpriseServer(serverCfg, serverToken, actions.getState().project)
+          .then(({ rawJson }) => {
+            mergeIncomingRaw(rawJson, 'remote.quillvibe', 'Enterprise Server');
+          })
+          .catch(() => {
+            // Silent retry on background poll
+          });
+      }, serverCfg.autoPullSec * 1000);
     }
 
     contentArea.append(
@@ -489,116 +794,121 @@ export function showCollabModal(actions: AppActions): void {
         el(
           'section',
           { className: 'bv-cork-card' },
-          el('span', { className: 'bv-panel-title', text: 'Send via Bluetooth / Nearby Share' }),
+          el('span', { className: 'bv-panel-title', text: 'Connect Your Server or Website Endpoint' }),
           el('p', {
             className: 'bv-label',
-            text: desktopMode
-              ? 'Save a .bookvibe revision package and immediately launch your OS Bluetooth File Transfer wizard to send it without internet.'
-              : 'Share a .bookvibe revision package through your system share sheet (Bluetooth / Nearby Share / AirDrop when supported) or download for transfer.',
+            text: 'Sync teams directly against your company API, publishing house server, or personal website. Remote URLs require TLS (https://); plain http:// is blocked on public hosts.',
           }),
+          el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Endpoint Base URL' }), urlIn),
+          el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Book Channel / Repository ID' }), bookSyncIdIn),
+          el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Authentication Scheme' }), authSel),
+          headerNameIn,
+          el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Access Token / Secret' }), tokenIn),
+          el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Live Auto-Pull Interval' }), autoPullSel),
+          statusTag,
           el(
             'div',
             { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
-            el(
-              'button',
-              {
-                className: 'bv-btn bv-btn-primary',
-                attrs: { type: 'button' },
-                on: {
-                  click: async () => {
-                    const current = actions.getState().project;
-                    const payload = serializeExtensionFile('.bookvibe', current);
-                    const filename = `${sanitizeSlug(current.title)}.bookvibe`;
-                    if (desktopMode) {
-                      const savedPath = await saveBookvibeExtensionFile('.bookvibe', payload, current.title);
-                      if (!savedPath) {
-                        actions.notify('Bluetooth export cancelled.');
-                        return;
-                      }
-                      try {
-                        await navigator.clipboard?.writeText(savedPath);
-                      } catch {
-                        // Clipboard optional
-                      }
-                      const msg = await launchBluetoothShare({ filePath: savedPath, mode: 'send' });
-                      actions.notify(msg);
-                      return;
-                    }
-                    const msg = await launchBluetoothShare({
-                      mode: 'send',
-                      filename,
-                      payload,
-                      title: current.title,
-                    });
-                    actions.notify(msg);
-                  },
+            el('button', {
+              className: 'bv-btn',
+              text: 'Test Connection',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
+                  saveEnterpriseSyncConfig(serverCfg);
+                  const res = await testEnterpriseServer(serverCfg, tokenIn.value);
+                  serverStatusOk = res.ok;
+                  serverStatusMessage = res.message;
+                  statusTag.textContent = res.message;
+                  statusTag.style.color = res.ok ? 'var(--accent-emerald)' : 'var(--accent-crimson)';
                 },
               },
-              icon('bluetooth', 14),
-              'Save & Open Bluetooth Share',
-            ),
-            desktopMode
-              ? el(
-                  'button',
-                  {
-                    className: 'bv-btn',
-                    text: 'Open Bluetooth Transfer',
-                    attrs: { type: 'button' },
-                    on: {
-                      click: async () => {
-                        const msg = await launchBluetoothShare({ mode: 'send' });
-                        actions.notify(msg);
-                      },
-                    },
-                  },
-                )
-              : null,
+            }),
+            el('button', {
+              className: 'bv-btn bv-btn-primary',
+              text: 'Pull & Merge Latest',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  try {
+                    serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
+                    saveEnterpriseSyncConfig(serverCfg);
+                    const { rawJson, sha256 } = await pullBookFromEnterpriseServer(serverCfg, tokenIn.value, project);
+                    mergeIncomingRaw(rawJson, 'enterprise.quillvibe', 'Enterprise Sync Server');
+                    serverStatusOk = true;
+                    serverStatusMessage = `Pulled SHA-256 ${sha256.slice(0, 12).toUpperCase()}`;
+                    statusTag.textContent = serverStatusMessage;
+                    statusTag.style.color = 'var(--accent-emerald)';
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : 'Server pull failed.';
+                    serverStatusOk = false;
+                    serverStatusMessage = msg;
+                    statusTag.textContent = msg;
+                    statusTag.style.color = 'var(--accent-crimson)';
+                    actions.notify(msg);
+                  }
+                },
+              },
+            }),
+            el('button', {
+              className: 'bv-btn',
+              text: 'Push My Revision',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  try {
+                    serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
+                    saveEnterpriseSyncConfig(serverCfg);
+                    const json = serializeExtensionFile('.quillvibe', actions.getState().project);
+                    const res = await pushBookToEnterpriseServer(serverCfg, tokenIn.value, project, json);
+                    serverStatusOk = true;
+                    serverStatusMessage = `Pushed revision (HTTP ${res.status} · ${res.sha256.slice(0, 12).toUpperCase()})`;
+                    statusTag.textContent = serverStatusMessage;
+                    statusTag.style.color = 'var(--accent-emerald)';
+                    actions.notify('Pushed book revision to your sync server.');
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : 'Server push failed.';
+                    serverStatusOk = false;
+                    serverStatusMessage = msg;
+                    statusTag.textContent = msg;
+                    statusTag.style.color = 'var(--accent-crimson)';
+                    actions.notify(msg);
+                  }
+                },
+              },
+            }),
           ),
         ),
         el(
           'section',
           { className: 'bv-cork-card' },
-          el('span', { className: 'bv-panel-title', text: 'Merge Received Bluetooth / AirDrop File' }),
+          el('span', { className: 'bv-panel-title', text: 'Self-Hosted Server / Website API Contract' }),
           el('p', {
             className: 'bv-label',
-            text: 'Import a co-author or proofreader’s .bookvibe file received over Bluetooth or USB. Conflicting scene edits are automatically preserved as snapshots.',
+            text: 'Implement these three lightweight HTTP routes on your company backend, Node/Cloudflare Worker, or static-site companion server to host live collaborative writing rooms:',
+          }),
+          el('pre', {
+            className: 'qv-code-contract',
+            text: ENTERPRISE_SERVER_CONTRACT_DOC,
           }),
           el(
-            'div',
-            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
-            desktopMode
-              ? el(
-                  'button',
-                  {
-                    className: 'bv-btn',
-                    attrs: { type: 'button' },
-                    on: {
-                      click: async () => {
-                        const msg = await launchBluetoothShare({ mode: 'receive' });
-                        actions.notify(msg);
-                      },
-                    },
-                  },
-                  icon('bluetooth', 14),
-                  'Open Bluetooth Receive',
-                )
-              : null,
-            el(
-              'button',
-              {
-                className: desktopMode ? 'bv-btn bv-btn-primary' : 'bv-btn',
-                attrs: { type: 'button' },
-                on: {
-                  click: async () => {
-                    const opened = await openBookvibeFile();
-                    if (!opened) return;
-                    mergeIncomingRaw(opened.content, opened.filename, opened.filename);
-                  },
+            'button',
+            {
+              className: 'bv-btn',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  try {
+                    await navigator.clipboard?.writeText(ENTERPRISE_SERVER_CONTRACT_DOC);
+                    actions.notify('Copied REST API sync specification to clipboard.');
+                  } catch {
+                    actions.notify('Select and copy the API contract above.');
+                  }
                 },
               },
-              icon('folder', 14),
-              'Pick & Merge Peer File…',
-            ),
+            },
+            'Copy API Specification',
           ),
         ),
       ),
@@ -615,6 +925,7 @@ export function showCollabModal(actions: AppActions): void {
       { id: 'credits', label: 'Co-Authors & Proofreaders', icon: 'badge-id', tooltip: TOOLTIP_CATALOG.collabCredits },
       { id: 'wifi', label: 'Same-Wi-Fi LAN Sync', icon: 'wifi', tooltip: TOOLTIP_CATALOG.collabWifi },
       { id: 'bluetooth', label: 'Bluetooth & Nearby Sync', icon: 'bluetooth', tooltip: TOOLTIP_CATALOG.collabBluetooth },
+      { id: 'server', label: 'Enterprise / Website Sync', icon: 'server', tooltip: TOOLTIP_CATALOG.collabServer },
     ],
     onChange: (tab) => {
       activeTab = tab;
@@ -633,12 +944,12 @@ export function showCollabModal(actions: AppActions): void {
     'div',
     {
       className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Collaborate and Credits' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Collaborate, LAN, Bluetooth, and Enterprise Sync' },
     },
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Offline Collaboration · Co-Authors, Proofreaders & Direct Sync' }),
+      el('span', { className: 'bv-panel-title', text: 'Collaboration · Co-Authors, LAN, Bluetooth & Enterprise Sync' }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',
@@ -667,6 +978,7 @@ export function showCollabModal(actions: AppActions): void {
     },
     modal,
   );
+  backdrop.addEventListener('bv-close-modal', closeModal);
 
   document.body.appendChild(backdrop);
   void renderTabContent();

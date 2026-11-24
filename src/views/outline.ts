@@ -7,6 +7,7 @@ import {
   updateSceneInProject,
 } from '../core/manuscript';
 import type { SceneStatus } from '../core/types';
+import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el } from '../ui/dom';
 
 let searchFilter = '';
@@ -16,6 +17,8 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
   clearNode(container);
   const state = actions.getState();
   const scenes = getAllScenes(state.project);
+
+  let renderRows = () => {};
 
   const searchInput = el('input', {
     className: 'bv-input',
@@ -28,7 +31,7 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
     on: {
       input: () => {
         searchFilter = searchInput.value;
-        renderOutlineView(container, actions);
+        renderRows();
       },
     },
   });
@@ -41,7 +44,7 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
         change: () => {
           statusSelect.blur();
           statusFilter = statusSelect.value as SceneStatus | 'all';
-          renderOutlineView(container, actions);
+          renderRows();
         },
       },
     },
@@ -58,63 +61,105 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
     el('div', { className: 'bv-subbar-group' }, searchInput, statusSelect),
   );
 
-  const query = searchFilter.trim().toLowerCase();
-  const filtered = scenes.filter((item) => {
-    if (statusFilter !== 'all' && item.scene.status !== statusFilter) return false;
-    if (!query) return true;
-    const hay = `${item.part.title} ${item.chapter.title} ${item.scene.title} ${item.scene.pov} ${item.scene.location} ${item.scene.timeline}`.toLowerCase();
-    return hay.includes(query);
-  });
-
   const tbody = el('tbody');
-  for (const item of filtered) {
-    const { scene, chapter, sequenceNumber } = item;
-    const words = countWords(scene.content);
-    const pct = scene.wordTarget > 0 ? Math.round((words / scene.wordTarget) * 100) : 100;
 
-    const rowStatus = el('select', {
-      className: 'bv-select',
-      on: {
-        change: () => {
-          const status = rowStatus.value as SceneStatus;
-          actions.mutateProject((prev) => updateSceneInProject(prev, scene.id, { status }));
-        },
-      },
+  renderRows = () => {
+    clearNode(tbody);
+    const query = searchFilter.trim().toLowerCase();
+    const filtered = scenes.filter((item) => {
+      if (statusFilter !== 'all' && item.scene.status !== statusFilter) return false;
+      if (!query) return true;
+      const hay = `${item.part.title} ${item.chapter.title} ${item.scene.title} ${item.scene.pov} ${item.scene.location} ${item.scene.timeline}`.toLowerCase();
+      return hay.includes(query);
     });
-    for (const [val, label] of Object.entries(SCENE_STATUS_LABELS)) {
-      rowStatus.appendChild(
-        el('option', { text: label, attrs: { value: val, selected: scene.status === val } }),
-      );
-    }
 
-    const row = el(
-      'tr',
-      {},
-      el('td', { className: 'bv-mono-tag', text: String(sequenceNumber).padStart(2, '0') }),
-      el(
-        'td',
-        {},
-        el(
-          'button',
-          {
-            className: 'bv-fmt-btn',
-            text: scene.title || 'Untitled Scene',
-            attrs: { type: 'button' },
-            style: { paddingLeft: '0', fontWeight: '600', color: 'var(--text-primary)' },
-            on: { click: () => actions.selectScene(scene.id, true) },
+    for (const item of filtered) {
+      const { scene, chapter, sequenceNumber } = item;
+      const words = countWords(scene.content);
+      const pct = scene.wordTarget > 0 ? Math.round((words / scene.wordTarget) * 100) : 100;
+
+      const rowStatus = el('select', {
+        className: 'bv-select',
+        on: {
+          change: () => {
+            const status = rowStatus.value as SceneStatus;
+            actions.mutateProject((prev) => updateSceneInProject(prev, scene.id, { status }));
           },
+        },
+      });
+      for (const [val, label] of Object.entries(SCENE_STATUS_LABELS)) {
+        rowStatus.appendChild(
+          el('option', { text: label, attrs: { value: val, selected: scene.status === val } }),
+        );
+      }
+
+      const row = el(
+        'tr',
+        {},
+        el('td', { className: 'bv-mono-tag', text: String(sequenceNumber).padStart(2, '0') }),
+        el(
+          'td',
+          {},
+          el(
+            'button',
+            {
+              className: 'bv-fmt-btn',
+              text: scene.title || 'Untitled Scene',
+              attrs: { type: 'button' },
+              style: { paddingLeft: '0', fontWeight: '600', color: 'var(--text-primary)' },
+              on: { click: () => actions.selectScene(scene.id, true) },
+            },
+          ),
+          el('div', { className: 'bv-label', text: chapter.title }),
         ),
-        el('div', { className: 'bv-label', text: chapter.title }),
-      ),
-      el('td', { className: 'bv-mono-tag', text: scene.timeline || '—' }),
-      el('td', { text: scene.pov || '—' }),
-      el('td', { text: scene.location || '—' }),
-      el('td', {}, rowStatus),
-      el('td', { className: 'bv-mono-tag', text: `${words} / ${scene.wordTarget} (${pct}%)` }),
-      el('td', { className: 'bv-mono-tag', text: `${estimateReadingMinutes(words)}m` }),
-    );
-    tbody.appendChild(row);
-  }
+        el('td', { className: 'bv-mono-tag', text: scene.timeline || '—' }),
+        el('td', { text: scene.pov || '—' }),
+        el('td', { text: scene.location || '—' }),
+        el('td', {}, rowStatus),
+        el('td', { className: 'bv-mono-tag', text: `${words} / ${scene.wordTarget} (${pct}%)` }),
+        el('td', { className: 'bv-mono-tag', text: `${estimateReadingMinutes(words)}m` }),
+      );
+      tbody.appendChild(row);
+      attachContextMenu(row, () => [
+        {
+          heading: scene.title || 'Untitled Scene',
+          items: [
+            {
+              label: 'Edit Scene Draft',
+              icon: 'draft-sheet',
+              onSelect: () => {
+                actions.setState({ editorSubMode: 'draft' }, false);
+                actions.selectScene(scene.id, true);
+              },
+            },
+            {
+              label: 'Proofread Scene',
+              icon: 'proofread',
+              onSelect: () => {
+                actions.setState({ editorSubMode: 'proofread' }, false);
+                actions.selectScene(scene.id, true);
+              },
+            },
+            {
+              label: 'Export Scene (.qvscene)',
+              icon: 'file',
+              onSelect: () => void actions.exportAsExtension('.qvscene', { sceneId: scene.id }),
+            },
+          ],
+        },
+        {
+          heading: 'Set Revision Stage',
+          items: (['outline', 'draft', 'revision', 'final'] as SceneStatus[]).map((st) => ({
+            label: SCENE_STATUS_LABELS[st],
+            checked: scene.status === st,
+            onSelect: () => actions.mutateProject((prev) => updateSceneInProject(prev, scene.id, { status: st })),
+          })),
+        },
+      ]);
+    }
+  };
+
+  renderRows();
 
   const table = el(
     'table',

@@ -6,7 +6,10 @@ import type {
   BookProject,
   CoverFaceId,
   CoverGraphicLayer,
+  CoverShapeKind,
+  CoverShapeLayer,
   CoverTemplateId,
+  CoverTextLayer,
 } from './types';
 
 export interface CoverTemplatePreset {
@@ -181,7 +184,127 @@ export function createGraphicLayerFromDataUrl(
     rotationDeg: 0,
     opacity: 1,
     kind,
+    visible: true,
+    locked: false,
+    flipX: false,
+    flipY: false,
+    brightnessPct: 100,
+    contrastPct: 100,
+    blurPx: 0,
   };
+}
+
+export function createShapeLayer(
+  face: CoverFaceId,
+  shape: CoverShapeKind,
+  accentColor = '#c7a97b',
+): CoverShapeLayer {
+  const names: Record<CoverShapeKind, string> = {
+    rect: 'Rectangle',
+    'rounded-rect': 'Rounded Box',
+    circle: 'Circle / Seal',
+    line: 'Rule Line',
+    frame: 'Border Frame',
+    badge: 'Edition Pill',
+  };
+  const isLine = shape === 'line';
+  const isCircle = shape === 'circle';
+  const isFrame = shape === 'frame';
+  const isBadge = shape === 'badge';
+  return {
+    id: newId('csl'),
+    face,
+    name: names[shape],
+    shape,
+    xPct: 50,
+    yPct: isBadge ? 18 : 52,
+    widthPct: isFrame ? 84 : isCircle ? 26 : isLine ? 62 : isBadge ? 38 : 48,
+    heightPct: isFrame ? 86 : isCircle ? 18 : isLine ? 1.5 : isBadge ? 7 : 22,
+    fillColor: isFrame || isLine ? 'transparent' : accentColor,
+    strokeColor: accentColor,
+    strokeWidth: isFrame || isLine ? 2 : 0,
+    cornerRadius: isCircle ? 999 : isBadge ? 999 : shape === 'rounded-rect' ? 14 : 0,
+    rotationDeg: 0,
+    opacity: isFrame || isLine ? 0.9 : 0.28,
+    visible: true,
+    locked: false,
+  };
+}
+
+export function createTextLayer(
+  face: CoverFaceId,
+  text = 'Custom Display Copy',
+  color = '#f2ede2',
+): CoverTextLayer {
+  return {
+    id: newId('ctl'),
+    face,
+    name: text.slice(0, 26) || 'Text Layer',
+    text,
+    xPct: 50,
+    yPct: 58,
+    fontSize: 16,
+    color,
+    align: 'center',
+    fontWeight: '500',
+    italic: false,
+    uppercase: false,
+    letterSpacingEm: 0.02,
+    lineHeight: 1.25,
+    strokeColor: '#000000',
+    strokeWidth: 0,
+    shadowBlur: 0,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+  };
+}
+
+export function snapValueToGrid(valuePct: number, gridStepPct = 4, enabled = true): number {
+  if (!enabled || gridStepPct <= 0) return Math.round(valuePct * 10) / 10;
+  return Math.round(valuePct / gridStepPct) * gridStepPct;
+}
+
+export function computeSmartAlignSnap(
+  xPct: number,
+  yPct: number,
+  options: { snapGrid?: boolean; gridStepPct?: number; magneticThreshold?: number } = {},
+): { xPct: number; yPct: number; guideX: number | null; guideY: number | null } {
+  const threshold = options.magneticThreshold ?? 1.8;
+  let outX = options.snapGrid ? snapValueToGrid(xPct, options.gridStepPct ?? 4, true) : Math.round(xPct);
+  let outY = options.snapGrid ? snapValueToGrid(yPct, options.gridStepPct ?? 4, true) : Math.round(yPct);
+  let guideX: number | null = null;
+  let guideY: number | null = null;
+
+  for (const anchor of [50, 25, 75]) {
+    if (Math.abs(xPct - anchor) <= threshold) {
+      outX = anchor;
+      guideX = anchor;
+      break;
+    }
+  }
+  for (const anchor of [50, 25, 75]) {
+    if (Math.abs(yPct - anchor) <= threshold) {
+      outY = anchor;
+      guideY = anchor;
+      break;
+    }
+  }
+  return { xPct: outX, yPct: outY, guideX, guideY };
+}
+
+export function computeCoverBackgroundCss(cover: BookCoverConfig, baseColor: string): string {
+  const mode = cover.bgMode ?? 'solid';
+  const end = cover.bgGradientEnd || cover.accentColor || '#1e2432';
+  const angle = cover.bgGradientAngle ?? 155;
+  if (mode === 'linear-gradient') {
+    return `linear-gradient(${angle}deg, ${baseColor}, ${end})`;
+  }
+  if (mode === 'radial-gradient') {
+    return `radial-gradient(circle at 50% 35%, ${end}, ${baseColor})`;
+  }
+  return baseColor;
 }
 
 export function defaultBookCover(project?: BookProject): BookCoverConfig {
@@ -190,6 +313,12 @@ export function defaultBookCover(project?: BookProject): BookCoverConfig {
   return {
     template: 'obsidian-foil',
     backgroundColor: '#0d0f14',
+    bgMode: 'solid',
+    bgGradientEnd: '#1b2230',
+    bgGradientAngle: 155,
+    bgBrightnessPct: 100,
+    bgContrastPct: 100,
+    bgBlurPx: 0,
     backBackgroundColor: '#0d0f14',
     spineBackgroundColor: '#0d0f14',
     accentColor: '#c7a97b',
@@ -199,13 +328,19 @@ export function defaultBookCover(project?: BookProject): BookCoverConfig {
     backHeadline: project?.title || 'About the Book',
     backBlurb:
       firstSynopsis ||
-      'A standalone literary work written and typeset with Bookvibe.',
+      'A standalone literary work written and typeset with Quillvibe.',
     authorBio: `${authorName} writes long-form fiction and literary works.`,
     spineTitle: '',
     showBarcodeBox: true,
     frontFlapText: 'A crisp jacket summary for print cloth and hardcover editions.',
     backFlapText: `${authorName} notes, colophon, and imprint credit.`,
+    snapToGrid: true,
+    showGrid: false,
+    gridSizePx: 4,
+    showGuides: true,
     graphicLayers: [],
+    shapeLayers: [],
+    textLayers: [],
     editionLabel: 'First Edition',
     elements: {
       edition: { xPct: 50, yPct: 12, fontSize: 12, align: 'center', visible: true },
@@ -309,6 +444,7 @@ async function drawGraphicLayersOnRect(
   boxH: number,
 ): Promise<void> {
   for (const layer of layers) {
+    if (layer.visible === false) continue;
     const img = await loadImage(layer.dataUrl);
     if (!img) continue;
     const targetW = (Math.max(5, Math.min(100, layer.widthPct)) / 100) * boxW;
@@ -318,9 +454,111 @@ async function drawGraphicLayersOnRect(
     const cy = oy + (layer.yPct / 100) * boxH;
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, layer.opacity));
+    const b = layer.brightnessPct ?? 100;
+    const c = layer.contrastPct ?? 100;
+    const blur = layer.blurPx ?? 0;
+    if ('filter' in ctx && (b !== 100 || c !== 100 || blur > 0)) {
+      ctx.filter = `brightness(${b}%) contrast(${c}%) blur(${blur}px)`;
+    }
     ctx.translate(cx, cy);
     ctx.rotate((layer.rotationDeg * Math.PI) / 180);
+    ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
     ctx.drawImage(img, -targetW / 2, -targetH / 2, targetW, targetH);
+    ctx.restore();
+  }
+}
+
+function drawShapeLayersOnRect(
+  ctx: CanvasRenderingContext2D,
+  shapes: CoverShapeLayer[],
+  ox: number,
+  oy: number,
+  boxW: number,
+  boxH: number,
+): void {
+  for (const s of shapes) {
+    if (s.visible === false) continue;
+    const w = (s.widthPct / 100) * boxW;
+    const h = s.shape === 'line' ? Math.max(2, s.strokeWidth || 2) : (s.heightPct / 100) * boxH;
+    const cx = ox + (s.xPct / 100) * boxW;
+    const cy = oy + (s.yPct / 100) * boxH;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.02, Math.min(1, s.opacity));
+    ctx.translate(cx, cy);
+    ctx.rotate((s.rotationDeg * Math.PI) / 180);
+
+    const hw = w / 2;
+    const hh = h / 2;
+    ctx.beginPath();
+    if (s.shape === 'circle') {
+      ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+    } else if (s.shape === 'line') {
+      ctx.moveTo(-hw, 0);
+      ctx.lineTo(hw, 0);
+    } else {
+      const r = Math.min(s.cornerRadius || 0, hw, hh);
+      ctx.roundRect(-hw, -hh, w, h, r);
+    }
+
+    if (s.shape !== 'line' && s.fillColor && s.fillColor !== 'transparent') {
+      if (s.gradientEndColor) {
+        const grad = ctx.createLinearGradient(-hw, -hh, hw, hh);
+        grad.addColorStop(0, s.fillColor);
+        grad.addColorStop(1, s.gradientEndColor);
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = s.fillColor;
+      }
+      ctx.fill();
+    }
+    if (s.strokeWidth > 0 && s.strokeColor) {
+      ctx.strokeStyle = s.strokeColor;
+      ctx.lineWidth = s.strokeWidth * (boxW / 400);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawCustomTextLayersOnRect(
+  ctx: CanvasRenderingContext2D,
+  textLayers: CoverTextLayer[],
+  defaultFontStack: string,
+  ox: number,
+  oy: number,
+  boxW: number,
+  boxH: number,
+): void {
+  const scaleFactor = boxW / 400;
+  for (const tl of textLayers) {
+    if (tl.visible === false || !tl.text.trim()) continue;
+    const pxSize = Math.round(tl.fontSize * scaleFactor);
+    const fontStack = tl.fontFamily ? resolveEffectiveFontCss('garamond', tl.fontFamily) : defaultFontStack;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, tl.opacity));
+    ctx.translate(ox + (tl.xPct / 100) * boxW, oy + (tl.yPct / 100) * boxH);
+    ctx.rotate((tl.rotationDeg * Math.PI) / 180);
+    ctx.font = `${tl.italic ? 'italic ' : ''}${tl.fontWeight || '500'} ${pxSize}px ${fontStack}`;
+    ctx.textAlign = tl.align;
+    ctx.textBaseline = 'middle';
+    if (tl.shadowBlur && tl.shadowBlur > 0) {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = tl.shadowBlur;
+    }
+    const content = tl.uppercase ? tl.text.toUpperCase() : tl.text;
+    const lines = wrapCanvasLines(ctx, content, boxW * 0.85);
+    const step = pxSize * (tl.lineHeight || 1.2);
+    let y = -((lines.length - 1) * step) / 2;
+    for (const line of lines) {
+      if (tl.strokeWidth && tl.strokeWidth > 0 && tl.strokeColor) {
+        ctx.strokeStyle = tl.strokeColor;
+        ctx.lineWidth = tl.strokeWidth * scaleFactor;
+        ctx.strokeText(line, 0, y);
+      }
+      ctx.fillStyle = tl.color;
+      ctx.fillText(line, 0, y);
+      y += step;
+    }
     ctx.restore();
   }
 }
@@ -346,7 +584,34 @@ async function paintFrontFaceOnContext(
   ctx.rect(ox, oy, widthPx, heightPx);
   ctx.clip();
 
-  ctx.fillStyle = cover.backgroundColor;
+  if (cover.bgMode === 'linear-gradient') {
+    const rad = ((cover.bgGradientAngle ?? 155) * Math.PI) / 180;
+    const dx = Math.cos(rad) * (widthPx / 2);
+    const dy = Math.sin(rad) * (heightPx / 2);
+    const grad = ctx.createLinearGradient(
+      ox + widthPx / 2 - dx,
+      oy + heightPx / 2 - dy,
+      ox + widthPx / 2 + dx,
+      oy + heightPx / 2 + dy,
+    );
+    grad.addColorStop(0, cover.backgroundColor);
+    grad.addColorStop(1, cover.bgGradientEnd || cover.accentColor);
+    ctx.fillStyle = grad;
+  } else if (cover.bgMode === 'radial-gradient') {
+    const grad = ctx.createRadialGradient(
+      ox + widthPx * 0.5,
+      oy + heightPx * 0.35,
+      widthPx * 0.05,
+      ox + widthPx * 0.5,
+      oy + heightPx * 0.5,
+      Math.max(widthPx, heightPx) * 0.72,
+    );
+    grad.addColorStop(0, cover.bgGradientEnd || cover.accentColor);
+    grad.addColorStop(1, cover.backgroundColor);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = cover.backgroundColor;
+  }
   ctx.fillRect(ox, oy, widthPx, heightPx);
 
   if (cover.backgroundImageDataUrl) {
@@ -355,7 +620,17 @@ async function paintFrontFaceOnContext(
       const scale = Math.max(widthPx / art.width, heightPx / art.height);
       const dw = art.width * scale;
       const dh = art.height * scale;
+      ctx.save();
+      if ('filter' in ctx) {
+        const b = cover.bgBrightnessPct ?? 100;
+        const c = cover.bgContrastPct ?? 100;
+        const blur = cover.bgBlurPx ?? 0;
+        if (b !== 100 || c !== 100 || blur > 0) {
+          ctx.filter = `brightness(${b}%) contrast(${c}%) blur(${blur}px)`;
+        }
+      }
       ctx.drawImage(art, ox + (widthPx - dw) / 2, oy + (heightPx - dh) / 2, dw, dh);
+      ctx.restore();
       ctx.fillStyle = cover.backgroundColor;
       ctx.globalAlpha = Math.max(0, Math.min(0.9, cover.imageOverlayOpacity));
       ctx.fillRect(ox, oy, widthPx, heightPx);
@@ -376,6 +651,15 @@ async function paintFrontFaceOnContext(
     ctx.fillRect(ox + pad, oy + pad, Math.round(widthPx * 0.012), heightPx - pad * 2);
   }
 
+  drawShapeLayersOnRect(
+    ctx,
+    (cover.shapeLayers ?? []).filter((l) => l.face === 'front'),
+    ox,
+    oy,
+    widthPx,
+    heightPx,
+  );
+
   await drawGraphicLayersOnRect(
     ctx,
     (cover.graphicLayers ?? []).filter((l) => l.face === 'front'),
@@ -392,23 +676,35 @@ async function paintFrontFaceOnContext(
     options: { italic?: boolean; uppercase?: boolean; weight?: string; color?: string },
   ) => {
     if (!placement.visible || !text.trim()) return;
-    const content = options.uppercase ? text.toUpperCase() : text;
+    const content = (placement.uppercase ?? options.uppercase) ? text.toUpperCase() : text;
     const pxSize = Math.round(placement.fontSize * scaleFactor);
-    ctx.fillStyle = options.color ?? cover.textColor;
-    ctx.font = `${options.italic ? 'italic ' : ''}${options.weight ?? '500'} ${pxSize}px ${fontStack}`;
+    ctx.save();
+    ctx.globalAlpha = placement.opacity ?? 1;
+    ctx.fillStyle = placement.color ?? options.color ?? cover.textColor;
+    ctx.font = `${(placement.italic ?? options.italic) ? 'italic ' : ''}${placement.fontWeight ?? options.weight ?? '500'} ${pxSize}px ${fontStack}`;
     ctx.textAlign = placement.align;
     ctx.textBaseline = 'middle';
+    if (placement.shadowBlur && placement.shadowBlur > 0) {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = placement.shadowBlur;
+    }
     const x = ox + (placement.xPct / 100) * widthPx;
     let y = oy + (placement.yPct / 100) * heightPx;
     const maxW = widthPx - pad * 2.2;
     const lines = wrapCanvasLines(ctx, content, maxW);
-    const lineStep = pxSize * 1.18;
+    const lineStep = pxSize * (placement.lineHeight ?? 1.18);
     const totalH = (lines.length - 1) * lineStep;
     y -= totalH / 2;
     for (const line of lines) {
+      if (placement.strokeWidth && placement.strokeWidth > 0 && placement.strokeColor) {
+        ctx.strokeStyle = placement.strokeColor;
+        ctx.lineWidth = placement.strokeWidth * scaleFactor;
+        ctx.strokeText(line, x, y);
+      }
       ctx.fillText(line, x, y);
       y += lineStep;
     }
+    ctx.restore();
   };
 
   drawTextElement(cover.editionLabel, cover.elements.edition, {
@@ -419,6 +715,16 @@ async function paintFrontFaceOnContext(
   drawTextElement(project.title, cover.elements.title, { weight: '600' });
   drawTextElement(project.subtitle, cover.elements.subtitle, { italic: true });
   drawTextElement(penName, cover.elements.author, { uppercase: true, weight: '600' });
+
+  drawCustomTextLayersOnRect(
+    ctx,
+    (cover.textLayers ?? []).filter((l) => l.face === 'front'),
+    fontStack,
+    ox,
+    oy,
+    widthPx,
+    heightPx,
+  );
 
   if (cover.elements.signature.visible) {
     if (identity.signatureSvgDataUrl) {
@@ -482,9 +788,26 @@ export async function renderFullWrapToPngDataUrl(
   // Back face
   ctx.fillStyle = cover.backBackgroundColor || cover.backgroundColor;
   ctx.fillRect(0, 0, faceW, faceH);
+  drawShapeLayersOnRect(
+    ctx,
+    (cover.shapeLayers ?? []).filter((l) => l.face === 'back'),
+    0,
+    0,
+    faceW,
+    faceH,
+  );
   await drawGraphicLayersOnRect(
     ctx,
     (cover.graphicLayers ?? []).filter((l) => l.face === 'back'),
+    0,
+    0,
+    faceW,
+    faceH,
+  );
+  drawCustomTextLayersOnRect(
+    ctx,
+    (cover.textLayers ?? []).filter((l) => l.face === 'back'),
+    fontStack,
     0,
     0,
     faceW,
@@ -517,12 +840,20 @@ export async function renderFullWrapToPngDataUrl(
     ctx.fillRect(faceW - pad - 240, faceH - pad - 140, 240, 140);
     ctx.fillStyle = '#111111';
     ctx.font = '18px monospace';
-    ctx.fillText(project.publishing?.isbn || 'BOOKVIBE PRESS', faceW - pad - 224, faceH - pad - 24);
+    ctx.fillText(project.publishing?.isbn || 'QUILLVIBE PRESS', faceW - pad - 224, faceH - pad - 24);
   }
 
   // Spine face
   ctx.fillStyle = cover.spineBackgroundColor || cover.backgroundColor;
   ctx.fillRect(faceW, 0, spineW, faceH);
+  drawShapeLayersOnRect(
+    ctx,
+    (cover.shapeLayers ?? []).filter((l) => l.face === 'spine'),
+    faceW,
+    0,
+    spineW,
+    faceH,
+  );
   await drawGraphicLayersOnRect(
     ctx,
     (cover.graphicLayers ?? []).filter((l) => l.face === 'spine'),

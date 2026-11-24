@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Bookvibe layered open-folio app icons (.png, .ico, .icns) matching assets/bookvibe-logo.svg."""
+"""Generate boxless, transparent-background Quillvibe open-folio app icons (.png, .ico, .icns)."""
 import math
 import os
 import struct
@@ -12,6 +12,17 @@ ASSETS_DIR = os.path.join(ROOT, "assets")
 os.makedirs(ICONS_DIR, exist_ok=True)
 os.makedirs(PUBLIC_DIR, exist_ok=True)
 os.makedirs(ASSETS_DIR, exist_ok=True)
+
+EMBLEM_CENTER_X = 32.0
+EMBLEM_CENTER_Y = 32.5
+EMBLEM_SCALE = 1.28
+
+
+def norm_pt(x: float, y: float) -> tuple[float, float]:
+    return (
+        ((x - EMBLEM_CENTER_X) / 64.0) * EMBLEM_SCALE,
+        ((y - EMBLEM_CENTER_Y) / 64.0) * EMBLEM_SCALE,
+    )
 
 
 def cubic_points(
@@ -29,15 +40,11 @@ def cubic_points(
         t2 = t * t
         x = mt2 * mt * p0[0] + 3.0 * mt2 * t * p1[0] + 3.0 * mt * t2 * p2[0] + t2 * t * p3[0]
         y = mt2 * mt * p0[1] + 3.0 * mt2 * t * p1[1] + 3.0 * mt * t2 * p2[1] + t2 * t * p3[1]
-        pts.append((x / 64.0 - 0.5, y / 64.0 - 0.5))
+        pts.append(norm_pt(x, y))
     return pts
 
 
-def norm_pt(x: float, y: float) -> tuple[float, float]:
-    return (x / 64.0 - 0.5, y / 64.0 - 0.5)
-
-
-def build_layers() -> list[tuple[list[tuple[float, float]], tuple[float, float, float, float], tuple[float, float, float]]]:
+def build_layers() -> list[tuple[list[tuple[float, float]], tuple[float, float, float, float], tuple[float, float, float], bool]]:
     # 1. Warm bronze back folio cradle (#7e6644)
     cradle = [norm_pt(11, 27)]
     cradle += cubic_points((11, 27), (11, 24.4), (13.1, 22.8), (15.6, 23.4))
@@ -76,26 +83,20 @@ def build_layers() -> list[tuple[list[tuple[float, float]], tuple[float, float, 
     right_page += cubic_points((36.7, 50.1), (35.3, 51.3), (33.8, 50.7), (33.8, 49.1))
 
     layers = []
-    for pts, col in [
-        (cradle, (126.0, 102.0, 68.0)),
-        (wing, (217.0, 180.0, 120.0)),
-        (left_page, (245.0, 242.0, 235.0)),
-        (right_page, (223.0, 217.0, 205.0)),
+    for pts, col, has_rim in [
+        (cradle, (126.0, 102.0, 68.0), False),
+        (wing, (217.0, 180.0, 120.0), False),
+        (left_page, (245.0, 242.0, 235.0), True),
+        (right_page, (223.0, 217.0, 205.0), True),
     ]:
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
         bbox = (min(xs), min(ys), max(xs), max(ys))
-        layers.append((pts, bbox, col))
+        layers.append((pts, bbox, col, has_rim))
     return layers
 
 
 LAYERS = build_layers()
-
-
-def sd_rounded_box(px: float, py: float, half_w: float, half_h: float, radius: float) -> float:
-    qx = abs(px) - (half_w - radius)
-    qy = abs(py) - (half_h - radius)
-    return math.hypot(max(qx, 0.0), max(qy, 0.0)) + min(max(qx, qy), 0.0) - radius
 
 
 def sd_polygon(px: float, py: float, pts: list[tuple[float, float]]) -> float:
@@ -124,39 +125,45 @@ def sd_polygon(px: float, py: float, pts: list[tuple[float, float]]) -> float:
     return -d if inside else d
 
 
-def blend(dst: tuple[float, float, float], src: tuple[float, float, float], alpha: float) -> tuple[float, float, float]:
-    a = max(0.0, min(1.0, alpha))
+def over_premul(
+    dst_r: float,
+    dst_g: float,
+    dst_b: float,
+    dst_a: float,
+    src_col: tuple[float, float, float],
+    src_a: float,
+) -> tuple[float, float, float, float]:
+    sa = max(0.0, min(1.0, src_a))
+    inv = 1.0 - sa
     return (
-        dst[0] * (1.0 - a) + src[0] * a,
-        dst[1] * (1.0 - a) + src[1] * a,
-        dst[2] * (1.0 - a) + src[2] * a,
+        src_col[0] * sa + dst_r * inv,
+        src_col[1] * sa + dst_g * inv,
+        src_col[2] * sa + dst_b * inv,
+        sa + dst_a * inv,
     )
 
 
 def sample_logo_pixel(nx: float, ny: float, px_scale: float) -> tuple[float, float, float, float]:
-    """Sample single sub-pixel in normalized [-0.5, 0.5] coordinates."""
-    squircle_dist = sd_rounded_box(nx, ny, 0.495, 0.495, 0.245)
-    outer_alpha = max(0.0, min(1.0, 0.5 - squircle_dist * px_scale))
-    if outer_alpha <= 0.0:
-        return (0.0, 0.0, 0.0, 0.0)
+    """Sample single sub-pixel in normalized [-0.5, 0.5] coordinates on a transparent canvas."""
+    out_r = out_g = out_b = out_a = 0.0
+    pad = 3.0 / px_scale
+    rim_half = 0.009
 
-    col = (17.0, 19.0, 25.0)
-    pad = 2.0 / px_scale
-
-    # Subtle architectural obsidian hairline rim (#262b38)
-    rim_alpha = max(0.0, min(1.0, 0.5 - abs(squircle_dist + 0.015) * px_scale)) * 0.85
-    if rim_alpha > 0.0:
-        col = blend(col, (38.0, 43.0, 56.0), rim_alpha)
-
-    for pts, (min_x, min_y, max_x, max_y), layer_col in LAYERS:
+    for pts, (min_x, min_y, max_x, max_y), layer_col, has_rim in LAYERS:
         if nx < min_x - pad or nx > max_x + pad or ny < min_y - pad or ny > max_y + pad:
             continue
         sd = sd_polygon(nx, ny, pts)
-        alpha = max(0.0, min(1.0, 0.5 - sd * px_scale))
-        if alpha > 0.0:
-            col = blend(col, layer_col, alpha)
+        fill_a = max(0.0, min(1.0, 0.5 - sd * px_scale))
+        if fill_a > 0.0:
+            out_r, out_g, out_b, out_a = over_premul(out_r, out_g, out_b, out_a, layer_col, fill_a)
+        if has_rim:
+            rim_a = max(0.0, min(1.0, 0.5 - (abs(sd) - rim_half) * px_scale)) * 0.24
+            if rim_a > 0.0:
+                out_r, out_g, out_b, out_a = over_premul(out_r, out_g, out_b, out_a, (43.0, 36.0, 29.0), rim_a)
 
-    return (col[0], col[1], col[2], outer_alpha * 255.0)
+    if out_a <= 1e-6:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (out_r / out_a, out_g / out_a, out_b / out_a, out_a * 255.0)
 
 
 def render_icon_rgba(size: int) -> bytes:
@@ -248,12 +255,12 @@ def main() -> None:
             ],
         ),
         (PUBLIC_DIR, [("favicon.ico", ico_bytes)]),
-        (ASSETS_DIR, [("bookvibe-icon-512.png", png_512)]),
+        (ASSETS_DIR, [("quillvibe-icon-512.png", png_512), ("bookvibe-icon-512.png", png_512)]),
     ]:
         for name, data in files:
             with open(os.path.join(target_dir, name), "wb") as fh:
                 fh.write(data)
-    print(f"Generated modern Bookvibe layered open-folio icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
+    print(f"Generated transparent boxless Quillvibe icons in {ICONS_DIR}, {PUBLIC_DIR}, and {ASSETS_DIR}")
 
 
 if __name__ == "__main__":

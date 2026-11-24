@@ -1,4 +1,4 @@
-import { BOOKVIBE_EXTENSIONS, getExtensionDefinition } from './extensions';
+import { ALL_OFFICIAL_EXTENSIONS, getExtensionDefinition } from './extensions';
 import {
   buildEpubBlobBytes,
   buildEpubExportPayload,
@@ -15,11 +15,20 @@ import type {
   OpenedFileResult,
 } from './types';
 
-const LOCAL_STORAGE_KEY = 'bookvibe.activeProject.v1';
-const LIBRARY_STORAGE_KEY = 'bookvibe.library.v1';
-const DEFAULT_EXPORT_KEY = 'bookvibe.defaultExport.v1';
+const LOCAL_STORAGE_KEY = 'quillvibe.activeProject.v2';
+const LEGACY_LOCAL_STORAGE_KEY = 'bookvibe.activeProject.v1';
+const LIBRARY_STORAGE_KEY = 'quillvibe.library.v2';
+const LEGACY_LIBRARY_STORAGE_KEY = 'bookvibe.library.v1';
+const DEFAULT_EXPORT_KEY = 'quillvibe.defaultExport.v2';
+const LEGACY_DEFAULT_EXPORT_KEY = 'bookvibe.defaultExport.v1';
 
 const VALID_EXPORT_FORMATS = new Set<string>([
+  '.quillvibe',
+  '.qvibe',
+  '.qvbook',
+  '.qvbible',
+  '.qvscene',
+  '.qvstyle',
   '.bookvibe',
   '.bvibe',
   '.bvbook',
@@ -34,12 +43,14 @@ const VALID_EXPORT_FORMATS = new Set<string>([
 
 export function loadDefaultExportFormat(): ExportFormatId {
   try {
-    const val = window.localStorage.getItem(DEFAULT_EXPORT_KEY);
+    const val =
+      window.localStorage.getItem(DEFAULT_EXPORT_KEY) ??
+      window.localStorage.getItem(LEGACY_DEFAULT_EXPORT_KEY);
     if (val && VALID_EXPORT_FORMATS.has(val)) return val as ExportFormatId;
   } catch {
     // Fallback cleanly
   }
-  return '.bookvibe';
+  return '.quillvibe';
 }
 
 export function saveDefaultExportFormat(fmt: ExportFormatId): void {
@@ -79,7 +90,7 @@ export function sanitizeSlug(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return slug || 'bookvibe-manuscript';
+  return slug || 'quillvibe-manuscript';
 }
 
 export async function getStartupOpenedFile(): Promise<OpenedFileResult | null> {
@@ -101,7 +112,10 @@ export async function loadPersistedProject(): Promise<string | null> {
     }
   }
   try {
-    return window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    return (
+      window.localStorage.getItem(LOCAL_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_LOCAL_STORAGE_KEY)
+    );
   } catch {
     return null;
   }
@@ -132,7 +146,10 @@ export async function loadPersistedLibrary(): Promise<string | null> {
     }
   }
   try {
-    return window.localStorage.getItem(LIBRARY_STORAGE_KEY);
+    return (
+      window.localStorage.getItem(LIBRARY_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_LIBRARY_STORAGE_KEY)
+    );
   } catch {
     return null;
   }
@@ -161,7 +178,7 @@ export async function openBookvibeFile(): Promise<OpenedFileResult | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = BOOKVIBE_EXTENSIONS.map((item) => item.extension).join(',');
+    input.accept = ALL_OFFICIAL_EXTENSIONS.map((item) => item.extension).join(',');
     input.addEventListener(
       'change',
       async () => {
@@ -172,7 +189,7 @@ export async function openBookvibeFile(): Promise<OpenedFileResult | null> {
         }
         const content = await file.text();
         const dotIdx = file.name.lastIndexOf('.');
-        const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.bookvibe';
+        const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.quillvibe';
         resolve({
           path: file.name,
           filename: file.name,
@@ -278,10 +295,10 @@ export async function getOsExtensionStatus(): Promise<AssociationReport> {
   }
   return {
     platform: 'browser-preview',
-    executablePath: 'Launch native Bookvibe binary to write OS shell registry',
-    scope: 'Requires Desktop Binary (bookvibe.exe / Bookvibe.app / AppImage)',
+    executablePath: 'Launch native Quillvibe binary to write OS shell registry',
+    scope: 'Requires Desktop Binary (quillvibe.exe / Quillvibe.app / AppImage)',
     allRegistered: false,
-    items: BOOKVIBE_EXTENSIONS.map((item) => ({
+    items: ALL_OFFICIAL_EXTENSIONS.map((item) => ({
       extension: item.extension,
       name: item.name,
       mimeType: item.mimeType,
@@ -374,7 +391,7 @@ export async function launchBluetoothShare(options?: BluetoothShareOptions): Pro
   }
 
   if (mode === 'receive') {
-    return 'Receive the .bookvibe file via your device Bluetooth or Nearby Share, then click Pick & Merge Peer File.';
+    return 'Receive the .quillvibe or .bookvibe file via your device Bluetooth or Nearby Share, then click Pick & Merge Peer File.';
   }
 
   if (options?.payload && options?.filename) {
@@ -387,8 +404,8 @@ export async function launchBluetoothShare(options?: BluetoothShareOptions): Pro
       if (canShareFiles) {
         try {
           await navigator.share({
-            title: options.title ?? 'Bookvibe Book Package',
-            text: 'Bookvibe .bookvibe revision package',
+            title: options.title ?? 'Quillvibe Book Package',
+            text: 'Quillvibe .quillvibe revision package',
             files: [shareFile],
           });
           return 'Opened system share sheet for Bluetooth / Nearby Share / AirDrop.';
@@ -400,10 +417,10 @@ export async function launchBluetoothShare(options?: BluetoothShareOptions): Pro
       }
     }
     triggerBrowserDownload(options.filename, options.payload, 'application/json');
-    return 'Downloaded .bookvibe file. Send it via your device Bluetooth, AirDrop, or Nearby Share (or install the Bookvibe desktop app to open Bluetooth File Transfer directly).';
+    return 'Downloaded .quillvibe file. Send it via your device Bluetooth, AirDrop, or Nearby Share (or install the Quillvibe desktop app to open Bluetooth File Transfer directly).';
   }
 
-  return 'Save the .bookvibe package and send it via Bluetooth, AirDrop, or Nearby Share.';
+  return 'Save the .quillvibe package and send it via Bluetooth, AirDrop, or Nearby Share.';
 }
 
 export async function minimizeDesktopWindow(): Promise<void> {
@@ -436,4 +453,78 @@ export async function startDesktopWindowDrag(): Promise<void> {
   if (!isTauriRuntime()) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
   await getCurrentWindow().startDragging();
+}
+
+export async function setDesktopWindowTitle(title: string): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().setTitle(title || 'Quillvibe');
+  } catch {
+    // Ignore window title errors on unsupported shells
+  }
+}
+
+export async function setDesktopFullscreen(fullscreen: boolean): Promise<boolean> {
+  if (isTauriRuntime()) {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.setFullscreen(fullscreen);
+      return await win.isFullscreen();
+    } catch {
+      return fullscreen;
+    }
+  }
+  if (typeof document !== 'undefined') {
+    try {
+      if (fullscreen && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else if (!fullscreen && document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+      return Boolean(document.fullscreenElement);
+    } catch {
+      return fullscreen;
+    }
+  }
+  return fullscreen;
+}
+
+export async function isDesktopFullscreen(): Promise<boolean> {
+  if (isTauriRuntime()) {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      return await getCurrentWindow().isFullscreen();
+    } catch {
+      return false;
+    }
+  }
+  if (typeof document !== 'undefined') {
+    return Boolean(document.fullscreenElement);
+  }
+  return false;
+}
+
+export async function openBookInNewDesktopWindow(
+  bookId?: string,
+  title?: string,
+): Promise<boolean> {
+  if (isTauriRuntime()) {
+    try {
+      await tauriInvoke<string>('open_book_in_new_window', {
+        bookId: bookId ?? null,
+        title: title ?? 'Quillvibe',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (typeof window !== 'undefined') {
+    const params = bookId ? `?bookId=${encodeURIComponent(bookId)}` : '';
+    window.open(`/write${params}`, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+  return false;
 }

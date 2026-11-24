@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Bookvibe",
-  "version": "1.3.1",
-  "identifier": "org.bookvibe.studio",
+  "productName": "Quillvibe",
+  "version": "2.0.0",
+  "identifier": "app.quillvibe.studio",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,17 +12,18 @@
   "app": {
     "windows": [
       {
-        "title": "Bookvibe",
+        "title": "Quillvibe",
         "width": 1440,
         "height": 900,
         "minWidth": 640,
         "minHeight": 520,
         "resizable": true,
-        "decorations": false
+        "decorations": false,
+        "backgroundColor": "#f6f4ef"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; frame-src 'self' blob:; script-src 'self'"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://10.* http://192.168.* http://172.*; script-src 'self'"
     }
   },
   "bundle": {
@@ -38,45 +39,52 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["bookvibe"],
-        "name": "Bookvibe Master Project",
-        "description": "Complete Bookvibe book manuscript, story bible, snapshots, and typography settings",
-        "mimeType": "application/vnd.bookvibe.project+json",
+        "ext": ["quillvibe"],
+        "name": "Quillvibe Master Project",
+        "description": "Complete Quillvibe manuscript, story bible, graph, cover, and typography settings",
+        "mimeType": "application/vnd.quillvibe.project+json",
         "role": "Editor"
       },
       {
-        "ext": ["bvibe"],
-        "name": "Bookvibe Compact Project",
-        "description": "Compact alias for a Bookvibe master project bundle",
-        "mimeType": "application/vnd.bookvibe.project+json",
+        "ext": ["qvibe"],
+        "name": "Quillvibe Compact Project",
+        "description": "Compact alias for a Quillvibe master project bundle",
+        "mimeType": "application/vnd.quillvibe.project+json",
         "role": "Editor"
       },
       {
-        "ext": ["bvbook"],
-        "name": "Bookvibe Manuscript Package",
-        "description": "Standalone Bookvibe manuscript hierarchy containing parts, chapters, and scenes",
-        "mimeType": "application/vnd.bookvibe.manuscript+json",
+        "ext": ["qvbook"],
+        "name": "Quillvibe Manuscript Package",
+        "description": "Standalone Quillvibe manuscript hierarchy containing parts, chapters, and scenes",
+        "mimeType": "application/vnd.quillvibe.manuscript+json",
         "role": "Editor"
       },
       {
-        "ext": ["bvbible"],
-        "name": "Bookvibe Story Bible Database",
+        "ext": ["qvbible"],
+        "name": "Quillvibe Story Bible Database",
         "description": "Portable worldbuilding database of characters, locations, and lore",
-        "mimeType": "application/vnd.bookvibe.bible+json",
+        "mimeType": "application/vnd.quillvibe.bible+json",
         "role": "Editor"
       },
       {
-        "ext": ["bvscene"],
-        "name": "Bookvibe Standalone Scene Draft",
-        "description": "Individual scene draft and revision snapshots for Bookvibe",
-        "mimeType": "application/vnd.bookvibe.scene+json",
+        "ext": ["qvscene"],
+        "name": "Quillvibe Standalone Scene Draft",
+        "description": "Individual scene draft and revision snapshots for Quillvibe",
+        "mimeType": "application/vnd.quillvibe.scene+json",
         "role": "Editor"
       },
       {
-        "ext": ["bvstyle"],
-        "name": "Bookvibe Typeset Preset",
-        "description": "Shareable Bookvibe print and eBook typography specification",
-        "mimeType": "application/vnd.bookvibe.style+json",
+        "ext": ["qvstyle"],
+        "name": "Quillvibe Typeset Preset",
+        "description": "Shareable Quillvibe print and eBook typography specification",
+        "mimeType": "application/vnd.quillvibe.style+json",
+        "role": "Editor"
+      },
+      {
+        "ext": ["bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle"],
+        "name": "Legacy Bookvibe Format",
+        "description": "Legacy Bookvibe manuscript and bible files opened natively in Quillvibe",
+        "mimeType": "application/vnd.bookvibe.project+json",
         "role": "Editor"
       }
     ]

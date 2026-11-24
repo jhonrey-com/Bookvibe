@@ -44,7 +44,41 @@ export type IconName =
   | 'key'
   | 'wifi'
   | 'bluetooth'
-  | 'file';
+  | 'file'
+  | 'cursor'
+  | 'type-tool'
+  | 'shapes'
+  | 'ornament'
+  | 'palette'
+  | 'grid-snap'
+  | 'magnet'
+  | 'guides'
+  | 'align-left'
+  | 'align-center'
+  | 'align-right'
+  | 'bring-front'
+  | 'send-back'
+  | 'lock'
+  | 'unlock'
+  | 'eye'
+  | 'eye-off'
+  | 'flip-h'
+  | 'flip-v'
+  | 'undo'
+  | 'redo'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'copy-layer'
+  | 'course'
+  | 'sliders-tier'
+  | 'theme-sun'
+  | 'theme-moon'
+  | 'window-new'
+  | 'fullscreen'
+  | 'fullscreen-exit'
+  | 'alarm'
+  | 'bell'
+  | 'server';
 
 type ChildInput = Node | string | number | null | undefined | false;
 
@@ -134,13 +168,13 @@ export function clearNode(node: Element): void {
 }
 
 /**
- * Transparent sculpted Bookvibe layered open-folio + page-wing emblem matching assets/bookvibe-logo.svg.
+ * Transparent sculpted Quillvibe layered open-folio + page-wing emblem matching public/logo.svg.
  */
 export function bookvibeLogo(size = 24): SVGSVGElement {
   const svg = svgEl('svg', {
     width: size,
     height: size,
-    viewBox: '0 0 64 64',
+    viewBox: '7 8 50 48',
     fill: 'none',
     'aria-hidden': 'true',
   });
@@ -156,14 +190,22 @@ export function bookvibeLogo(size = 24): SVGSVGElement {
     svgEl('path', {
       d: 'M13.5 23.4C13.5 19.7 16.1 17.7 19.8 18.1C25.8 18.7 30.2 22.8 30.2 29.2V49.1C30.2 50.7 28.6 51.3 27.2 50.1C23.6 47 19.9 45.6 17.1 45.2C14.7 44.8 13.5 43.1 13.5 40.3V23.4Z',
       fill: '#f5f2eb',
+      stroke: '#2b241d',
+      'stroke-opacity': '0.24',
+      'stroke-width': '0.9',
     }),
     svgEl('path', {
       d: 'M33.8 35.4C33.8 29.8 38.1 26.2 44.2 26H45.8C48.8 26 50.8 28 50.8 31V40.6C50.8 43.2 49.4 44.8 46.8 45.2C43.9 45.6 40.3 47 36.7 50.1C35.3 51.3 33.8 50.7 33.8 49.1V35.4Z',
       fill: '#dfd9cd',
+      stroke: '#2b241d',
+      'stroke-opacity': '0.24',
+      'stroke-width': '0.9',
     }),
   );
   return svg;
 }
+
+export const quillvibeLogo = bookvibeLogo;
 
 const ICON_PATHS: Record<IconName, string[]> = {
   book: [
@@ -352,6 +394,179 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
     'M14 2v6h6',
   ],
+  cursor: [
+    'M5 3l14 9-6.2 1.8L10 20 5 3z',
+  ],
+  'type-tool': [
+    'M5 5h14',
+    'M12 5v14',
+    'M8.5 19h7',
+    'M5 5v2',
+    'M19 5v2',
+  ],
+  shapes: [
+    'M12 3l4.5 7.5h-9L12 3z',
+    'M3.5 14h6.5v6.5H3.5z',
+    'M17 17.25a3.25 3.25 0 1 0 0 .01',
+  ],
+  ornament: [
+    'M12 3l2.2 6.2L20.5 12l-6.3 2.8L12 21l-2.2-6.2L3.5 12l6.3-2.8L12 3z',
+  ],
+  palette: [
+    'M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2.2 2.2 0 0 0 2.1-2.8c-.2-.8.4-1.7 1.3-1.7h1.4a3.5 3.5 0 0 0 3.5-3.5A9.5 9.5 0 0 0 12 2.5z',
+  ],
+  'grid-snap': [
+    'M3 8h18',
+    'M3 16h18',
+    'M8 3v18',
+    'M16 3v18',
+  ],
+  magnet: [
+    'M6 3v7a6 6 0 0 0 12 0V3',
+    'M6 7h3',
+    'M15 7h3',
+  ],
+  guides: [
+    'M4 4v16',
+    'M20 4v16',
+    'M4 12h16',
+    'M9 8v8',
+    'M15 8v8',
+  ],
+  'align-left': [
+    'M4 5v14',
+    'M8 8h11v3H8z',
+    'M8 14h7v3H8z',
+  ],
+  'align-center': [
+    'M12 4v16',
+    'M6 8h12v3H6z',
+    'M8 14h8v3H8z',
+  ],
+  'align-right': [
+    'M20 5v14',
+    'M5 8h11v3H5z',
+    'M9 14h7v3H9z',
+  ],
+  'bring-front': [
+    'M8 8h12v12H8z',
+    'M4 4h10v4H8v6H4z',
+  ],
+  'send-back': [
+    'M4 4h12v12H4z',
+    'M10 16v4h10V10h-4',
+  ],
+  lock: [
+    'M5 11h14v10H5z',
+    'M8 11V7a4 4 0 0 1 8 0v4',
+  ],
+  unlock: [
+    'M5 11h14v10H5z',
+    'M8 11V7a4 4 0 0 1 7.6-1.7',
+  ],
+  eye: [
+    'M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6z',
+    'M12 12a2.5 2.5 0 1 0 0 .01',
+  ],
+  'eye-off': [
+    'M3 3l18 18',
+    'M9.9 5.3A10.7 10.7 0 0 1 12 6c6.2 0 10 6 10 6a16.8 16.8 0 0 1-4.1 4.6',
+    'M6.2 7.5A16.5 16.5 0 0 0 2 12s3.8 6 10 6c1.5 0 2.9-.3 4.1-.8',
+  ],
+  'flip-h': [
+    'M12 3v18',
+    'M4 7l5 5-5 5V7z',
+    'M20 7l-5 5 5 5V7z',
+  ],
+  'flip-v': [
+    'M3 12h18',
+    'M7 4l5 5 5-5H7z',
+    'M7 20l5-5 5 5H7z',
+  ],
+  undo: [
+    'M9 14L4 9l5-5',
+    'M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
+  ],
+  redo: [
+    'M15 14l5-5-5-5',
+    'M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+  ],
+  'zoom-in': [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'M21 21l-4.3-4.3',
+    'M11 8v6',
+    'M8 11h6',
+  ],
+  'zoom-out': [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'M21 21l-4.3-4.3',
+    'M8 11h6',
+  ],
+  'copy-layer': [
+    'M9 9h11v11H9z',
+    'M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1',
+  ],
+  course: [
+    'M2 9l10-4 10 4-10 4-10-4z',
+    'M6 11v5c0 2 2.7 3.5 6 3.5s6-1.5 6-3.5v-5',
+    'M22 9v6',
+  ],
+  'sliders-tier': [
+    'M4 20h16',
+    'M6 14h4v6H6z',
+    'M10 10h4v10h-4z',
+    'M14 5h4v15h-4z',
+  ],
+  'theme-sun': [
+    'M12 3v2',
+    'M12 19v2',
+    'M4.9 4.9l1.4 1.4',
+    'M17.7 17.7l1.4 1.4',
+    'M3 12h2',
+    'M19 12h2',
+    'M4.9 19.1l1.4-1.4',
+    'M17.7 6.3l1.4-1.4',
+  ],
+  'theme-moon': [
+    'M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z',
+  ],
+  'window-new': [
+    'M8 6h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
+    'M16 4H5a2 2 0 0 0-2 2v9',
+    'M13.5 10.5v4',
+    'M11.5 12.5h4',
+  ],
+  fullscreen: [
+    'M4 9V4h5',
+    'M20 9V4h-5',
+    'M4 15v5h5',
+    'M20 15v5h-5',
+  ],
+  'fullscreen-exit': [
+    'M9 4v5H4',
+    'M15 4v5h5',
+    'M9 20v-5H4',
+    'M15 20v-5h5',
+  ],
+  alarm: [
+    'M5 3L2 6',
+    'M22 6l-3-3',
+    'M12 9v4l2.5 1.5',
+    'M6 19l-2 2',
+    'M18 19l2 2',
+  ],
+  bell: [
+    'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9',
+    'M13.73 21a2 2 0 0 1-3.46 0',
+  ],
+  server: [
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z',
+    'M3 15a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4z',
+    'M7 7h.01',
+    'M7 17h.01',
+    'M11 7h6',
+    'M11 17h6',
+  ],
 };
 
 export function icon(name: IconName, size = 15): SVGSVGElement {
@@ -393,15 +608,23 @@ export function icon(name: IconName, size = 15): SVGSVGElement {
       svgEl('path', { d: 'M4 6h16' }),
       svgEl('path', { d: 'M4 12h16' }),
       svgEl('path', { d: 'M4 18h16' }),
-      svgEl('circle', { cx: 8, cy: 6, r: 2, fill: '#0b0c10' }),
-      svgEl('circle', { cx: 16, cy: 12, r: 2, fill: '#0b0c10' }),
-      svgEl('circle', { cx: 10, cy: 18, r: 2, fill: '#0b0c10' }),
+      svgEl('circle', { cx: 8, cy: 6, r: 2, fill: 'var(--bg-surface, #ffffff)' }),
+      svgEl('circle', { cx: 16, cy: 12, r: 2, fill: 'var(--bg-surface, #ffffff)' }),
+      svgEl('circle', { cx: 10, cy: 18, r: 2, fill: 'var(--bg-surface, #ffffff)' }),
     );
     return svg;
   }
 
-  if (name === 'clock' || name === 'help') {
-    svg.append(svgEl('circle', { cx: 12, cy: 12, r: 9 }));
+  if (name === 'theme-sun') {
+    svg.appendChild(svgEl('circle', { cx: 12, cy: 12, r: 4 }));
+    for (const d of ICON_PATHS[name]) {
+      svg.appendChild(svgEl('path', { d }));
+    }
+    return svg;
+  }
+
+  if (name === 'clock' || name === 'help' || name === 'alarm') {
+    svg.append(svgEl('circle', { cx: 12, cy: name === 'alarm' ? 13 : 12, r: name === 'alarm' ? 8 : 9 }));
     for (const d of ICON_PATHS[name]) {
       svg.appendChild(svgEl('path', { d }));
     }

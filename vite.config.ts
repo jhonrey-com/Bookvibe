@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig(() => ({
-  base: './',
+  base: process.env.TAURI_ENV_PLATFORM ? './' : '/',
   clearScreen: false,
   server: {
     port: 1420,

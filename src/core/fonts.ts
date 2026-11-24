@@ -237,14 +237,20 @@ export function resolveEffectiveFontCss(
   builtInKey: FontFamilyId,
   customFamily?: string,
 ): string {
-  if (customFamily && customFamily.trim()) {
+  const trimmed = customFamily?.trim();
+  if (trimmed) {
+    if (trimmed.startsWith('builtin:')) {
+      const key = trimmed.slice('builtin:'.length) as FontFamilyId;
+      if (key in FONT_STACKS) return FONT_STACKS[key].css;
+    }
+    if (trimmed in FONT_STACKS) {
+      return FONT_STACKS[trimmed as FontFamilyId].css;
+    }
     const match = loadCustomFonts().find(
-      (f) => f.family.toLowerCase() === customFamily.trim().toLowerCase(),
+      (f) => f.family.toLowerCase() === trimmed.toLowerCase(),
     );
     if (match) return match.cssStack;
-    if (!customFamily.startsWith('builtin:')) {
-      return quoteCssFamily(sanitizeFontFamilyName(customFamily));
-    }
+    return quoteCssFamily(sanitizeFontFamilyName(trimmed));
   }
   return FONT_STACKS[builtInKey].css;
 }

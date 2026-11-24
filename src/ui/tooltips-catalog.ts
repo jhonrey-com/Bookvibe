@@ -58,38 +58,51 @@ export const TOOLTIP_CATALOG = {
   },
   openFile: {
     title: 'Open File',
-    short: 'Open .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, or .bvstyle.',
+    short: 'Open .quillvibe, .qv* or legacy .bookvibe, .bv* files.',
     shortcut: 'Ctrl+O',
-    details: 'Loads a local Bookvibe file directly into the appropriate view. Dragging any Bookvibe file onto the window works too.',
+    details: 'Loads a local Quillvibe or Bookvibe file directly into the matching workspace view. Dragging files onto the window works too.',
   },
   saveDefault: {
     title: 'Export Using Selected Format',
     short: 'Saves or exports using the active dropdown format.',
     shortcut: 'Ctrl+S',
-    details: 'Exports immediately in the format chosen beside this button (.bookvibe, .epub, .md, .html, .txt, .bvbook, .bvbible, .bvscene, or .bvstyle).',
+    details: 'Exports immediately in the format chosen beside this button (.quillvibe, .epub, .md, .html, .txt, .qv*, or .bookvibe).',
   },
   defaultFormatSelect: {
     title: 'Default Export Format',
     short: 'Choose which format Save/Export outputs by default.',
-    details: 'Persists your preferred export file extension across sessions. Master .bookvibe preserves everything; .epub builds an eBook with cover and credits.',
+    details: 'Persists your preferred export extension across sessions. Master .quillvibe preserves everything; .epub builds an eBook with cover.',
   },
   extensionsManager: {
     title: 'Extensions & Formats',
     short: 'Manage integrated toolkits, external plugins, and file formats.',
-    details: 'Enable or run built-in proofing/cleanup/font extensions, inspect permissions before installing external .bvext files, view the data audit log, or register Bookvibe extensions with your OS.',
+    details: 'Enable or run built-in proofing/cleanup/font extensions, inspect permissions before installing external .bvext files, audit reads, or register Quillvibe extensions with your OS.',
     tips: [
       'External plugins require explicit permission review before install.',
       'Extensions cannot access the internet, filesystem, or private author keys.',
     ],
   },
   settingsBtn: {
-    title: 'Preferences & Migration',
-    short: 'Custom fonts, editor spacing, Word/Google Docs import, and dev tools.',
-    details: 'Upload device fonts (.ttf/.otf/.woff/.woff2), import .docx/.html/.md/.rtf manuscripts, configure imprint metadata, and toggle developer diagnostics.',
+    title: 'Settings, Tiers & Themes',
+    short: 'Tool tiers (Basic/Int/Adv), Ivory/Obsidian themes, fonts & Word import.',
+    details: 'Switch Basic, Intermediate, or Advanced tools, change Ivory/Parchment/Obsidian themes, install custom fonts, or import .docx/.html/.md manuscripts.',
+  },
+  tierSwitch: {
+    title: 'Workspace Tool Tier',
+    short: 'Change between Basic, Intermediate, and Advanced tools.',
+    details: 'Basic keeps the screen clean like Word or Google Docs; Intermediate adds Corkboard, Outline & Proofread; Advanced unlocks Cover Studio, Story Bible & Graph.',
+  },
+  themeSwitch: {
+    title: 'Application Theme',
+    short: 'Cycle between Ivory Light, Parchment, and Obsidian Dark.',
+  },
+  courseBtn: {
+    title: 'Book Writing Course',
+    short: 'Complete hands-on course to master writing and publishing in Quillvibe.',
   },
   helpBtn: {
-    title: 'Help, Icon Directory & Guided Tour',
-    short: 'View icon meanings, step-by-step guides, and replay interactive tours.',
+    title: 'Help, Course & Manual',
+    short: 'Open the full book course, icon directory, controls search, and shortcuts.',
     shortcut: 'F1',
   },
   toggleInspector: {
@@ -185,6 +198,23 @@ export const TOOLTIP_CATALOG = {
   collabBluetooth: {
     title: 'Bluetooth & Nearby Transfer',
     short: 'Export and merge via OS Bluetooth or file share.',
+  },
+  collabServer: {
+    title: 'Enterprise / Custom Website Sync',
+    short: 'Connect directly to your own HTTPS sync server or website endpoint.',
+  },
+  newWindowBtn: {
+    title: 'Open New Book Window',
+    short: 'Launch an independent Quillvibe window to work on multiple books side by side.',
+  },
+  immersiveBtn: {
+    title: 'Immersive Fullscreen Mode',
+    short: 'Enter distraction-free full-screen focus with optional live clock, timer, and alarm.',
+    shortcut: 'F11',
+  },
+  alarmBtn: {
+    title: 'Writing Alarm Clock & Ringtones',
+    short: 'Set a scheduled time or countdown alarm with gentle synthesized ringtones.',
   },
   extIntegrated: {
     title: 'Integrated Extensions',

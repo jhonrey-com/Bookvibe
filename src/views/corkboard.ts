@@ -8,6 +8,7 @@ import {
   updateSceneInProject,
 } from '../core/manuscript';
 import type { SceneStatus } from '../core/types';
+import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
 
 export function renderCorkboardView(container: HTMLElement, actions: AppActions): void {
@@ -93,8 +94,9 @@ export function renderCorkboardView(container: HTMLElement, actions: AppActions)
             className: `bv-cork-card${scene.id === activeSceneId ? ' is-active' : ''}`,
             attrs: { draggable: true },
             on: {
-              dragstart: () => {
+              dragstart: (e) => {
                 draggedSceneId = scene.id;
+                e.dataTransfer?.setData('text/plain', scene.id);
               },
               dragover: (e) => {
                 if (!draggedSceneId || draggedSceneId === scene.id) return;
@@ -150,6 +152,42 @@ export function renderCorkboardView(container: HTMLElement, actions: AppActions)
         );
 
         grid.appendChild(card);
+        attachContextMenu(card, () => [
+          {
+            heading: scene.title || 'Untitled Scene',
+            items: [
+              {
+                label: 'Open in Manuscript Draft',
+                icon: 'draft-sheet',
+                onSelect: () => {
+                  actions.setState({ editorSubMode: 'draft' }, false);
+                  actions.selectScene(scene.id, true);
+                },
+              },
+              {
+                label: 'Open in Proofread Markup',
+                icon: 'proofread',
+                onSelect: () => {
+                  actions.setState({ editorSubMode: 'proofread' }, false);
+                  actions.selectScene(scene.id, true);
+                },
+              },
+              {
+                label: 'Export Scene (.qvscene)',
+                icon: 'file',
+                onSelect: () => void actions.exportAsExtension('.qvscene', { sceneId: scene.id }),
+              },
+            ],
+          },
+          {
+            heading: 'Scene Status',
+            items: (['outline', 'draft', 'revision', 'final'] as SceneStatus[]).map((st) => ({
+              label: SCENE_STATUS_LABELS[st],
+              checked: scene.status === st,
+              onSelect: () => actions.mutateProject((prev) => updateSceneInProject(prev, scene.id, { status: st })),
+            })),
+          },
+        ]);
       });
 
       chapBlock.append(chapHead, grid);

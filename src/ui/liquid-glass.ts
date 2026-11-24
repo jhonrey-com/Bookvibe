@@ -1,5 +1,5 @@
 import { el, icon, svgEl, type IconName } from './dom';
-import type { TooltipSpec } from './tooltip';
+import { hideTooltip, showTooltipForElement, type TooltipSpec } from './tooltip';
 
 export interface LiquidGlassOption<T extends string = string> {
   id: T;
@@ -487,6 +487,7 @@ export class LiquidGlassControl<T extends string = string> {
 
   private bindEvents(): void {
     this.bar.addEventListener('pointerdown', this.handlePointerDown);
+    this.bar.addEventListener('pointerleave', this.handleBarPointerLeave);
     this.bar.addEventListener('lostpointercapture', this.handleForceRelease);
     window.addEventListener('pointermove', this.handlePointerMove);
     window.addEventListener('pointerup', this.handlePointerUp);
@@ -504,11 +505,18 @@ export class LiquidGlassControl<T extends string = string> {
     }
   };
 
+  private handleBarPointerLeave = (): void => {
+    if (!this.isDragging) {
+      hideTooltip();
+    }
+  };
+
   private handleForceRelease = (): void => {
     this.isDragging = false;
     this.activePointerId = null;
     this.clearTimers();
     this.engageLift(false);
+    hideTooltip();
   };
 
   private handlePassiveViewportEvent = (): void => {
@@ -560,6 +568,9 @@ export class LiquidGlassControl<T extends string = string> {
     this.clearTimers();
     this.engageLift(true);
     this.previewValue = id;
+    if (this.records[idx].option.tooltip) {
+      showTooltipForElement(this.records[idx].button, this.records[idx].option.tooltip);
+    }
     this.setPillTargetToRecord(this.records[idx]);
   };
 
@@ -578,6 +589,9 @@ export class LiquidGlassControl<T extends string = string> {
       const pillLeft = clamp(targetCenter - activeRecord.width / 2, 4, Math.max(4, rect.width - activeRecord.width - 4));
       this.xOde.target = pillLeft;
       this.wOde.target = activeRecord.width;
+      if (this.previewValue !== activeRecord.option.id && activeRecord.option.tooltip) {
+        showTooltipForElement(activeRecord.button, activeRecord.option.tooltip);
+      }
       this.previewValue = activeRecord.option.id;
       this.startLoop();
     }
@@ -608,6 +622,7 @@ export class LiquidGlassControl<T extends string = string> {
 
     // Disengage Liquid Glass immediately once pointer releases so resting tab shows zero glass effect
     this.engageLift(false);
+    hideTooltip();
     this.selectValue(targetRecord.option.id, true);
   };
 
@@ -869,8 +884,8 @@ export class LiquidGlassControl<T extends string = string> {
     this.lastSampleTime = now;
 
     if (this.surface === 'solid') {
-      // Solid obsidian dock bars remain fixed on obsidian dark tone unless parent switches
-      this.applyTone('dark');
+      const theme = typeof document !== 'undefined' ? document.documentElement.dataset.theme : 'ivory';
+      this.applyTone(theme === 'obsidian' ? 'dark' : 'light');
       return;
     }
 
@@ -1008,6 +1023,7 @@ export class LiquidGlassControl<T extends string = string> {
     this.resizeObserver.disconnect();
     this.intersectionObserver?.disconnect();
     this.bar.removeEventListener('pointerdown', this.handlePointerDown);
+    this.bar.removeEventListener('pointerleave', this.handleBarPointerLeave);
     this.bar.removeEventListener('lostpointercapture', this.handleForceRelease);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);

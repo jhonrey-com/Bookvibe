@@ -3,7 +3,13 @@ import type { IconName } from './dom';
 export interface IconDirectoryEntry {
   icon: IconName;
   name: string;
-  location: 'Topbar' | 'Workspace Switcher' | 'Editor Modes' | 'Editor Tools' | 'Publishing & Sync';
+  location:
+    | 'Topbar'
+    | 'Workspace Switcher'
+    | 'Editor Modes'
+    | 'Editor Tools'
+    | 'Cover Studio Tools'
+    | 'Publishing & Sync';
   shortcut?: string;
   meaning: string;
 }
@@ -13,7 +19,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'panel-left',
     name: 'Manuscript Binder',
     location: 'Topbar',
-    meaning: 'Opens or closes the left Parts, Chapters, and Scenes tree (overlay drawer on compact screens).',
+    meaning: 'Opens or closes the left Parts, Chapters, and Scenes tree (resizable desktop panel or slide-over drawer).',
   },
   {
     icon: 'library',
@@ -29,10 +35,10 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
   },
   {
     icon: 'folder',
-    name: 'Open Bookvibe or Migration File',
+    name: 'Open Quillvibe or Migration File',
     location: 'Topbar',
     shortcut: 'Ctrl+O',
-    meaning: 'Loads .bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle files or .bvext extension bundles.',
+    meaning: 'Loads .quillvibe, .qv* or legacy .bookvibe, .bv* files and .bvext extension bundles.',
   },
   {
     icon: 'save',
@@ -49,16 +55,34 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
   },
   {
     icon: 'settings',
-    name: 'Settings & Migration Preferences',
+    name: 'Settings, Tiers & Appearance',
     location: 'Topbar',
-    meaning: 'Install device fonts (.ttf/.otf/.woff/.woff2), import Word/Google Docs/Markdown files, configure imprint metadata, and enable Developer tools.',
+    meaning: 'Switch Basic/Intermediate/Advanced tool tiers, Ivory/Parchment/Obsidian themes, custom fonts, and Word/Google Docs import.',
+  },
+  {
+    icon: 'sliders-tier',
+    name: 'Workspace Tool Tier',
+    location: 'Topbar',
+    meaning: 'Filters visible tabs and controls cleanly between Basic, Intermediate, and Advanced book production.',
+  },
+  {
+    icon: 'theme-sun',
+    name: 'Quick Light / Dark Theme',
+    location: 'Topbar',
+    meaning: 'Switches between Ivory Light, Warm Parchment, and Obsidian Dark studio surfaces.',
+  },
+  {
+    icon: 'course',
+    name: 'Book Writing Course',
+    location: 'Topbar',
+    meaning: 'Launches the step-by-step 6-module hands-on course for writing a complete book in Quillvibe.',
   },
   {
     icon: 'help',
-    name: 'Help & Guided Tour',
+    name: 'Help & Manual',
     location: 'Topbar',
     shortcut: 'F1',
-    meaning: 'Opens this full manual, unique icon legend, keyboard reference, and section walkthrough replay.',
+    meaning: 'Opens controls search, interactive course, icon legend, and keyboard shortcuts.',
   },
   {
     icon: 'panel-right',
@@ -100,19 +124,19 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'typeset',
     name: 'Typeset & Cover Studio',
     location: 'Workspace Switcher',
-    meaning: 'Book interior page preview, front/back/spine cover studio, release checklist, and EPUB/PDF export.',
+    meaning: 'Book interior page preview, Canva-grade front/back/spine cover studio, release checklist, and EPUB/PDF export.',
   },
   {
     icon: 'draft-sheet',
     name: 'Draft Sheet Mode',
     location: 'Editor Modes',
-    meaning: 'Single distraction-free paper canvas supporting Obsidian, Parchment, and Ivory sheets.',
+    meaning: 'Clean paper canvas supporting Ivory, Parchment, and Obsidian sheets with right-click formatting.',
   },
   {
     icon: 'proofread',
     name: 'Proofread Markup Mode',
     location: 'Editor Modes',
-    meaning: 'Apply 15 traditional editorial marks (delete, caret, substitute, stet, transpose, comments) with clean preview.',
+    meaning: 'Right-click or select text to apply 15 copyediting marks with clean preview and snapshot safety.',
   },
   {
     icon: 'split',
@@ -153,6 +177,92 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     meaning: 'Stores an immutable copy of current prose in scene snapshots.',
   },
   {
+    icon: 'cursor',
+    name: 'Select & Transform Tool',
+    location: 'Cover Studio Tools',
+    meaning: 'Select, drag, resize, align, or right-click cover text, vector shapes, and artwork layers.',
+  },
+  {
+    icon: 'type-tool',
+    name: 'Add Cover Text Layer',
+    location: 'Cover Studio Tools',
+    meaning: 'Insert custom display headings, pull quotes, series badges, or praise blurbs onto any cover face.',
+  },
+  {
+    icon: 'shapes',
+    name: 'Vector Shapes Tool',
+    location: 'Cover Studio Tools',
+    meaning: 'Add geometric rectangles, frames, circles, horizontal/vertical rules, or badges with gradients.',
+  },
+  {
+    icon: 'ornament',
+    name: 'SVG Ornaments & Emblems',
+    location: 'Cover Studio Tools',
+    meaning: 'Insert crisp typographic arches, medallions, press seals, and rule dividers.',
+  },
+  {
+    icon: 'palette',
+    name: 'Background & Gradients',
+    location: 'Cover Studio Tools',
+    meaning: 'Style solid or gradient backdrops and tune background photo brightness, contrast, blur, and dim overlay.',
+  },
+  {
+    icon: 'grid-snap',
+    name: 'Grid Overlay Toggle',
+    location: 'Cover Studio Tools',
+    meaning: 'Display or hide spacing gridlines on the cover canvas.',
+  },
+  {
+    icon: 'magnet',
+    name: 'Snap-to-Grid Toggle',
+    location: 'Cover Studio Tools',
+    meaning: 'Snap dragged cover layers cleanly to grid intervals and magnetic center guides.',
+  },
+  {
+    icon: 'guides',
+    name: 'Print Bleed & Trim Guides',
+    location: 'Cover Studio Tools',
+    meaning: 'Display 0.125" safe-zone margins and spine fold lines across Front, Wrap, and Jacket views.',
+  },
+  {
+    icon: 'align-center',
+    name: 'Align Layer Center',
+    location: 'Cover Studio Tools',
+    meaning: 'Center or align selected cover layers horizontally or vertically.',
+  },
+  {
+    icon: 'lock',
+    name: 'Lock Layer Position',
+    location: 'Cover Studio Tools',
+    meaning: 'Prevent accidental dragging of finished background or frame layers.',
+  },
+  {
+    icon: 'eye',
+    name: 'Toggle Layer Visibility',
+    location: 'Cover Studio Tools',
+    meaning: 'Temporarily hide or show any cover element, shape, text box, or image layer.',
+  },
+  {
+    icon: 'undo',
+    name: 'Undo Cover Action',
+    location: 'Cover Studio Tools',
+    shortcut: 'Ctrl+Z',
+    meaning: 'Step backward through Cover Studio edits.',
+  },
+  {
+    icon: 'redo',
+    name: 'Redo Cover Action',
+    location: 'Cover Studio Tools',
+    shortcut: 'Ctrl+Y',
+    meaning: 'Re-apply undone Cover Studio edits.',
+  },
+  {
+    icon: 'copy-layer',
+    name: 'Duplicate Selected Layer',
+    location: 'Cover Studio Tools',
+    meaning: 'Clone the active cover shape, text box, or graphic layer with offset.',
+  },
+  {
     icon: 'page-margins',
     name: 'Interior Typeset Preview',
     location: 'Publishing & Sync',
@@ -162,7 +272,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'cover',
     name: 'Book Cover Studio',
     location: 'Publishing & Sync',
-    meaning: 'Design Front, Back, Spine, and Dust Jacket flaps with SVG, transparent image, and layer controls.',
+    meaning: 'Full-featured cover designer with layers stack, vector shapes, snap-to-grid, and print PNG export.',
   },
   {
     icon: 'seal',
@@ -186,7 +296,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'bluetooth',
     name: 'Bluetooth / Nearby Share',
     location: 'Publishing & Sync',
-    meaning: 'Save and merge signed .bookvibe files over OS Bluetooth or Nearby Share without internet.',
+    meaning: 'Save and merge signed .quillvibe / .bookvibe files over OS Bluetooth or Nearby Share offline.',
   },
   {
     icon: 'layers',
@@ -204,6 +314,31 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'file-code',
     name: 'Official Document Formats',
     location: 'Publishing & Sync',
-    meaning: 'Overview and OS shell association status for the six Bookvibe JSON document formats.',
+    meaning: 'Overview and OS shell association status for Quillvibe (.quillvibe/.qv*) and legacy Bookvibe formats.',
+  },
+  {
+    icon: 'server',
+    name: 'Enterprise & Website Sync',
+    location: 'Publishing & Sync',
+    meaning: 'Push and pull manuscripts over TLS to your self-hosted sync server or custom website API.',
+  },
+  {
+    icon: 'window-new',
+    name: 'Open New Book Window',
+    location: 'Topbar',
+    meaning: 'Open a separate desktop window (or browser tab) so multiple books can be edited simultaneously.',
+  },
+  {
+    icon: 'fullscreen',
+    name: 'Immersive Fullscreen Mode',
+    location: 'Topbar',
+    shortcut: 'F11',
+    meaning: 'Expand Quillvibe into full-screen mode with optional live clock, writing timer, word goal, and alarm clock.',
+  },
+  {
+    icon: 'alarm',
+    name: 'Alarm Clock & Ringtones',
+    location: 'Publishing & Sync',
+    meaning: 'Schedule a wall-clock time or countdown writing alarm paired with built-in gentle ringtones.',
   },
 ];

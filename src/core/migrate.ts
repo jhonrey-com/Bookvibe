@@ -112,7 +112,7 @@ export function importMarkdownToBookProject(rawMarkdown: string, filename = 'Imp
     }
     if (/^\*\s*\*\s*\*$/.test(line.trim()) || /^---+$/.test(line.trim())) {
       flushScene();
-      currentSceneTitle = `Scene ${chapScenes.length + 2}`;
+      currentSceneTitle = `Scene ${chapScenes.length + 1}`;
       continue;
     }
     buffer.push(line);
@@ -260,27 +260,70 @@ export async function importDocxBytesToBookProject(
   filename = 'Manuscript.docx',
 ): Promise<BookProject> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 0;
+  const decoder = new TextDecoder('utf-8');
   let documentXml = '';
 
-  while (offset + 30 <= bytes.length) {
-    const sig = view.getUint32(offset, true);
-    if (sig !== 0x04034b50) break;
-    const method = view.getUint16(offset + 8, true);
-    const compSize = view.getUint32(offset + 18, true);
-    const nameLen = view.getUint16(offset + 26, true);
-    const extraLen = view.getUint16(offset + 28, true);
-    const nameStart = offset + 30;
-    const name = new TextDecoder('utf-8').decode(bytes.subarray(nameStart, nameStart + nameLen));
-    const dataStart = nameStart + nameLen + extraLen;
-    const dataEnd = dataStart + compSize;
-    if (dataEnd > bytes.length) break;
-
-    if (name === 'word/document.xml') {
-      documentXml = await readStoredOrDeflateEntry(bytes.subarray(dataStart, dataEnd), method);
+  // Prefer ZIP Central Directory (EOCD) so entries written with bit-3 data descriptors (compSize=0 in local header) resolve reliably.
+  const minEocdSearch = Math.max(0, bytes.length - 65557);
+  let eocdOffset = -1;
+  for (let pos = bytes.length - 22; pos >= minEocdSearch; pos--) {
+    if (view.getUint32(pos, true) === 0x06054b50) {
+      eocdOffset = pos;
       break;
     }
-    offset = dataEnd;
+  }
+
+  if (eocdOffset >= 0) {
+    const cdSize = view.getUint32(eocdOffset + 12, true);
+    const cdOffset = view.getUint32(eocdOffset + 16, true);
+    const cdEnd = Math.min(bytes.length, cdOffset + cdSize);
+    let entryOffset = cdOffset;
+    while (entryOffset + 46 <= cdEnd) {
+      if (view.getUint32(entryOffset, true) !== 0x02014b50) break;
+      const method = view.getUint16(entryOffset + 10, true);
+      const compSize = view.getUint32(entryOffset + 20, true);
+      const nameLen = view.getUint16(entryOffset + 28, true);
+      const extraLen = view.getUint16(entryOffset + 30, true);
+      const commentLen = view.getUint16(entryOffset + 32, true);
+      const localHeaderOffset = view.getUint32(entryOffset + 42, true);
+      const name = decoder.decode(bytes.subarray(entryOffset + 46, entryOffset + 46 + nameLen));
+      if (name === 'word/document.xml' && localHeaderOffset + 30 <= bytes.length) {
+        if (view.getUint32(localHeaderOffset, true) === 0x04034b50) {
+          const localNameLen = view.getUint16(localHeaderOffset + 26, true);
+          const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+          const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+          const dataEnd = dataStart + compSize;
+          if (dataEnd <= bytes.length) {
+            documentXml = await readStoredOrDeflateEntry(bytes.subarray(dataStart, dataEnd), method);
+          }
+        }
+        break;
+      }
+      entryOffset += 46 + nameLen + extraLen + commentLen;
+    }
+  }
+
+  if (!documentXml) {
+    let offset = 0;
+    while (offset + 30 <= bytes.length) {
+      const sig = view.getUint32(offset, true);
+      if (sig !== 0x04034b50) break;
+      const method = view.getUint16(offset + 8, true);
+      const compSize = view.getUint32(offset + 18, true);
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const nameStart = offset + 30;
+      const name = decoder.decode(bytes.subarray(nameStart, nameStart + nameLen));
+      const dataStart = nameStart + nameLen + extraLen;
+      const dataEnd = dataStart + compSize;
+      if (dataEnd > bytes.length) break;
+
+      if (name === 'word/document.xml') {
+        documentXml = await readStoredOrDeflateEntry(bytes.subarray(dataStart, dataEnd), method);
+        break;
+      }
+      offset = dataEnd;
+    }
   }
 
   if (!documentXml) {

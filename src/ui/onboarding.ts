@@ -1,11 +1,23 @@
 import type { AppActions } from '../core/app-context';
+import { isTauriRuntime } from '../core/bridge';
 import { createEmptyBookProject, upsertBookInLibrary } from '../core/library';
-import type { StudioViewId } from '../core/types';
-import { bookvibeLogo, el } from './dom';
+import { syncBrowserPath } from '../core/router';
+import type { AppThemeId, StudioViewId, ToolTier } from '../core/types';
+import { openInteractiveCourseDrawer } from './course';
+import { el, icon, quillvibeLogo } from './dom';
 
-const SPLASH_SEEN_KEY = 'bookvibe.splashSeen.v1';
-const TOURS_SEEN_KEY = 'bookvibe.toursSeen.v1';
+const SPLASH_SEEN_KEY = 'quillvibe.splashSeen.v2';
+const LEGACY_SPLASH_KEY = 'bookvibe.splashSeen.v1';
+const TOURS_SEEN_KEY = 'quillvibe.toursSeen.v2';
 const PREVIEW_BOOK_ID = 'proj-salt-cartographer';
+
+export type SplashEnvironment = 'desktop-app' | 'desktop-web' | 'mobile-web';
+
+export function detectSplashEnvironment(): SplashEnvironment {
+  if (isTauriRuntime()) return 'desktop-app';
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) return 'mobile-web';
+  return 'desktop-web';
+}
 
 interface TourStep {
   selector: string;
@@ -17,53 +29,60 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
   editor: [
     {
       selector: '.bv-paper-float-nav',
-      title: 'Switch Modes',
-      body: 'Move between Draft, 15 Proofread marks, Split reference, and Revision Diff.',
+      title: 'Draft, Proofread & Tiers',
+      body: 'Start in calm Draft mode, right-click the page for quick formatting or proofread marks, and scale tools anytime in Settings.',
     },
     {
       selector: '.bv-scene-heading',
-      title: 'Write Freely',
-      body: 'Rename scenes inline or write directly on Obsidian, Parchment, or Ivory sheets.',
+      title: 'Clean Writing Sheet',
+      body: 'Ivory Light sheet is set by default. Rename chapters/scenes inline or drag the vertical <-> borders to resize side panels.',
     },
     {
       selector: '.bv-save-split',
-      title: 'Save Locally',
-      body: 'Pick any format and click Save anytime to export a copy to your computer.',
+      title: 'Export Local .quillvibe',
+      body: 'Export .quillvibe archives, EPUB 3, Markdown, or Print PDFs anytime with zero accounts.',
     },
   ],
   corkboard: [
     {
       selector: '.bv-main-stage',
-      title: 'Index Cards',
-      body: 'Drag scene cards to reorder chapters and edit quick synopses.',
+      title: 'Visual Corkboard',
+      body: 'Drag scene cards to reorder chapters, or right-click any card to jump to drafting or change revision status.',
     },
   ],
   outline: [
     {
       selector: '.bv-main-stage',
-      title: 'Outline Table',
-      body: 'Filter chapters by draft stage, POV character, or word progress.',
+      title: 'Outline Ledger',
+      body: 'Filter scenes live by title, POV, location, or status.',
     },
   ],
   bible: [
     {
       selector: '.bv-main-stage',
-      title: 'Story Bible',
-      body: 'Track characters, places, lore, and custom categories with portraits.',
+      title: 'Story Bible Codex',
+      body: 'Manage characters, places, lore, and custom categories with portraits and custom traits.',
     },
   ],
   graph: [
     {
       selector: '.bv-graph-canvas-wrap',
-      title: 'Infinite Graph Canvas',
-      body: 'Drag cards anywhere freely; hover card edges to drag connection lines live.',
+      title: 'Story Graph Canvas',
+      body: 'Drag nodes freely, pull port dots to link scenes, or right-click the canvas for layouts.',
     },
   ],
   typeset: [
     {
       selector: '.bv-main-stage',
-      title: 'Typeset & Cover Wrap',
-      body: 'Choose a book trim size, preview Table of Contents, and export clean Print PDF.',
+      title: 'Interior Typeset & Pro Cover Studio',
+      body: 'Design multi-layer covers with shapes, gradients, snap-to-grid, and trade trim layouts.',
+    },
+  ],
+  course: [
+    {
+      selector: '.bv-main-stage',
+      title: 'Quillvibe Academy Course',
+      body: 'Work through 7 guided modules, 20 hands-on lessons, and interactive knowledge checks at your own pace.',
     },
   ],
 };
@@ -240,11 +259,13 @@ export function replayFullWalkthrough(actions: AppActions): void {
   maybeStartSectionTour(actions.getState().activeView, actions, true);
 }
 
-export function maybeRunFirstLaunchSplash(actions: AppActions): void {
+export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false): void {
   const alreadyShown =
+    !forceShow &&
     typeof window !== 'undefined' &&
     window.localStorage &&
-    window.localStorage.getItem(SPLASH_SEEN_KEY) === '1';
+    (window.localStorage.getItem(SPLASH_SEEN_KEY) === '1' ||
+      window.localStorage.getItem(LEGACY_SPLASH_KEY) === '1');
 
   const isPreview = actions.getState().project.id === PREVIEW_BOOK_ID;
 
@@ -253,8 +274,12 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
     return;
   }
 
+  const env = detectSplashEnvironment();
+  let chosenTier: ToolTier = actions.getState().settings.toolTier;
+  let chosenTheme: AppThemeId = actions.getState().settings.appTheme;
   let finished = false;
-  const finishWithMode = (mode: 'preview' | 'blank' | 'skip') => {
+
+  const finishWithMode = (mode: 'course' | 'blank' | 'preview' | 'skip') => {
     if (finished) return;
     finished = true;
     try {
@@ -262,6 +287,9 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
     } catch {
       // Ignore storage error
     }
+
+    actions.updateSettings({ toolTier: chosenTier, appTheme: chosenTheme });
+    syncBrowserPath('/write', true);
 
     const reduced =
       actions.getState().settings.reducedMotionOverride === 'reduce' ||
@@ -278,9 +306,15 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
           const prose = document.querySelector('.bv-prose-textarea') as HTMLTextAreaElement | null;
           prose?.focus();
         });
+      } else if (mode === 'course') {
+        markAllSectionsSeen();
+        actions.setState({}, true);
+        openInteractiveCourseDrawer(actions, 0);
       } else if (mode === 'preview') {
+        actions.setState({}, true);
         maybeStartSectionTour(actions.getState().activeView, actions, true);
       } else {
+        actions.setState({}, true);
         markSectionSeen(actions.getState().activeView);
       }
     };
@@ -301,49 +335,119 @@ export function maybeRunFirstLaunchSplash(actions: AppActions): void {
       emblem.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${scale})`;
     }
     splash.classList.add('is-morphing-out');
-    window.setTimeout(applyChoice, 340);
+    window.setTimeout(applyChoice, 320);
   };
 
-  const exploreBtn = el('button', {
-    className: 'bv-btn bv-btn-primary',
-    text: 'Explore Preview Book',
-    attrs: { type: 'button' },
-    on: { click: () => finishWithMode('preview') },
-  });
+  // Interactive Tier Picker & Theme toggle for Website Desktop & Desktop App
+  const tierRow = el('div', { className: 'qv-splash-tier-grid' });
+  const tierCards: Array<{ id: ToolTier; title: string; desc: string }> = [
+    { id: 'basic', title: 'Basic', desc: 'Clean page like Word or Docs. Zero clutter.' },
+    { id: 'intermediate', title: 'Intermediate', desc: 'Adds Corkboard, Outline, Proofread & Typeset.' },
+    { id: 'advanced', title: 'Advanced', desc: 'Full Studio: Story Bible, Graph, Pro Cover & Seal.' },
+  ];
+  const renderTierButtons = () => {
+    tierRow.replaceChildren();
+    for (const tc of tierCards) {
+      tierRow.appendChild(
+        el(
+          'button',
+          {
+            className: `qv-splash-tier-card${chosenTier === tc.id ? ' is-selected' : ''}`,
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                chosenTier = tc.id;
+                renderTierButtons();
+              },
+            },
+          },
+          el('strong', { text: tc.title }),
+          el('span', { className: 'bv-label', text: tc.desc }),
+        ),
+      );
+    }
+  };
+  renderTierButtons();
+
+  const themeToggleRow = el(
+    'div',
+    { className: 'qv-splash-theme-row' },
+    ...(['ivory', 'parchment', 'obsidian'] as AppThemeId[]).map((th) => {
+      const btn = el('button', {
+        className: `bv-mini-btn${chosenTheme === th ? ' is-active' : ''}`,
+        text: th === 'ivory' ? 'Ivory Light' : th === 'parchment' ? 'Parchment' : 'Obsidian Dark',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            chosenTheme = th;
+            actions.updateSettings({ appTheme: th });
+            Array.from(themeToggleRow.children).forEach((c, idx) => {
+              c.classList.toggle('is-active', idx === (['ivory', 'parchment', 'obsidian'] as AppThemeId[]).indexOf(th));
+            });
+          },
+        },
+      });
+      return btn;
+    }),
+  );
+
+  const courseBtn = el(
+    'button',
+    {
+      className: 'bv-btn bv-btn-primary',
+      attrs: { type: 'button' },
+      on: { click: () => finishWithMode('course') },
+    },
+    icon('course', 14),
+    env === 'mobile-web' ? 'Guided Book Course' : 'Take Complete Book Course',
+  );
 
   const blankBtn = el('button', {
     className: 'bv-btn',
-    text: 'Start New Blank Book',
+    text: 'Start Blank Book',
     attrs: { type: 'button' },
     on: { click: () => finishWithMode('blank') },
   });
 
-  const skipBtn = el('button', {
-    className: 'bv-mini-btn',
-    text: 'Skip Intro',
+  const resumeBtn = el('button', {
+    className: env === 'desktop-app' ? 'bv-btn bv-btn-primary' : 'bv-btn',
+    text: isPreview ? 'Explore Sample Book' : 'Continue Writing',
     attrs: { type: 'button' },
-    on: { click: () => finishWithMode('skip') },
+    on: { click: () => finishWithMode(isPreview ? 'preview' : 'skip') },
   });
+
+  const envLabel =
+    env === 'desktop-app'
+      ? 'Desktop Studio · Local Disk Auto-Save, Native Files & LAN Sync'
+      : env === 'mobile-web'
+        ? 'Mobile Draft Edition · Keyboard-Safe & Offline Local Save'
+        : 'Web Studio (/start) · Instant Browser Workspace · Zero Accounts';
+
+  const subtitle =
+    env === 'desktop-app'
+      ? 'Full offline desktop studio with native .quillvibe file associations, Wi-Fi PIN collaboration, and Pro Cover Designer.'
+      : env === 'mobile-web'
+        ? 'Draft chapters and notes comfortably on your phone. Export a .quillvibe archive anytime to sync with Desktop.'
+        : 'Start clean like Google Docs in Basic mode, or unlock Pro Cover Studio, Proofread Markup, and Typeset tools as your book grows.';
 
   const splash = el(
     'div',
-    { className: 'bv-splash-overlay', id: 'bv-splash-overlay' },
+    { className: `bv-splash-overlay qv-splash-${env}`, id: 'bv-splash-overlay' },
     el(
       'div',
       { className: 'bv-splash-inner' },
-      el('div', { className: 'bv-splash-emblem' }, bookvibeLogo(74)),
-      el('h1', { className: 'bv-splash-title', text: 'Bookvibe' }),
-      el('p', {
-        className: 'bv-splash-sub',
-        text: isPreview
-          ? 'Open the sample book for a brief highlight guide, or begin a blank book right away.'
-          : 'Offline book writing, proofing, typesetting & cover studio',
-      }),
+      el('div', { className: 'bv-splash-emblem' }, quillvibeLogo(env === 'mobile-web' ? 56 : 74)),
+      el('span', { className: 'bv-mono-tag', text: envLabel }),
+      el('h1', { className: 'bv-splash-title', text: 'Quillvibe' }),
+      el('p', { className: 'bv-splash-sub', text: subtitle }),
+      env !== 'mobile-web' ? tierRow : null,
+      themeToggleRow,
       el(
         'div',
         { className: 'bv-splash-actions' },
-        ...(isPreview ? [exploreBtn, blankBtn] : []),
-        skipBtn,
+        env === 'desktop-app' ? resumeBtn : courseBtn,
+        env === 'desktop-app' ? courseBtn : resumeBtn,
+        blankBtn,
       ),
     ),
   );

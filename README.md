@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="assets/banners/bookvibe-header.svg" alt="Bookvibe — Open-source book writing, proofreading, worldbuilding, and typesetting studio" width="100%" />
+  <img src="assets/banners/bookvibe-header.svg" alt="Quillvibe — Open-source book writing, proofreading, worldbuilding, cover studio, and typesetting workspace" width="100%" />
 </p>
 
-Bookvibe is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with traditional proofreading marks, manage story bibles and relationship graphs, install custom fonts, design print covers, and export release-ready books from one local workspace. It runs offline with zero account sign-ins, stores work in plain UTF-8 files you control, and syncs manuscripts directly across computers on your Wi-Fi or Bluetooth connection.
+**Quillvibe** *(formerly Bookvibe)* is a cross-platform book writing application built so writers can draft notes, organize manuscripts, edit with right-click proofreading marks, manage story bibles and relationship graphs, install custom fonts, design layered print covers, and export release-ready books from one local workspace. It starts in a calm **Ivory Light** theme with **Basic / Intermediate / Advanced** tool tiers, runs offline with zero AI features and zero account sign-ins, stores work in `.quillvibe` UTF-8 files (while reading legacy `.bookvibe` archives cleanly), and syncs drafts directly over Wi-Fi or Bluetooth.
 
-> **Try Bookvibe Now in Your Browser (Zero Account Needed):** **[Launch `https://bookvibe.jhonrey.com/`](https://bookvibe.jhonrey.com/)**  
-> *Browser tip:* Click **Save** anytime to export a `.bookvibe` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
-> **Desktop Releases (`v1.3.1` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Bookvibe/releases/latest)**  
-> **Project Wiki & Roadmap:** **[Bookvibe GitHub Wiki](https://github.com/jhonrey-com/Bookvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`bookvibe@jhonrey.com`)
+> **Try Quillvibe Now in Your Browser (`/start` Onboarding):** **[Launch `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)** *(moving to `quillvibe.app`)*  
+> *Browser tip:* Click **Save** anytime to export a `.quillvibe` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
+> **Desktop Releases (`v2.0.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
+> **Project Wiki & Roadmap:** **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`bookvibe@jhonrey.com`)
 
 <p align="center">
   <img src="assets/banners/bookvibe-workspace.svg" alt="Bookvibe five-stage studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline LAN Sync, Typeset & Full Cover Wrap" width="100%" />

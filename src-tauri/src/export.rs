@@ -138,7 +138,7 @@ pub fn build_epub_bytes(payload: &EpubExportPayload) -> Result<Vec<u8>, String> 
     } else {
         &payload.language
     });
-    let book_uid = escape_xml(&format!("urn:bookvibe:{}", payload.book_id));
+    let book_uid = escape_xml(&format!("urn:quillvibe:{}", payload.book_id));
 
     let titlepage_xhtml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>

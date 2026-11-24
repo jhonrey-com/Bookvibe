@@ -81,6 +81,24 @@ export function showLibraryModal(actions: AppActions): void {
                   text: 'ACTIVE',
                   style: { color: 'var(--accent-emerald)', padding: '3px 6px' },
                 }),
+            el(
+              'button',
+              {
+                className: 'bv-mini-btn',
+                tooltip: {
+                  title: 'Open in New Window',
+                  short: 'Open this manuscript in a dedicated parallel window.',
+                },
+                attrs: { type: 'button' },
+                on: {
+                  click: () => {
+                    void actions.openNewWindow(book.id);
+                  },
+                },
+              },
+              icon('window-new', 12),
+              'Window',
+            ),
             el('button', {
               className: 'bv-mini-btn',
               text: 'Duplicate',

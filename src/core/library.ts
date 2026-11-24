@@ -79,7 +79,7 @@ export function createEmptyBookProject(title = 'Untitled Book', penName = 'Pen N
     copyrightNotice: `Copyright © ${new Date().getFullYear()} ${penName.trim() || 'Pen Name'}. All rights reserved.`,
     language: 'en',
     wordTarget: 50000,
-    paperTheme: 'obsidian',
+    paperTheme: 'ivory',
     typography: structuredClone(starter.typography),
     parts: [createPartNode('Part I')],
     bible: {

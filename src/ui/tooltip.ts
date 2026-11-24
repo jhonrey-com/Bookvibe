@@ -38,9 +38,7 @@ function bindGlobalDismissListeners(): void {
     if (!activeState || !tooltipBox) return;
     const node = e.target as Node | null;
     if (node && tooltipBox.contains(node)) return;
-    if (activeState.pinned) {
-      hideTooltip();
-    }
+    hideTooltip();
   });
 
   window.addEventListener('keydown', (e) => {
@@ -48,6 +46,19 @@ function bindGlobalDismissListeners(): void {
       hideTooltip();
     }
   });
+
+  window.addEventListener('blur', hideTooltip);
+  window.addEventListener('wheel', () => {
+    if (activeState && !activeState.pinned) hideTooltip();
+  }, { passive: true });
+
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (activeState && !activeState.pinned) hideTooltip();
+    },
+    { passive: true, capture: true },
+  );
 
   window.addEventListener(
     'resize',
@@ -66,12 +77,14 @@ function ensureTooltipBox(): HTMLDivElement {
   tooltipBox.setAttribute('aria-hidden', 'true');
 
   tooltipBox.addEventListener('pointerenter', () => {
-    clearTimers();
+    if (activeState?.pinned) {
+      clearTimers();
+    }
   });
 
   tooltipBox.addEventListener('pointerleave', () => {
     if (activeState && !activeState.pinned) {
-      scheduleHide(150);
+      hideTooltip();
     }
   });
 
@@ -211,6 +224,10 @@ function showTooltipNow(target: HTMLElement, spec: TooltipSpec, expanded = false
   positionTooltip();
 }
 
+export function showTooltipForElement(target: HTMLElement, spec: TooltipSpec): void {
+  showTooltipNow(target, spec, false);
+}
+
 function scheduleHide(delayMs: number): void {
   clearTimers();
   hideTimer = window.setTimeout(() => {
@@ -230,7 +247,7 @@ export function hideTooltip(): void {
 }
 
 /**
- * Attaches custom short hover tooltips that expand with full descriptions when clicked.
+ * Attaches custom short hover tooltips that expand with full descriptions when clicked or F1/?.
  */
 export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   target.removeAttribute('title');
@@ -242,14 +259,16 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
     clearTimers();
     if (activeState?.pinned && activeState.target === target) return;
     showTimer = window.setTimeout(() => {
-      showTooltipNow(target, spec, false);
-    }, 220);
+      if (target.matches(':hover') || document.activeElement === target) {
+        showTooltipNow(target, spec, false);
+      }
+    }, 180);
   });
 
   target.addEventListener('pointerleave', () => {
     clearTimers();
     if (activeState?.target === target && !activeState.pinned) {
-      scheduleHide(170);
+      scheduleHide(40);
     }
   });
 
@@ -259,13 +278,14 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   });
 
   target.addEventListener('blur', () => {
+    clearTimers();
     if (activeState?.target === target && !activeState.pinned) {
-      scheduleHide(120);
+      hideTooltip();
     }
   });
 
   target.addEventListener('keydown', (e) => {
-    if (e.key === '?' || (e.key === 'F1')) {
+    if (e.key === '?' || e.key === 'F1') {
       e.preventDefault();
       const nextExp = !(activeState?.target === target && activeState.expanded);
       showTooltipNow(target, spec, nextExp);

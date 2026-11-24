@@ -4,12 +4,14 @@ import sampleBibleRaw from '../examples/salt-archipelago.bvbible?raw';
 import sampleSceneRaw from '../examples/harbor-bell.bvscene?raw';
 import sampleStyleRaw from '../examples/classic-trade-6x9.bvstyle?raw';
 import { getSceneMentions, indexBibleMentions } from '../src/core/bible';
+import { ALARM_RINGTONES } from '../src/core/alarm';
 import {
   acceptSceneAnnotation,
   addCollaborator,
   addSceneAnnotation,
   mergeBookRevisions,
 } from '../src/core/collab';
+import { validateSyncServerUrl } from '../src/core/enterprise-sync';
 import {
   FONT_STACKS,
   TRIM_SPECS,
@@ -23,7 +25,13 @@ import {
   computeBookPagination,
   formatChapterLabel,
 } from '../src/core/export';
-import { sanitizeSvgMarkup } from '../src/core/cover';
+import {
+  computeSmartAlignSnap,
+  createShapeLayer,
+  createTextLayer,
+  sanitizeSvgMarkup,
+  snapValueToGrid,
+} from '../src/core/cover';
 import {
   installFontPackFromExtension,
   resolveEffectiveFontCss,
@@ -33,13 +41,20 @@ import {
 import {
   buildEditorialHandoffReport,
   extractDocxParagraphsFromXml,
+  importDocxBytesToBookProject,
   importGoogleDocsHtmlToBookProject,
   importMarkdownToBookProject,
   importPlainTextToBookProject,
   importRtfToBookProject,
 } from '../src/core/migrate';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../src/core/provenance';
-import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from '../src/core/settings';
+import {
+  DEFAULT_SETTINGS,
+  formatAppWindowTitle,
+  loadSettings,
+  sanitizeSettings,
+  saveSettings,
+} from '../src/core/settings';
 import { CONTROL_REFERENCE_ITEMS } from '../src/ui/controls-catalog';
 import { ICON_DIRECTORY } from '../src/ui/icon-directory';
 import {
@@ -64,12 +79,17 @@ import {
   stetProofreadMark,
 } from '../src/core/proofread';
 import {
+  ALL_OFFICIAL_EXTENSIONS,
   BOOKVIBE_EXTENSIONS,
   BOOKVIBE_MAGIC,
+  QUILLVIBE_EXTENSIONS,
+  QUILLVIBE_MAGIC,
   applyOpenedExtensionFile,
   parseExtensionFile,
   serializeExtensionFile,
 } from '../src/core/extensions';
+import { resolvePathToRoute, routeForState } from '../src/core/router';
+import { COURSE_MODULES, getCourseCompletionSummary, toggleCourseLessonDone } from '../src/ui/course';
 import {
   addGraphEdge,
   addGraphNode,
@@ -774,5 +794,191 @@ describe('Bookvibe v1.3 Beta Modules (Provenance, Settings, Fonts, Migration, Co
     const htmlMinimal = buildPrintableBookHtml(noHeadNoToc);
     expect(htmlMinimal).not.toContain('class="running-head"');
     expect(htmlMinimal).not.toContain('Table of Contents');
+  });
+
+  it('resolves built-in and builtin-prefixed font keys cleanly in resolveEffectiveFontCss', () => {
+    expect(resolveEffectiveFontCss('garamond', 'baskerville')).toBe(FONT_STACKS.baskerville.css);
+    expect(resolveEffectiveFontCss('garamond', 'builtin:inter')).toBe(FONT_STACKS.inter.css);
+    expect(resolveEffectiveFontCss('palatino')).toBe(FONT_STACKS.palatino.css);
+    expect(resolveEffectiveFontCss('garamond', 'Custom Serif Face')).toContain('Custom Serif Face');
+  });
+
+  it('numbers Markdown scene-break splits sequentially without skipping Scene 2', () => {
+    const mdBook = importMarkdownToBookProject(
+      '# Harbor\n\n## Chapter 1\nFirst part.\n\n* * *\n\nSecond part.\n\n---\n\nThird part.\n',
+      'harbor.md',
+    );
+    const titles = mdBook.parts[0].chapters[0].scenes.map((s) => s.title);
+    expect(titles).toEqual(['Chapter 1', 'Scene 2', 'Scene 3']);
+  });
+
+  it('imports .docx ZIP entries written with bit-3 data descriptors via Central Directory', async () => {
+    const enc = new TextEncoder();
+    const nameBytes = enc.encode('word/document.xml');
+    const xmlBytes = enc.encode(
+      '<w:document><w:body><w:p><w:r><w:t>Central directory paragraph.</w:t></w:r></w:p></w:body></w:document>',
+    );
+    const localSize = 30 + nameBytes.length;
+    const ddOffset = localSize + xmlBytes.length;
+    const cdOffset = ddOffset + 16;
+    const cdSize = 46 + nameBytes.length;
+    const eocdOffset = cdOffset + cdSize;
+    const zip = new Uint8Array(eocdOffset + 22);
+    const dv = new DataView(zip.buffer);
+
+    // Local file header with flags=0x0008 and zeroed sizes (bit-3 data descriptor style)
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 0x0008, true);
+    dv.setUint16(8, 0, true);
+    dv.setUint16(26, nameBytes.length, true);
+    zip.set(nameBytes, 30);
+    zip.set(xmlBytes, localSize);
+
+    // Data descriptor
+    dv.setUint32(ddOffset, 0x08074b50, true);
+    dv.setUint32(ddOffset + 8, xmlBytes.length, true);
+    dv.setUint32(ddOffset + 12, xmlBytes.length, true);
+
+    // Central directory header pointing to local header offset 0
+    dv.setUint32(cdOffset, 0x02014b50, true);
+    dv.setUint16(cdOffset + 4, 20, true);
+    dv.setUint16(cdOffset + 6, 20, true);
+    dv.setUint16(cdOffset + 8, 0x0008, true);
+    dv.setUint16(cdOffset + 10, 0, true);
+    dv.setUint32(cdOffset + 20, xmlBytes.length, true);
+    dv.setUint32(cdOffset + 24, xmlBytes.length, true);
+    dv.setUint16(cdOffset + 28, nameBytes.length, true);
+    dv.setUint32(cdOffset + 42, 0, true);
+    zip.set(nameBytes, cdOffset + 46);
+
+    // EOCD
+    dv.setUint32(eocdOffset, 0x06054b50, true);
+    dv.setUint16(eocdOffset + 8, 1, true);
+    dv.setUint16(eocdOffset + 10, 1, true);
+    dv.setUint32(eocdOffset + 12, cdSize, true);
+    dv.setUint32(eocdOffset + 16, cdOffset, true);
+
+    const docxBook = await importDocxBytesToBookProject(zip, 'descriptor.docx');
+    expect(docxBook.parts[0].chapters[0].scenes[0].content).toContain('Central directory paragraph.');
+  });
+
+  it('defaults settings to Ivory Light theme, Basic tier, and wider writing sheet', () => {
+    expect(DEFAULT_SETTINGS.appTheme).toBe('ivory');
+    expect(DEFAULT_SETTINGS.toolTier).toBe('basic');
+    expect(DEFAULT_SETTINGS.editorSheetMaxWidthPx).toBe(820);
+    const cleaned = sanitizeSettings({
+      appTheme: 'obsidian',
+      toolTier: 'advanced',
+      binderWidthPx: 999,
+      inspectorWidthPx: 100,
+    });
+    expect(cleaned.appTheme).toBe('obsidian');
+    expect(cleaned.toolTier).toBe('advanced');
+    expect(cleaned.binderWidthPx).toBe(440);
+    expect(cleaned.inspectorWidthPx).toBe(210);
+  });
+
+  it('round-trips all 6 Quillvibe extensions with QUILLVIBE_V2 header alongside legacy Bookvibe', () => {
+    expect(QUILLVIBE_EXTENSIONS.map((e) => e.extension)).toEqual([
+      '.quillvibe',
+      '.qvibe',
+      '.qvbook',
+      '.qvbible',
+      '.qvscene',
+      '.qvstyle',
+    ]);
+    expect(ALL_OFFICIAL_EXTENSIONS.length).toBe(12);
+
+    const project = createStarterBookProject();
+    for (const def of QUILLVIBE_EXTENSIONS) {
+      const json = serializeExtensionFile(def.extension, project);
+      const raw = JSON.parse(json) as Record<string, unknown>;
+      expect(raw.magic).toBe(QUILLVIBE_MAGIC);
+      const parsed = parseExtensionFile(json, `book${def.extension}`);
+      expect(parsed.extension).toBe(def.extension);
+      const applied = applyOpenedExtensionFile(parsed, project);
+      expect(applied.project.parts.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('creates Cover Studio shape & text layers with magnetic center snap and grid quantization', () => {
+    const shape = createShapeLayer('front', 'rounded-rect', '#8c6a35');
+    expect(shape.shape).toBe('rounded-rect');
+    expect(shape.xPct).toBe(50);
+
+    const txt = createTextLayer('front', 'Collector Copy', '#181a20');
+    expect(txt.text).toBe('Collector Copy');
+
+    expect(snapValueToGrid(47.3, 4, true)).toBe(48);
+    const mag = computeSmartAlignSnap(49.1, 24.4, { snapGrid: true, gridStepPct: 4 });
+    expect(mag.xPct).toBe(50);
+    expect(mag.guideX).toBe(50);
+    expect(mag.yPct).toBe(25);
+    expect(mag.guideY).toBe(25);
+  });
+
+  it('routes /start, /write, /course, and /studio cleanly and tracks deep course curriculum', () => {
+    expect(resolvePathToRoute('/', true)).toMatchObject({ showStartSplash: true, canonicalPath: '/start' });
+    expect(resolvePathToRoute('/start', false)).toMatchObject({ showStartSplash: true, canonicalPath: '/start' });
+    expect(resolvePathToRoute('/course', false)).toMatchObject({
+      view: 'course',
+      showStartSplash: false,
+      canonicalPath: '/course',
+    });
+    expect(resolvePathToRoute('/studio/cover', false)).toMatchObject({
+      view: 'typeset',
+      typesetSubTab: 'cover',
+      showStartSplash: false,
+    });
+    expect(routeForState('typeset', 'cover')).toBe('/studio/cover');
+    expect(routeForState('course')).toBe('/course');
+
+    expect(COURSE_MODULES.length).toBe(7);
+    for (const mod of COURSE_MODULES) {
+      for (const lesson of mod.lessons) {
+        expect(lesson.concepts.length).toBeGreaterThanOrEqual(2);
+        expect(lesson.steps.length).toBeGreaterThanOrEqual(3);
+        expect(lesson.checkpoint.options.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+    toggleCourseLessonDone('m1-title', true);
+    const summary = getCourseCompletionSummary();
+    expect(summary.completed).toBeGreaterThanOrEqual(1);
+    expect(summary.total).toBe(20);
+  });
+
+  it('formats configurable window/browser titles and validates enterprise sync security', () => {
+    const project = createStarterBookProject();
+    expect(
+      formatAppWindowTitle({ windowTitleMode: 'book', windowTitleCustom: '' }, project, 'editor', 'interior', true),
+    ).toBe('Quillvibe - The Salt Cartographer');
+    expect(
+      formatAppWindowTitle({ windowTitleMode: 'author', windowTitleCustom: '' }, project, 'editor', 'interior', true),
+    ).toContain('Quillvibe - ');
+    expect(
+      formatAppWindowTitle({ windowTitleMode: 'section', windowTitleCustom: '' }, project, 'typeset', 'cover', true),
+    ).toBe('Quillvibe - Book Cover Studio');
+    expect(
+      formatAppWindowTitle({ windowTitleMode: 'brand', windowTitleCustom: '' }, project, 'editor', 'interior', true),
+    ).toBe('Quillvibe');
+    expect(
+      formatAppWindowTitle(
+        { windowTitleMode: 'custom', windowTitleCustom: '{book} · {section} · {author}' },
+        project,
+        'course',
+        'interior',
+        false,
+      ),
+    ).toContain('The Salt Cartographer · Book Writing Course');
+
+    expect(ALARM_RINGTONES.length).toBeGreaterThanOrEqual(5);
+
+    expect(validateSyncServerUrl('https://sync.publisher.example/api/').ok).toBe(true);
+    expect(validateSyncServerUrl('http://192.168.1.44:8080/').ok).toBe(true);
+    expect(validateSyncServerUrl('http://localhost:3000').ok).toBe(true);
+    expect(validateSyncServerUrl('http://public.example.com/sync').ok).toBe(false);
+    expect(validateSyncServerUrl('https://user:secret@example.com/sync').ok).toBe(false);
+    expect(validateSyncServerUrl('javascript:alert(1)').ok).toBe(false);
   });
 });

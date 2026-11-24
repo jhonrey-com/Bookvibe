@@ -6,7 +6,7 @@ import {
   computeBookPagination,
 } from '../core/export';
 import { getAllAvailableFontChoices, resolveEffectiveFontCss } from '../core/fonts';
-import { BOOKVIBE_EXTENSIONS } from '../core/extensions';
+import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import {
   ensureAuthorIdentity,
   generateAuthorKeyPair,
@@ -256,24 +256,41 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
     on: { change: () => updateTypography(actions, { includePageNumbers: pageNumsToggle.checked }) },
   });
 
+  let fontSizeLabelEl: HTMLElement | null = null;
+  let lineHeightLabelEl: HTMLElement | null = null;
+
   const fontSizeInput = el('input', {
     attrs: { type: 'range', min: 9, max: 14, step: 0.5, value: typo.fontSizePt },
     on: {
-      input: () => updateTypography(actions, { fontSizePt: Number(fontSizeInput.value) }),
+      input: () => {
+        const val = fontSizeInput.value;
+        if (fontSizeLabelEl) fontSizeLabelEl.textContent = `Body Size (${val} pt)`;
+        document.querySelectorAll<HTMLElement>('.bv-book-page').forEach((p) => {
+          p.style.fontSize = `${val}pt`;
+        });
+      },
+      change: () => updateTypography(actions, { fontSizePt: Number(fontSizeInput.value) }),
     },
   });
 
   const lineHeightInput = el('input', {
     attrs: { type: 'range', min: 1.3, max: 1.9, step: 0.05, value: typo.lineHeight },
     on: {
-      input: () => updateTypography(actions, { lineHeight: Number(lineHeightInput.value) }),
+      input: () => {
+        const val = lineHeightInput.value;
+        if (lineHeightLabelEl) lineHeightLabelEl.textContent = `Line Spacing (${val})`;
+        document.querySelectorAll<HTMLElement>('.bv-book-page').forEach((p) => {
+          p.style.lineHeight = String(val);
+        });
+      },
+      change: () => updateTypography(actions, { lineHeight: Number(lineHeightInput.value) }),
     },
   });
 
   const extGrid = el('div', {
     style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' },
   });
-  for (const item of BOOKVIBE_EXTENSIONS) {
+  for (const item of QUILLVIBE_EXTENSIONS) {
     extGrid.appendChild(
       el(
         'button',
@@ -316,8 +333,18 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
         }),
       ),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Chapter Numerals' }), numeralSelect),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Body Size (${typo.fontSizePt} pt)` }), fontSizeInput),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Line Spacing (${typo.lineHeight})` }), lineHeightInput),
+      el(
+        'div',
+        { className: 'bv-field' },
+        (fontSizeLabelEl = el('label', { className: 'bv-label', text: `Body Size (${typo.fontSizePt} pt)` })),
+        fontSizeInput,
+      ),
+      el(
+        'div',
+        { className: 'bv-field' },
+        (lineHeightLabelEl = el('label', { className: 'bv-label', text: `Line Spacing (${typo.lineHeight})` })),
+        lineHeightInput,
+      ),
       el(
         'label',
         { style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' } },
@@ -809,10 +836,10 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
           {
             className: 'bv-btn',
             attrs: { type: 'button' },
-            on: { click: () => void actions.exportAsExtension('.bookvibe') },
+            on: { click: () => void actions.exportAsExtension('.quillvibe') },
           },
           icon('save', 14),
-          'Signed .bookvibe Archive',
+          'Signed .quillvibe Archive',
         ),
       ),
     ),

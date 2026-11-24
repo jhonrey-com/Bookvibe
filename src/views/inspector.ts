@@ -276,7 +276,7 @@ export function renderInspector(container: HTMLElement, actions: AppActions): vo
           className: 'bv-mini-btn',
           tooltip: { title: 'Open Proofread Mode', short: 'Review strikeout, caret, transpose, and stet marks on this scene.' },
           attrs: { type: 'button' },
-          on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
+          on: { click: () => actions.setState({ activeView: 'editor', editorSubMode: 'proofread' }, true) },
         },
         icon('proofread', 11),
         'Review',

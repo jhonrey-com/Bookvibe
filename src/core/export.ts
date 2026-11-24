@@ -18,16 +18,17 @@ export interface ExportFormatOption {
 }
 
 export const EXPORT_FORMAT_OPTIONS: readonly ExportFormatOption[] = [
-  { id: '.bookvibe', label: 'Master Project (.bookvibe)', shortLabel: '.bookvibe', description: 'Complete manuscript, story bible, graph, cover, snapshots, and author key seal.' },
+  { id: '.quillvibe', label: 'Master Project (.quillvibe)', shortLabel: '.quillvibe', description: 'Complete manuscript, story bible, graph, cover, snapshots, and author key seal.' },
   { id: '.epub', label: 'EPUB 3 eBook (.epub)', shortLabel: '.epub', description: 'Standard eBook archive with cover artwork, credits, and reflowable chapters.' },
   { id: '.md', label: 'Markdown Manuscript (.md)', shortLabel: '.md', description: 'Plain-text Markdown with YAML front matter and formatted scene breaks.' },
   { id: '.html', label: 'Standalone Web Book (.html)', shortLabel: '.html', description: 'Self-contained readable HTML manuscript with clean serif styling.' },
   { id: '.txt', label: 'Plain Text Manuscript (.txt)', shortLabel: '.txt', description: 'Clean unformatted UTF-8 prose manuscript.' },
-  { id: '.bvibe', label: 'Compact Project (.bvibe)', shortLabel: '.bvibe', description: 'Short-alias project file identical in structure to .bookvibe.' },
-  { id: '.bvbook', label: 'Manuscript Package (.bvbook)', shortLabel: '.bvbook', description: 'Portable manuscript parts, chapters, scenes, and credits without bible/graph.' },
-  { id: '.bvbible', label: 'Story Bible DB (.bvbible)', shortLabel: '.bvbible', description: 'Shareable characters, locations, lore, and custom categories database.' },
-  { id: '.bvscene', label: 'Active Scene Draft (.bvscene)', shortLabel: '.bvscene', description: 'Exports only the currently open scene draft, marks, and snapshots.' },
-  { id: '.bvstyle', label: 'Typeset Preset (.bvstyle)', shortLabel: '.bvstyle', description: 'Reusable trim size, margins, drop caps, and paper preset.' },
+  { id: '.qvibe', label: 'Compact Project (.qvibe)', shortLabel: '.qvibe', description: 'Short-alias project file identical in structure to .quillvibe.' },
+  { id: '.qvbook', label: 'Manuscript Package (.qvbook)', shortLabel: '.qvbook', description: 'Portable manuscript parts, chapters, scenes, and credits without bible/graph.' },
+  { id: '.qvbible', label: 'Story Bible DB (.qvbible)', shortLabel: '.qvbible', description: 'Shareable characters, locations, lore, and custom categories database.' },
+  { id: '.qvscene', label: 'Active Scene Draft (.qvscene)', shortLabel: '.qvscene', description: 'Exports only the currently open scene draft, marks, and snapshots.' },
+  { id: '.qvstyle', label: 'Typeset Preset (.qvstyle)', shortLabel: '.qvstyle', description: 'Reusable trim size, margins, drop caps, and paper preset.' },
+  { id: '.bookvibe', label: 'Legacy Bookvibe (.bookvibe)', shortLabel: '.bookvibe', description: 'Backward-compatible archive readable by legacy Bookvibe 1.x builds.' },
 ] as const;
 
 export interface TrimSpec {

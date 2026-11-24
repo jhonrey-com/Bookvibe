@@ -12,7 +12,7 @@ export function createStarterBookProject(): BookProject {
     copyrightNotice: 'Copyright © 2026 Maren Lindqvist. All rights reserved.',
     language: 'en',
     wordTarget: 65000,
-    paperTheme: 'obsidian',
+    paperTheme: 'ivory',
     activeAuthorLabel: 'Maren Lindqvist',
     authorIdentity: {
       penName: 'Maren Lindqvist',

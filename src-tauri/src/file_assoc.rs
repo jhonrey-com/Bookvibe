@@ -13,10 +13,58 @@ pub struct ExtensionSpec {
 
 pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
     ExtensionSpec {
+        dot_ext: ".quillvibe",
+        bare_ext: "quillvibe",
+        prog_id: "Quillvibe.Project.2",
+        name: "Quillvibe Master Project",
+        mime_type: "application/vnd.quillvibe.project+json",
+        uti: "app.quillvibe.project",
+    },
+    ExtensionSpec {
+        dot_ext: ".qvibe",
+        bare_ext: "qvibe",
+        prog_id: "Quillvibe.CompactProject.2",
+        name: "Quillvibe Compact Project",
+        mime_type: "application/vnd.quillvibe.project+json",
+        uti: "app.quillvibe.compact-project",
+    },
+    ExtensionSpec {
+        dot_ext: ".qvbook",
+        bare_ext: "qvbook",
+        prog_id: "Quillvibe.Manuscript.2",
+        name: "Quillvibe Manuscript Package",
+        mime_type: "application/vnd.quillvibe.manuscript+json",
+        uti: "app.quillvibe.manuscript",
+    },
+    ExtensionSpec {
+        dot_ext: ".qvbible",
+        bare_ext: "qvbible",
+        prog_id: "Quillvibe.Bible.2",
+        name: "Quillvibe Story Bible Database",
+        mime_type: "application/vnd.quillvibe.bible+json",
+        uti: "app.quillvibe.bible",
+    },
+    ExtensionSpec {
+        dot_ext: ".qvscene",
+        bare_ext: "qvscene",
+        prog_id: "Quillvibe.Scene.2",
+        name: "Quillvibe Standalone Scene Draft",
+        mime_type: "application/vnd.quillvibe.scene+json",
+        uti: "app.quillvibe.scene",
+    },
+    ExtensionSpec {
+        dot_ext: ".qvstyle",
+        bare_ext: "qvstyle",
+        prog_id: "Quillvibe.Style.2",
+        name: "Quillvibe Typeset Preset",
+        mime_type: "application/vnd.quillvibe.style+json",
+        uti: "app.quillvibe.style",
+    },
+    ExtensionSpec {
         dot_ext: ".bookvibe",
         bare_ext: "bookvibe",
         prog_id: "Bookvibe.Project.1",
-        name: "Bookvibe Master Project",
+        name: "Bookvibe Master Project (Legacy)",
         mime_type: "application/vnd.bookvibe.project+json",
         uti: "org.bookvibe.project",
     },
@@ -24,7 +72,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         dot_ext: ".bvibe",
         bare_ext: "bvibe",
         prog_id: "Bookvibe.CompactProject.1",
-        name: "Bookvibe Compact Project",
+        name: "Bookvibe Compact Project (Legacy)",
         mime_type: "application/vnd.bookvibe.project+json",
         uti: "org.bookvibe.compact-project",
     },
@@ -32,7 +80,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         dot_ext: ".bvbook",
         bare_ext: "bvbook",
         prog_id: "Bookvibe.Manuscript.1",
-        name: "Bookvibe Manuscript Package",
+        name: "Bookvibe Manuscript Package (Legacy)",
         mime_type: "application/vnd.bookvibe.manuscript+json",
         uti: "org.bookvibe.manuscript",
     },
@@ -40,7 +88,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         dot_ext: ".bvbible",
         bare_ext: "bvbible",
         prog_id: "Bookvibe.Bible.1",
-        name: "Bookvibe Story Bible Database",
+        name: "Bookvibe Story Bible Database (Legacy)",
         mime_type: "application/vnd.bookvibe.bible+json",
         uti: "org.bookvibe.bible",
     },
@@ -48,7 +96,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         dot_ext: ".bvscene",
         bare_ext: "bvscene",
         prog_id: "Bookvibe.Scene.1",
-        name: "Bookvibe Standalone Scene Draft",
+        name: "Bookvibe Standalone Scene Draft (Legacy)",
         mime_type: "application/vnd.bookvibe.scene+json",
         uti: "org.bookvibe.scene",
     },
@@ -56,7 +104,7 @@ pub const BOOKVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         dot_ext: ".bvstyle",
         bare_ext: "bvstyle",
         prog_id: "Bookvibe.Style.1",
-        name: "Bookvibe Typeset Preset",
+        name: "Bookvibe Typeset Preset (Legacy)",
         mime_type: "application/vnd.bookvibe.style+json",
         uti: "org.bookvibe.style",
     },
@@ -391,11 +439,15 @@ mod tests {
 
     #[test]
     fn validates_all_six_official_extensions() {
-        assert_eq!(BOOKVIBE_EXTENSION_SPECS.len(), 6);
-        for ext in ["bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle"] {
+        assert_eq!(BOOKVIBE_EXTENSION_SPECS.len(), 12);
+        for ext in [
+            "quillvibe", ".qvibe", "QVBOOK", ".qvbible", "qvscene", ".qvstyle",
+            "bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle",
+        ] {
             assert!(find_spec_by_extension(ext).is_some(), "missing spec for {ext}");
         }
         assert!(find_spec_by_extension(".txt").is_none());
+        assert!(is_supported_bookvibe_path(Path::new("draft.qvscene")));
         assert!(is_supported_bookvibe_path(Path::new("draft.bvscene")));
         assert!(!is_supported_bookvibe_path(Path::new("notes.md")));
     }
@@ -403,12 +455,13 @@ mod tests {
     #[test]
     fn generates_valid_freedesktop_mime_xml_and_desktop_entry() {
         let xml = generate_freedesktop_mime_xml();
+        assert!(xml.contains("application/vnd.quillvibe.project+json"));
         assert!(xml.contains("application/vnd.bookvibe.project+json"));
         assert!(xml.contains("BOOKVIBE_V1"));
-        assert!(xml.contains("*.bvstyle"));
+        assert!(xml.contains("*.qvstyle"));
 
-        let desktop = generate_linux_desktop_entry("/opt/bookvibe/bookvibe");
-        assert!(desktop.contains("Exec=\"/opt/bookvibe/bookvibe\" %u"));
-        assert!(desktop.contains("application/vnd.bookvibe.scene+json"));
+        let desktop = generate_linux_desktop_entry("/opt/quillvibe/quillvibe");
+        assert!(desktop.contains("Exec=\"/opt/quillvibe/quillvibe\" %u"));
+        assert!(desktop.contains("application/vnd.quillvibe.scene+json"));
     }
 }

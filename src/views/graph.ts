@@ -19,6 +19,7 @@ import {
 import { normalizeProjectDefaults } from '../core/library';
 import { newId } from '../core/manuscript';
 import type { GraphNodeKind, StoryGraph, StoryGraphEdge, StoryGraphNode } from '../core/types';
+import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon, svgEl } from '../ui/dom';
 
 type GraphDensity = 'detailed' | 'standard' | 'compact';
@@ -206,6 +207,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     attrs: { type: 'text', placeholder: 'Add node…', 'aria-label': 'New graph node title' },
   });
 
+  let applySearchHighlight = () => {};
+
   const searchInput = el('input', {
     className: 'bv-input',
     style: { width: '125px', height: '26px' },
@@ -213,7 +216,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     on: {
       input: () => {
         graphSearchQuery = searchInput.value;
-        renderGraphView(container, actions);
+        applySearchHighlight();
       },
     },
   });
@@ -804,7 +807,79 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     );
     nodeCards.set(node.id, card);
     viewport.appendChild(card);
+
+    attachContextMenu(card, () => [
+      {
+        heading: node.label,
+        items: [
+          {
+            label: 'Inspect Node',
+            onSelect: () => {
+              selectedEdgeId = '';
+              actions.setState({ activeGraphNodeId: node.id }, true);
+            },
+          },
+          {
+            label: 'Connect From This Node',
+            icon: 'graph',
+            onSelect: () => {
+              connectMode = true;
+              connectSourceId = node.id;
+              renderGraphView(container, actions);
+              actions.notify(`Click another node to link from "${node.label}"`);
+            },
+          },
+          ...(node.refId && (node.kind === 'scene' || node.kind === 'character' || node.kind === 'location' || node.kind === 'lore')
+            ? [
+                {
+                  label: node.kind === 'scene' ? 'Open Linked Scene' : 'Open Linked Bible Card',
+                  onSelect: () => {
+                    if (node.kind === 'scene' && node.refId) {
+                      actions.selectScene(node.refId, true);
+                    } else if (node.refId) {
+                      const cat =
+                        node.kind === 'character'
+                          ? 'characters'
+                          : node.kind === 'location'
+                            ? 'locations'
+                            : 'lore';
+                      actions.openBibleEntry(cat, node.refId);
+                    }
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+      {
+        items: [
+          {
+            label: 'Remove Node',
+            icon: 'trash',
+            danger: true,
+            onSelect: () => withGraph(actions, (g) => deleteGraphNode(g, node.id)),
+          },
+        ],
+      },
+    ]);
   }
+
+  applySearchHighlight = () => {
+    const q = graphSearchQuery.trim().toLowerCase();
+    for (const node of visibleNodes) {
+      const card = nodeCards.get(node.id);
+      if (!card) continue;
+      const matches =
+        !q || `${node.label} ${node.subtitle} ${node.notes}`.toLowerCase().includes(q);
+      card.classList.toggle('is-dimmed', !matches);
+    }
+    for (const ref of edgeRefs) {
+      const isIncidentToSelected =
+        Boolean(state.activeGraphNodeId) &&
+        (ref.edge.sourceId === state.activeGraphNodeId || ref.edge.targetId === state.activeGraphNodeId);
+      ref.pathEl.setAttribute('stroke-opacity', q && !isIncidentToSelected ? '0.28' : '0.92');
+    }
+  };
 
   const syncCanvasGrid = () => {
     const step = Math.max(8, Math.round(24 * zoomScale));
@@ -841,6 +916,60 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     },
     viewport,
   );
+
+  attachContextMenu(canvasWrap, (e) => {
+    const cRect = canvasWrap.getBoundingClientRect();
+    const worldX = Math.round((e.clientX - cRect.left - panX) / zoomScale);
+    const worldY = Math.round((e.clientY - cRect.top - panY) / zoomScale);
+    return [
+      {
+        heading: 'Story Graph Canvas',
+        items: [
+          {
+            label: 'Add Node Here',
+            icon: 'plus',
+            onSelect: () => {
+              const kind = newKindSelect.value as GraphNodeKind;
+              let createdId = '';
+              withGraph(
+                actions,
+                (g) => {
+                  const res = addGraphNode(g, {
+                    kind,
+                    label: `New ${GRAPH_KIND_LABELS[kind]}`,
+                    x: worldX,
+                    y: worldY,
+                  });
+                  createdId = res.node.id;
+                  return res.graph;
+                },
+                false,
+              );
+              actions.setState({ activeGraphNodeId: createdId }, true);
+            },
+          },
+          {
+            label: 'Auto-Layout Columns',
+            icon: 'grid-snap',
+            onSelect: () => withGraph(actions, (g) => applyAutoLayout(g)),
+          },
+          {
+            label: 'Radial Constellation Layout',
+            onSelect: () => withGraph(actions, (g) => applyRadialLayout(g)),
+          },
+          {
+            label: 'Reset Zoom & Center',
+            onSelect: () => {
+              zoomScale = 1;
+              panX = 0;
+              panY = 0;
+              renderGraphView(container, actions);
+            },
+          },
+        ],
+      },
+    ];
+  });
 
   // Properties panel (dockable on right, detachable into floating panel, or collapsible)
   const propsPanel = el('aside', {

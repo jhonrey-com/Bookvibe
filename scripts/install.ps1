@@ -1,22 +1,22 @@
 <#
 .SYNOPSIS
-Installs Bookvibe from the latest GitHub release, or clones and runs the desktop source build during beta testing.
+Installs Quillvibe from the latest GitHub release, or clones and runs the desktop source build.
 .EXAMPLE
-irm https://raw.githubusercontent.com/jhonrey-com/Bookvibe/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/jhonrey-com/Quillvibe/main/scripts/install.ps1 | iex
 #>
 param(
     [switch]$FromSource,
-    [string]$InstallDir = "$env:LOCALAPPDATA\Bookvibe"
+    [string]$InstallDir = "$env:LOCALAPPDATA\Quillvibe"
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "jhonrey-com/Bookvibe"
+$Repo = "jhonrey-com/Quillvibe"
 
-Write-Host "Bookvibe Terminal Installer (jhonrey.com)" -ForegroundColor Gray
+Write-Host "Quillvibe Terminal Installer (jhonrey.com)" -ForegroundColor Gray
 
 if (-not $FromSource) {
     try {
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "BookvibeInstaller" }
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "QuillvibeInstaller" }
         $asset = $release.assets | Where-Object { $_.name -match "\.(msi|exe)$" } | Select-Object -First 1
         if ($asset) {
             New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -28,18 +28,18 @@ if (-not $FromSource) {
             } else {
                 Start-Process $target
             }
-            Write-Host "Bookvibe installed cleanly."
+            Write-Host "Quillvibe installed cleanly."
             exit 0
         }
     } catch {
-        Write-Host "No public Windows installer asset is published yet (beta testing stage)." -ForegroundColor Yellow
+        Write-Host "No public Windows installer asset was found on GitHub Releases." -ForegroundColor Yellow
     }
 }
 
 Write-Host "Installing from source into $InstallDir..."
 foreach ($tool in @("git", "npm")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        Write-Error "Required tool '$tool' was not found on PATH. Install Git and Node.js 22+ to run Bookvibe during beta."
+        Write-Error "Required tool '$tool' was not found on PATH. Install Git and Node.js 22+ to run Quillvibe from source."
     }
 }
 
@@ -53,7 +53,7 @@ Push-Location $InstallDir
 try {
     npm install
     Write-Host ""
-    Write-Host "Bookvibe source workspace is ready at $InstallDir"
+    Write-Host "Quillvibe source workspace is ready at $InstallDir"
     Write-Host "Run 'npm run dev' (browser) or 'npm run tauri:dev' (desktop) inside $InstallDir."
 } finally {
     Pop-Location

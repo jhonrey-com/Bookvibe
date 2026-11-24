@@ -2,13 +2,23 @@ export type SceneStatus = 'outline' | 'draft' | 'revision' | 'final';
 
 export type PaperTheme = 'obsidian' | 'parchment' | 'ivory';
 
+export type AppThemeId = 'ivory' | 'parchment' | 'obsidian';
+
+export type ToolTier = 'basic' | 'intermediate' | 'advanced';
+
+export type ToolbarDisplayMode = 'icons' | 'balanced' | 'detailed';
+
 export type TrimSize = '5x8' | '5.5x8.5' | '6x9' | 'a5' | 'royal' | 'letter';
 
 export type FontFamilyId = 'garamond' | 'baskerville' | 'palatino' | 'inter';
 
 export type ChapterNumeralStyle = 'roman' | 'word' | 'numeric';
 
-export type StudioViewId = 'editor' | 'corkboard' | 'outline' | 'bible' | 'graph' | 'typeset';
+export type StudioViewId = 'editor' | 'corkboard' | 'outline' | 'bible' | 'graph' | 'typeset' | 'course';
+
+export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom';
+
+export type AlarmRingtoneId = 'warm-chime' | 'brass-bell' | 'wood-marimba' | 'harbor-gong' | 'acoustic-arp';
 
 export type CollaboratorRole = 'co-author' | 'proofreader' | 'editor' | 'beta-reader';
 
@@ -32,6 +42,12 @@ export type EditorialStage =
   | 'print-ready';
 
 export type BookvibeExtension =
+  | '.quillvibe'
+  | '.qvibe'
+  | '.qvbook'
+  | '.qvbible'
+  | '.qvscene'
+  | '.qvstyle'
   | '.bookvibe'
   | '.bvibe'
   | '.bvbook'
@@ -160,17 +176,34 @@ export interface ExtensionAuditEntry {
 }
 
 export interface BookvibeSettings {
+  appTheme: AppThemeId;
+  toolTier: ToolTier;
+  toolbarDisplayMode: ToolbarDisplayMode;
   uiDensity: 'comfortable' | 'compact';
   editorFontFamily: string;
   editorFontSizePx: number;
   editorLineHeight: number;
   editorSheetMaxWidthPx: number;
+  binderWidthPx: number;
+  inspectorWidthPx: number;
+  studioLeftWidthPx: number;
+  studioRightWidthPx: number;
   autoSaveDelayMs: number;
   reducedMotionOverride: 'system' | 'reduce';
   developerMode: boolean;
   defaultImprint: string;
   showOnboardingHints: boolean;
+  windowTitleMode: WindowTitleMode;
+  windowTitleCustom: string;
+  immersiveShowClock: boolean;
+  immersiveShowTimer: boolean;
+  immersiveShowWords: boolean;
+  immersiveShowAlarm: boolean;
+  alarmRingtone: AlarmRingtoneId;
+  alarmVolume: number;
 }
+
+export type QuillvibeSettings = BookvibeSettings;
 
 export interface SceneSnapshot {
   id: string;
@@ -356,6 +389,18 @@ export interface CoverElementPlacement {
   fontSize: number;
   align: 'left' | 'center' | 'right';
   visible: boolean;
+  color?: string;
+  letterSpacingEm?: number;
+  lineHeight?: number;
+  uppercase?: boolean;
+  italic?: boolean;
+  fontWeight?: '400' | '500' | '600' | '700';
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowBlur?: number;
+  rotationDeg?: number;
+  opacity?: number;
+  locked?: boolean;
 }
 
 export interface CoverGraphicLayer {
@@ -369,11 +414,74 @@ export interface CoverGraphicLayer {
   rotationDeg: number;
   opacity: number;
   kind: 'svg' | 'image';
+  flipX?: boolean;
+  flipY?: boolean;
+  locked?: boolean;
+  visible?: boolean;
+  brightnessPct?: number;
+  contrastPct?: number;
+  blurPx?: number;
+  zIndex?: number;
+}
+
+export type CoverShapeKind = 'rect' | 'rounded-rect' | 'circle' | 'line' | 'frame' | 'badge';
+
+export interface CoverShapeLayer {
+  id: string;
+  face: CoverFaceId;
+  name: string;
+  shape: CoverShapeKind;
+  xPct: number;
+  yPct: number;
+  widthPct: number;
+  heightPct: number;
+  fillColor: string;
+  gradientEndColor?: string;
+  strokeColor: string;
+  strokeWidth: number;
+  cornerRadius: number;
+  rotationDeg: number;
+  opacity: number;
+  locked?: boolean;
+  visible?: boolean;
+  zIndex?: number;
+}
+
+export interface CoverTextLayer {
+  id: string;
+  face: CoverFaceId;
+  name: string;
+  text: string;
+  xPct: number;
+  yPct: number;
+  fontSize: number;
+  fontFamily?: string;
+  color: string;
+  align: 'left' | 'center' | 'right';
+  fontWeight: '400' | '500' | '600' | '700';
+  italic: boolean;
+  uppercase: boolean;
+  letterSpacingEm: number;
+  lineHeight: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  shadowBlur?: number;
+  rotationDeg: number;
+  opacity: number;
+  locked?: boolean;
+  visible?: boolean;
+  zIndex?: number;
 }
 
 export interface BookCoverConfig {
   template: CoverTemplateId;
   backgroundColor: string;
+  bgMode?: 'solid' | 'linear-gradient' | 'radial-gradient';
+  bgGradientEnd?: string;
+  bgGradientAngle?: number;
+  bgBrightnessPct?: number;
+  bgContrastPct?: number;
+  bgBlurPx?: number;
   backBackgroundColor?: string;
   spineBackgroundColor?: string;
   accentColor: string;
@@ -388,7 +496,13 @@ export interface BookCoverConfig {
   frontFlapText?: string;
   backFlapText?: string;
   customFontFamily?: string;
+  snapToGrid?: boolean;
+  showGrid?: boolean;
+  gridSizePx?: number;
+  showGuides?: boolean;
   graphicLayers?: CoverGraphicLayer[];
+  shapeLayers?: CoverShapeLayer[];
+  textLayers?: CoverTextLayer[];
   editionLabel: string;
   elements: {
     title: CoverElementPlacement;
@@ -443,7 +557,7 @@ export interface LanSessionInfo {
 }
 
 export interface BookvibeEnvelope<T = unknown> {
-  magic: 'BOOKVIBE_V1';
+  magic: 'QUILLVIBE_V2' | 'BOOKVIBE_V1';
   formatVersion: string;
   extension: BookvibeExtension;
   mimeType: string;

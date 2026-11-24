@@ -1,4 +1,4 @@
-name: Bookvibe Multi-Platform Release
+name: Quillvibe Multi-Platform Release
 
 on:
   push:
@@ -59,14 +59,14 @@ jobs:
       - name: Run Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Build and publish Bookvibe release assets
+      - name: Build and publish Quillvibe release assets
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Bookvibe v__VERSION__'
-          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb) with official Bookvibe file extensions (.bookvibe, .bvibe, .bvbook, .bvbible, .bvscene, .bvstyle). Also available directly in the browser at https://bookvibe.jhonrey.com/.'
+          releaseName: 'Quillvibe v__VERSION__'
+          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb) with official Quillvibe file extensions (.quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle) and legacy .bookvibe/.bv* support. Also available directly in the browser at https://quillvibe.jhonrey.com/.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
