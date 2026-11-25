@@ -76,7 +76,7 @@ export interface AppActions {
   openAnyQuillvibeFile(): Promise<void>;
   exportAsExtension(
     ext: QuillvibeExtension,
-    options?: { sceneId?: string; password?: string },
+    options?: { sceneId?: string; password?: string; skipPartialConfirm?: boolean },
   ): Promise<void>;
   exportEpub(): Promise<void>;
   exportPdf(): Promise<void>;

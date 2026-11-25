@@ -95,7 +95,6 @@ import {
 import { createSnapshotForScene } from './core/snapshots';
 import {
   COURSE_TAB_ID,
-  DEVELOPER_TAB_ID,
   EMPTY_TAB_PREFIX,
   HELP_TAB_ID,
   WorkspaceWindowSync,
@@ -250,12 +249,6 @@ function activateDesktopTab(tabId: string): void {
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
-  } else if (tabId === DEVELOPER_TAB_ID) {
-    state.activeTabId = DEVELOPER_TAB_ID;
-    state.activeView = 'developer';
-    windowSync?.publishPresence();
-    renderDesktopTabBar();
-    renderActiveView();
   } else if (isEmptyTabId(tabId)) {
     state.activeTabId = tabId;
     state.activeView = 'editor';
@@ -342,10 +335,8 @@ function syncWindowAndDocumentTitle(): void {
         ? isTauriRuntime()
           ? 'Quillvibe - Help & FAQ'
           : 'Quillvibe Help Center, FAQ & Error Guide'
-        : state.activeTabId === DEVELOPER_TAB_ID || state.activeView === 'developer'
-          ? isTauriRuntime()
-            ? 'Quillvibe - Developer Portal'
-            : 'Quillvibe Developer Portal — Build .qvext Extension Add-ons'
+        : state.activeView === 'developer'
+          ? 'Quillvibe Developer Portal — Build .qvext Extension Add-ons'
           : formatAppWindowTitle(
               state.settings,
               state.project,
@@ -570,9 +561,114 @@ function syncResponsiveDrawerClasses(): void {
 }
 
 function allowedViewsForTier(tier: ToolTier): StudioViewId[] {
-  if (tier === 'basic') return ['editor', 'course', 'help'];
-  if (tier === 'intermediate') return ['editor', 'corkboard', 'outline', 'typeset', 'course', 'help'];
-  return ['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset', 'course', 'help'];
+  const extra: StudioViewId[] = isTauriRuntime() ? ['course', 'help'] : ['course', 'help', 'developer'];
+  if (tier === 'basic') return ['editor', ...extra];
+  if (tier === 'intermediate') return ['editor', 'corkboard', 'outline', 'typeset', ...extra];
+  return ['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset', ...extra];
+}
+
+function syncExportSelectWidth(): void {
+  if (!exportFormatSelectEl) return;
+  const optText = exportFormatSelectEl.selectedOptions[0]?.textContent || exportFormatSelectEl.value || '.qv';
+  let textWidth = optText.length * 7;
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+      textWidth = ctx.measureText(optText).width;
+    }
+  }
+  const widthPx = Math.max(46, Math.ceil(textWidth + 24));
+  exportFormatSelectEl.style.width = `${widthPx}px`;
+}
+
+function confirmPartialQuillvibeExport(
+  ext: Exclude<QuillvibeExtension, '.qv'>,
+): Promise<'proceed' | 'full' | 'cancel'> {
+  return new Promise((resolve) => {
+    const extDetail =
+      ext === '.qvscene'
+        ? 'saves only the currently open scene (prose, scene images, snapshots, and proofreading marks)—not the other chapters, Story Bible, Story Graph, or cover.'
+        : ext === '.qvbible'
+          ? 'saves only the Story Bible database (Characters, Locations, Lore, and custom categories)—not manuscript chapters or cover artwork.'
+          : 'saves only the Interior Typeset & Paper Style preset (trim size, typeface, margins, and drop caps)—not book chapters or Story Bible.';
+
+    const close = (choice: 'proceed' | 'full' | 'cancel') => {
+      document.removeEventListener('keydown', onEsc);
+      backdrop.remove();
+      resolve(choice);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close('cancel');
+    };
+
+    const backdrop = el(
+      'div',
+      {
+        className: 'bv-modal-backdrop',
+        id: 'qv-partial-export-modal',
+        on: {
+          click: (e) => {
+            if (e.target === backdrop) close('cancel');
+          },
+        },
+      },
+      el(
+        'div',
+        { className: 'bv-modal', style: { maxWidth: '480px' }, attrs: { role: 'dialog', 'aria-modal': 'true' } },
+        el(
+          'div',
+          { className: 'bv-modal-header' },
+          el('strong', { text: `Save Partial File (${ext}) or Full Book (.qv)?` }),
+          el('button', {
+            className: 'bv-btn bv-btn-icon',
+            text: '×',
+            attrs: { type: 'button', 'aria-label': 'Close confirmation' },
+            on: { click: () => close('cancel') },
+          }),
+        ),
+        el(
+          'div',
+          { className: 'bv-modal-body', style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+          el('p', {
+            style: { margin: '0', fontSize: '13.5px', lineHeight: '1.55' },
+            text: `${ext} is a partial archive format: it ${extDetail}`,
+          }),
+          el('p', {
+            className: 'bv-label',
+            style: { margin: '0' },
+            text: 'Choose "Save Complete Book (.qv)" if you want a full backup of your whole project, or continue exporting only this component.',
+          }),
+          el(
+            'div',
+            { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '4px' } },
+            el('button', {
+              className: 'bv-btn',
+              text: 'Cancel',
+              attrs: { type: 'button' },
+              on: { click: () => close('cancel') },
+            }),
+            el('button', {
+              className: 'bv-btn',
+              text: `Continue Exporting ${ext}`,
+              attrs: { type: 'button' },
+              on: { click: () => close('proceed') },
+            }),
+            el('button', {
+              className: 'bv-btn bv-btn-primary',
+              text: 'Save Complete Book (.qv)',
+              attrs: { type: 'button' },
+              on: { click: () => close('full') },
+            }),
+          ),
+        ),
+      ),
+    );
+
+    document.addEventListener('keydown', onEsc);
+    document.body.appendChild(backdrop);
+  });
 }
 
 function getHeaderNavOptions(tier: ToolTier) {
@@ -664,11 +760,13 @@ function renderActiveView(): void {
   const isNewTab = isEmptyTabId(state.activeTabId);
   const isCourseTab = state.activeTabId === COURSE_TAB_ID || state.activeView === 'course';
   const isHelpTab = state.activeTabId === HELP_TAB_ID || state.activeView === 'help';
-  const isDevTab = state.activeTabId === DEVELOPER_TAB_ID || state.activeView === 'developer';
-  const isFullStagePage = isNewTab || isCourseTab || isHelpTab || isDevTab || state.activeView === 'typeset';
+  const isDevTab = !isTauriRuntime() && state.activeView === 'developer';
+  const isStandalonePage = isCourseTab || isHelpTab || isDevTab;
+  const isFullStagePage = isNewTab || isStandalonePage || state.activeView === 'typeset';
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
   shellEl.classList.toggle('is-typeset-studio', isFullStagePage);
+  shellEl.classList.toggle('is-standalone-page', isStandalonePage);
   immersiveBtnEl?.classList.toggle('is-active', state.immersiveMode);
   syncResponsiveDrawerClasses();
   if (bookTitleInputEl) {
@@ -682,12 +780,13 @@ function renderActiveView(): void {
             ? 'Developer Portal'
             : state.project.title;
     if (bookTitleInputEl.value !== desiredTitle) bookTitleInputEl.value = desiredTitle;
-    bookTitleInputEl.disabled = isNewTab || isCourseTab || isHelpTab || isDevTab;
+    bookTitleInputEl.disabled = isNewTab || isStandalonePage;
   }
   if (exportFormatSelectEl && exportFormatSelectEl.value !== state.defaultExportFormat) {
     exportFormatSelectEl.value = state.defaultExportFormat;
   }
-  if (!isCourseTab && !isHelpTab && !isDevTab && !isNewTab) {
+  syncExportSelectWidth();
+  if (!isStandalonePage && !isNewTab) {
     headerNavGlass?.setValue(state.activeView);
     headerNavGlass?.sampleBackdrop(true);
   }
@@ -1181,28 +1280,18 @@ const actions: AppActions = {
   },
 
   openDeveloperPage() {
-    if (!isTauriRuntime()) {
-      if (state.activeView === 'developer') {
-        renderActiveView();
-        return;
-      }
-      const win = window.open('/developer', '_blank', 'noopener,noreferrer');
-      if (!win) {
-        actions.setState({ activeView: 'developer' }, true);
-      }
+    if (isTauriRuntime()) {
+      window.open('https://quillvibe.jhonrey.com/developer', '_blank', 'noopener,noreferrer');
       return;
     }
-    if (isEmptyTabId(state.activeTabId)) {
-      state.openBookTabIds = state.openBookTabIds
-        .filter((id) => id !== DEVELOPER_TAB_ID)
-        .map((id) => (id === state.activeTabId ? DEVELOPER_TAB_ID : id));
-    } else if (!state.openBookTabIds.includes(DEVELOPER_TAB_ID)) {
-      state.openBookTabIds = [...state.openBookTabIds, DEVELOPER_TAB_ID];
+    if (state.activeView === 'developer') {
+      renderActiveView();
+      return;
     }
-    state.activeTabId = DEVELOPER_TAB_ID;
-    state.activeView = 'developer';
-    renderDesktopTabBar();
-    renderActiveView();
+    const win = window.open('/developer', '_blank', 'noopener,noreferrer');
+    if (!win) {
+      actions.setState({ activeView: 'developer' }, true);
+    }
   },
 
   startInteractiveCourse(moduleIdx = 0) {
@@ -1286,13 +1375,7 @@ const actions: AppActions = {
         if (isNonBookTabId(fallbackId)) {
           state.activeTabId = fallbackId;
           state.activeView =
-            fallbackId === COURSE_TAB_ID
-              ? 'course'
-              : fallbackId === HELP_TAB_ID
-                ? 'help'
-                : fallbackId === DEVELOPER_TAB_ID
-                  ? 'developer'
-                  : 'editor';
+            fallbackId === COURSE_TAB_ID ? 'course' : fallbackId === HELP_TAB_ID ? 'help' : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -1392,6 +1475,7 @@ const actions: AppActions = {
     state.defaultExportFormat = fmt;
     saveDefaultExportFormat(fmt);
     if (exportFormatSelectEl) exportFormatSelectEl.value = fmt;
+    syncExportSelectWidth();
     actions.notify(`Default export format set to ${fmt}`);
   },
 
@@ -1427,13 +1511,20 @@ const actions: AppActions = {
 
   async exportAsExtension(
     ext: QuillvibeExtension,
-    options?: { sceneId?: string; password?: string },
+    options?: { sceneId?: string; password?: string; skipPartialConfirm?: boolean },
   ) {
     try {
       const perms = getActiveSessionPermissions(state.project);
       if (!perms.canExportFiles) {
         actions.notify('Exporting is disabled for your collaborator role.');
         return;
+      }
+      if (ext !== '.qv' && !options?.skipPartialConfirm) {
+        const decision = await confirmPartialQuillvibeExport(ext);
+        if (decision === 'cancel') return;
+        if (decision === 'full') {
+          return actions.exportAsExtension('.qv', { ...options, skipPartialConfirm: true });
+        }
       }
       let password = options?.password;
       if (password === undefined && state.project.publishing?.enterpriseRequirePasswordExport) {
@@ -1993,7 +2084,6 @@ function renderDesktopTabBar(): void {
     const isEmpty = isEmptyTabId(id);
     const isCourse = id === COURSE_TAB_ID;
     const isHelp = id === HELP_TAB_ID;
-    const isDev = id === DEVELOPER_TAB_ID;
     const book = isNonBookTabId(id) ? null : byId.get(id);
     if (!isNonBookTabId(id) && !book) return;
     const isActive = id === state.activeTabId;
@@ -2004,9 +2094,7 @@ function renderDesktopTabBar(): void {
         ? 'Book Writing Course'
         : isHelp
           ? 'Help & FAQ'
-          : isDev
-            ? 'Developer Portal'
-            : book?.title?.trim() || 'Untitled Book';
+          : book?.title?.trim() || 'Untitled Book';
 
     const closeBtn = canClose
       ? el(
@@ -3023,14 +3111,7 @@ async function bootstrap(): Promise<void> {
         const nextId = remaining[0];
         if (isNonBookTabId(nextId)) {
           state.activeTabId = nextId;
-          state.activeView =
-            nextId === COURSE_TAB_ID
-              ? 'course'
-              : nextId === HELP_TAB_ID
-                ? 'help'
-                : nextId === DEVELOPER_TAB_ID
-                  ? 'developer'
-                  : 'editor';
+          state.activeView = nextId === COURSE_TAB_ID ? 'course' : nextId === HELP_TAB_ID ? 'help' : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -3152,7 +3233,10 @@ async function bootstrap(): Promise<void> {
       state.typesetSubTab = initialRoute.typesetSubTab;
     }
     forceSplashFromRoute =
-      initialRoute.showStartSplash && initialRoute.view !== 'course' && initialRoute.view !== 'help';
+      initialRoute.showStartSplash &&
+      initialRoute.view !== 'course' &&
+      initialRoute.view !== 'help' &&
+      initialRoute.view !== 'developer';
 
     window.addEventListener('popstate', () => {
       const nextRoute = readInitialBrowserRoute(false);
