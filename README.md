@@ -4,17 +4,19 @@
 
 **Quillvibe** is a free, open-source book writing app built for authors and writers. You can write chapters, keep character and world notes, mark up drafts while proofreading, design book covers, and export print-ready `.pdf` and `.epub` books—all in one place without creating an account. It opens in **Ivory Light** with three **Workspace Layouts** (**Focused**, **Editorial**, and **Full Studio**), works offline, saves books in Quillvibe's protected `.qv` format, and is published under **`jhonrey.com`**.
 
-> **Try Quillvibe in Your Browser:** **[Open `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)**  
-> **Download Desktop App (`v2.2.3` — Windows, Mac & Linux):** **[GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
-> **Contact, Feedback & Support:** Email **[quillvibe@jhonrey.com](mailto:quillvibe@jhonrey.com)**
+> **Try Quillvibe in Your Browser:** <a href="https://quillvibe.jhonrey.com/start" target="_blank" rel="noopener noreferrer"><strong>Open <code>https://quillvibe.jhonrey.com/start</code></strong></a>  
+> **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 28 Lessons)</strong></a>  
+> **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
+> **Download Desktop App (`v2.3.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
 > **Note About Security Warnings When Installing on Windows, Mac, or Linux**  
 > When you download and open the desktop installer, your computer may show a warning saying the app is from an unrecognized or unverified publisher. This happens because Quillvibe is a new, independent, open-source project that is still being actively updated and improved, and it does not yet carry a paid commercial app-store certificate.
 >
-> **Prefer not to install anything?** You can use the **[website version at quillvibe.jhonrey.com](https://quillvibe.jhonrey.com)** directly in your browser. It has fewer features than the installed desktop app (desktop-only tools include automatic disk saving, stacked book tabs, multiple windows, fullscreen focus mode, and Wi-Fi/Bluetooth sharing), so remember to click **Save** to download a `.qv` copy of your book when you finish a browser session.
+> **Prefer not to install anything?** You can use the <a href="https://quillvibe.jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>website version at quillvibe.jhonrey.com</strong></a> directly in your browser. It has fewer features than the installed desktop app (desktop-only tools include automatic disk saving, stacked book tabs, multiple windows, fullscreen focus mode, and Wi-Fi/Bluetooth sharing), so remember to click **Save** to download a `.qv` copy of your book when you finish a browser session.
 >
-> **Questions, Ideas, Bugs, or Security Concerns?** Send any inquiries, suggestions, corrections, error reports, or security concerns directly to **[quillvibe@jhonrey.com](mailto:quillvibe@jhonrey.com)** (see also [SECURITY.md](SECURITY.md)).
+> **Questions, Ideas, Bugs, or Security Concerns?** Send any inquiries, suggestions, corrections, error reports, or security concerns directly to <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a> (see also <a href="SECURITY.md" target="_blank" rel="noopener noreferrer">SECURITY.md</a>).
 
 <p align="center">
   <img src="assets/banners/quillvibe-workspace.svg" alt="Quillvibe studio: Draft & Proofread, Organize Cards & Bible, Live Story Graph, Offline Sync, Typeset & Full Cover Wrap" width="100%" />
@@ -50,12 +52,12 @@ Many writers end up juggling several separate programs—one for writing chapter
 ## 2. How to Use in Your Browser or Install on Desktop
 
 ### Option A: Use the Website Version (No Download Needed)
-Visit **[https://quillvibe.jhonrey.com/](https://quillvibe.jhonrey.com/)** to write, organize notes, proofread, design covers, and export `.qv`, `.pdf`, `.epub`, or `.md` files right in your web browser.
+Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/</strong></a> (new visitors start at `/start`; returning writers go straight to `/write`) to write, add images with text wrap & background removal, organize notes, proofread, design covers, and export `.qv`, `.pdf`, `.epub`, or `.md` files right in your web browser.
 - This is the easiest way to try Quillvibe without installing anything or dealing with desktop security prompts.
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from **[GitHub Releases (`v2.2.3`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (published under **`jhonrey.com`**):
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v2.3.0</code>)</strong></a> (published under **`jhonrey.com`**):
 - **Windows:** `.msi` or `-setup.exe`
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`
@@ -171,12 +173,13 @@ Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-
 
 ## 9. Contact, FAQ, Security & Contributing
 
-- **Questions, Suggestions, Corrections, Bugs, or Security Concerns:** Email **[quillvibe@jhonrey.com](mailto:quillvibe@jhonrey.com)** directly.
-- **Security Policy:** See **[SECURITY.md](SECURITY.md)**.
-- **Complete UI & FAQ Reference:** Read **[docs/FAQ-AND-CONTROLS.md](docs/FAQ-AND-CONTROLS.md)**.
-- **Project Wiki & Roadmap:** Browse the **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)**.
-- **Contributing:** Read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening pull requests.
+- **Questions, Suggestions, Corrections, Bugs, or Security Concerns:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a> directly.
+- **Online Help Center, FAQ & Error Codes:** Visit <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/help</strong></a>.
+- **Security Policy:** See <a href="SECURITY.md" target="_blank" rel="noopener noreferrer"><strong>SECURITY.md</strong></a>.
+- **Complete UI & FAQ Reference:** Read <a href="docs/FAQ-AND-CONTROLS.md" target="_blank" rel="noopener noreferrer"><strong>docs/FAQ-AND-CONTROLS.md</strong></a>.
+- **Project Wiki & Roadmap:** Browse the <a href="https://github.com/jhonrey-com/Quillvibe/wiki" target="_blank" rel="noopener noreferrer"><strong>Quillvibe GitHub Wiki</strong></a>.
+- **Contributing:** Read <a href="CONTRIBUTING.md" target="_blank" rel="noopener noreferrer"><strong>CONTRIBUTING.md</strong></a> before opening pull requests.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the <a href="LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>.

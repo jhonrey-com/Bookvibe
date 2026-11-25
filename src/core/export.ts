@@ -258,6 +258,12 @@ export function buildMarkdownExport(project: BookProject): string {
         const prose = project.typography.smartTypography
           ? applySmartTypography(scene.content)
           : scene.content;
+        if (scene.images && scene.images.length > 0) {
+          for (const img of scene.images) {
+            lines.push('', `![${img.alt || 'Illustration'}](${img.dataUrl})`);
+            if (img.caption) lines.push(`*${img.caption}*`);
+          }
+        }
         lines.push('', prose.trim());
       });
     }
@@ -1076,4 +1082,123 @@ ${sheetHtml}
 </body>
 </html>
 `;
+}
+
+function escapeRtfText(input: string): string {
+  let out = '';
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    const code = input.charCodeAt(i);
+    if (ch === '\\' || ch === '{' || ch === '}') {
+      out += '\\' + ch;
+    } else if (ch === '\n') {
+      out += '\\par\n';
+    } else if (code > 127) {
+      const signed = code > 32767 ? code - 65536 : code;
+      out += `\\u${signed}?`;
+    } else if (ch !== '\r') {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+export function buildRtfExport(project: BookProject): string {
+  const identity = ensureAuthorIdentity(project);
+  const penName = identity.penName || project.author || 'Author';
+  const blocks: string[] = [
+    '{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Georgia;}}',
+    `\\f0\\fs36\\b ${escapeRtfText(project.title || 'Untitled Book')}\\b0\\par`,
+    ...(project.subtitle ? [`\\fs24\\i ${escapeRtfText(project.subtitle)}\\i0\\par`] : []),
+    `\\fs22 By ${escapeRtfText(penName)}\\par\\par`,
+  ];
+
+  let chapNum = 0;
+  for (const part of project.parts) {
+    blocks.push(`\\page\\fs28\\b ${escapeRtfText(part.title)}\\b0\\par\\par`);
+    for (const chapter of part.chapters) {
+      chapNum++;
+      const label = formatChapterLabel(chapNum, project.typography.chapterNumeralStyle);
+      blocks.push(`\\fs26\\b ${escapeRtfText(`${label}: ${chapter.title}`)}\\b0\\par\\par`);
+      for (let i = 0; i < chapter.scenes.length; i++) {
+        if (i > 0) blocks.push('\\qc * * *\\ql\\par\\par');
+        const prose = project.typography.smartTypography
+          ? applySmartTypography(chapter.scenes[i].content)
+          : chapter.scenes[i].content;
+        for (const para of prose.split(/\r?\n\s*\r?\n/)) {
+          const clean = para.trim().replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1');
+          if (clean) blocks.push(`\\fs24 ${escapeRtfText(clean)}\\par\\par`);
+        }
+      }
+    }
+  }
+
+  blocks.push('}');
+  return blocks.join('\n');
+}
+
+export function buildPortableMigrationMarkdown(project: BookProject): string {
+  const sections: string[] = [buildMarkdownExport(project).trimEnd()];
+
+  const chars = project.bible.characters ?? [];
+  const locs = project.bible.locations ?? [];
+  const lore = project.bible.lore ?? [];
+  if (chars.length > 0 || locs.length > 0 || lore.length > 0) {
+    sections.push('', '---', '', '# Story Bible & World Notes');
+    if (chars.length > 0) {
+      sections.push('', '## Characters');
+      for (const c of chars) {
+        sections.push(`### ${c.name}`, `- **Role:** ${c.role || '—'}`, `- **Motivation:** ${c.motivation || '—'}`, c.notes ? `\n${c.notes}` : '');
+      }
+    }
+    if (locs.length > 0) {
+      sections.push('', '## Locations');
+      for (const l of locs) {
+        sections.push(`### ${l.name}`, `- **Region:** ${l.region || '—'}`, `- **Atmosphere:** ${l.atmosphere || '—'}`, l.notes ? `\n${l.notes}` : '');
+      }
+    }
+    if (lore.length > 0) {
+      sections.push('', '## Lore & Rules');
+      for (const item of lore) {
+        sections.push(`### ${item.name}`, item.summary || '', item.category || '');
+      }
+    }
+  }
+
+  return sections.join('\n') + '\n';
+}
+
+export function buildPortableMigrationJson(project: BookProject): string {
+  return JSON.stringify(
+    {
+      format: 'quillvibe-portable-migration-v1',
+      exportedAt: new Date().toISOString(),
+      title: project.title,
+      subtitle: project.subtitle,
+      author: project.authorIdentity?.penName || project.author,
+      language: project.language,
+      dedication: project.dedication,
+      copyrightNotice: project.copyrightNotice,
+      parts: project.parts.map((p) => ({
+        title: p.title,
+        chapters: p.chapters.map((ch) => ({
+          title: ch.title,
+          subtitle: ch.subtitle,
+          scenes: ch.scenes.map((s) => ({
+            title: s.title,
+            synopsis: s.synopsis,
+            status: s.status,
+            pov: s.pov,
+            location: s.location,
+            timeline: s.timeline,
+            content: s.content,
+            notes: s.notes,
+          })),
+        })),
+      })),
+      storyBible: project.bible,
+    },
+    null,
+    2,
+  );
 }

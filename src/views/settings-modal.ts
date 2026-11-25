@@ -1,7 +1,12 @@
 import type { AppActions } from '../core/app-context';
 import { ALARM_RINGTONES, playRingtonePreview } from '../core/alarm';
 import { exportGenericFile, isTauriRuntime } from '../core/bridge';
-import { EXPORT_FORMAT_OPTIONS } from '../core/export';
+import {
+  buildPortableMigrationJson,
+  buildPortableMigrationMarkdown,
+  buildRtfExport,
+  EXPORT_FORMAT_OPTIONS,
+} from '../core/export';
 import {
   getAllAvailableFontChoices,
   installDeviceFontFile,
@@ -305,6 +310,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             },
           },
         },
+        el('option', { text: 'Match Device (System Light / Dark)', attrs: { value: 'system', selected: settings.appTheme === 'system' } }),
         el('option', { text: 'Ivory Light (Default Writing Studio)', attrs: { value: 'ivory', selected: settings.appTheme === 'ivory' } }),
         el('option', { text: 'Warm Parchment Paper', attrs: { value: 'parchment', selected: settings.appTheme === 'parchment' } }),
         el('option', { text: 'Obsidian Dark Studio', attrs: { value: 'obsidian', selected: settings.appTheme === 'obsidian' } }),
@@ -473,6 +479,17 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         on: { change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }) },
       });
 
+      const smoothAnimChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-smooth-anim',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.enableSmoothAnimations },
+        on: {
+          change: () => {
+            actions.updateSettings({ enableSmoothAnimations: smoothAnimChk.checked });
+          },
+        },
+      });
+
       const desktopTabsChk = el('input', {
         className: 'bv-lever',
         id: 'qv-set-desktop-tabs',
@@ -607,7 +624,9 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             { className: 'bv-cork-card' },
             el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Layout' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-theme' }, text: 'Application Theme' }), themeSel),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Layout' }), tierCardsGrid),
+            ...(typeof window === 'undefined' || window.innerWidth > 768
+              ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Layout' }), tierCardsGrid)]
+              : [el('p', { className: 'bv-label', text: 'Small / mobile screens automatically use Focused layout for distraction-free writing.' })]),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-toolbar-mode' }, text: 'Toolbar Detail Mode' }), toolbarModeSel),
             el('div', { className: 'bv-field' }, fontSizeLabel, fontSizeSlider),
             el('div', { className: 'bv-field' }, lhLabel, lhSlider),
@@ -622,6 +641,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-default-fmt' }, text: 'Default Save / Export Extension' }), defaultFmtSel),
             el('div', { className: 'bv-field' }, saveDelayLabel, saveDelaySlider),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-spellcheck' } }, spellcheckChk, el('span', { text: 'Enable strict word spellcheck underlines while drafting' })),
+            el('label', { className: 'bv-check-row', attrs: { for: 'qv-set-smooth-anim' } }, smoothAnimChk, el('span', { text: 'Enable smooth animations & transitions for Binder, Inspector, and menus' })),
             ...(isTauriRuntime()
               ? [
                   el(
@@ -999,6 +1019,85 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             migrateInput,
           ),
         ),
+        el(
+          'section',
+          { className: 'bv-cork-card', style: { marginTop: '12px' } },
+          el('span', { className: 'bv-panel-title', text: 'Migrate to Another Writing Tool (Portable Export)' }),
+          el('p', {
+            className: 'bv-label',
+            text: 'Moving your book to another writing program? Export an open, unlocked copy of your entire manuscript and Story Bible in standard formats that any editor can open.',
+          }),
+          el(
+            'div',
+            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' } },
+            el(
+              'button',
+              {
+                className: 'bv-btn bv-btn-primary',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
+                    const md = buildPortableMigrationMarkdown(actions.getState().project);
+                    const saved = await exportGenericFile({
+                      suggestedName: `${project.title || 'book'}-portable-migration`,
+                      extension: 'md',
+                      description: 'Portable Manuscript + Story Bible Markdown',
+                      mimeType: 'text/markdown;charset=utf-8',
+                      textContent: md,
+                    });
+                    if (saved) actions.notify('Exported Portable Markdown + Story Bible (.md)');
+                  },
+                },
+              },
+              icon('download', 14),
+              'Export Manuscript + Notes (.md)',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
+                    const rtf = buildRtfExport(actions.getState().project);
+                    const saved = await exportGenericFile({
+                      suggestedName: `${project.title || 'book'}-manuscript`,
+                      extension: 'rtf',
+                      description: 'Rich Text Document',
+                      mimeType: 'application/rtf',
+                      textContent: rtf,
+                    });
+                    if (saved) actions.notify('Exported Rich Text Document (.rtf)');
+                  },
+                },
+              },
+              icon('download', 14),
+              'Export Rich Text (.rtf)',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
+                    const json = buildPortableMigrationJson(actions.getState().project);
+                    const saved = await exportGenericFile({
+                      suggestedName: `${project.title || 'book'}-open-archive`,
+                      extension: 'json',
+                      description: 'Open Portable Book JSON',
+                      mimeType: 'application/json;charset=utf-8',
+                      textContent: json,
+                    });
+                    if (saved) actions.notify('Exported Open Portable Archive (.json)');
+                  },
+                },
+              },
+              icon('download', 14),
+              'Export Open JSON (.json)',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -1034,7 +1133,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v2.2.3', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.3.0', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -1053,7 +1152,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '2.2.3',
+                    version: '2.3.0',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,

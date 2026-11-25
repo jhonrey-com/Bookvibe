@@ -1,5 +1,5 @@
 PackageIdentifier: jhonrey.Quillvibe
-PackageVersion: 2.2.3
+PackageVersion: 2.3.0
 PackageLocale: en-US
 Publisher: jhonrey.com
 PublisherUrl: https://github.com/jhonrey-com/Quillvibe
@@ -17,7 +17,7 @@ Tags:
 Installers:
   - Architecture: x64
     InstallerType: wix
-    InstallerUrl: https://github.com/jhonrey-com/Quillvibe/releases/download/v2.2.3/Quillvibe_2.2.3_x64_en-US.msi
-    InstallerSha256: 75ABEA543D3890CDB96A40667C06872AA3BCE07E4455404544F98ECA9AA3494C
+    InstallerUrl: https://github.com/jhonrey-com/Quillvibe/releases/download/v2.3.0/Quillvibe_2.3.0_x64_en-US.msi
+    InstallerSha256: 7A4BC991B40AE9CAE8491F37DC3815878ABDCCE14BA41768911B4367F5F48035
 ManifestType: singleton
 ManifestVersion: 1.6.0

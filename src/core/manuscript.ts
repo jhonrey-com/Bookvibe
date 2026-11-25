@@ -190,6 +190,7 @@ export function updateSceneInProject(
       | 'content'
       | 'notes'
       | 'proofreadMarks'
+      | 'images'
     >
   >,
 ): BookProject {

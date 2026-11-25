@@ -573,15 +573,71 @@ export async function isDesktopFullscreen(): Promise<boolean> {
   }
 }
 
+export interface DesktopWindowBounds {
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scaleFactor: number;
+}
+
+export async function getDesktopWindowLabel(): Promise<string> {
+  if (!isTauriRuntime()) return 'web';
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    return getCurrentWindow().label;
+  } catch {
+    return 'main';
+  }
+}
+
+export async function listDesktopWindowBounds(): Promise<DesktopWindowBounds[]> {
+  if (!isTauriRuntime()) return [];
+  try {
+    return await tauriInvoke<DesktopWindowBounds[]>('list_desktop_window_bounds');
+  } catch {
+    return [];
+  }
+}
+
+export async function focusDesktopWindow(label: string): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  try {
+    return await tauriInvoke<boolean>('focus_desktop_window', { label });
+  } catch {
+    return false;
+  }
+}
+
+export async function listenDesktopOpenFile(
+  onFile: (payload: OpenedFileResult) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen<OpenedFileResult>('quillvibe://open-file', (ev) => {
+      if (ev.payload) onFile(ev.payload);
+    });
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+}
+
 export async function openBookInNewDesktopWindow(
   bookId?: string,
   title?: string,
+  options?: { maximized?: boolean; posX?: number; posY?: number },
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isTauriRuntime()) return { ok: false, error: 'Multi-window mode requires the desktop app.' };
   try {
     await tauriInvoke<string>('open_book_in_new_window', {
       bookId: bookId ?? null,
       title: title ?? 'Quillvibe',
+      maximized: options?.maximized ?? true,
+      posX: options?.posX ?? null,
+      posY: options?.posY ?? null,
     });
     return { ok: true };
   } catch (err) {

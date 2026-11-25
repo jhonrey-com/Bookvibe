@@ -26,6 +26,7 @@ import type { PaperTheme, ProofreadMark, ProofreadMarkKind } from '../core/types
 import { attachContextMenu, type ContextMenuGroup } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
+import { addImageFilesToScene, renderSceneImageComposer } from '../ui/scene-image-composer';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
 let activeEditorGlass: LiquidGlassControl<EditorSubMode> | null = null;
@@ -283,6 +284,11 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         heading: 'Scene Actions',
         items: [
           {
+            label: 'Insert Image into Scene…',
+            icon: 'image',
+            onSelect: () => imageFileInput.click(),
+          },
+          {
             label: 'Split Scene at Cursor',
             icon: 'split-scene',
             onSelect: () => {
@@ -404,10 +410,24 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     return true;
   };
 
+  const imageFileInput = el('input', {
+    attrs: { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', multiple: true },
+    style: { display: 'none' },
+    on: {
+      change: () => {
+        if (imageFileInput.files && imageFileInput.files.length > 0) {
+          void addImageFilesToScene(imageFileInput.files, scene.id, actions, 0);
+        }
+        imageFileInput.value = '';
+      },
+    },
+  });
+
   // Fixed formatting & tool controls (icon-only where iconic, short symbol glyphs for B/I/H2/* * *)
   const subbar = el(
     'div',
     { className: 'bv-subbar' },
+    imageFileInput,
     el(
       'div',
       { className: 'bv-subbar-group' },
@@ -505,6 +525,19 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
           },
         },
       }),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: {
+            title: 'Insert Image into Scene',
+            short: 'Add a photo or illustration with text wrap, snap-to-grid, and offline background removal (or drag & drop directly onto the page).',
+          },
+          attrs: { type: 'button', 'aria-label': 'Insert Image into Scene' },
+          on: { click: () => imageFileInput.click() },
+        },
+        icon('image', 14),
+      ),
       allowIntermediate
         ? el(
             'button',
@@ -631,12 +664,42 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       )
     : null;
 
+  const sceneImagesStudio = renderSceneImageComposer(scene, actions, () => {
+    proseTextarea.focus();
+    proseTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
   const paperSheet = el(
     'div',
-    { className: 'bv-paper-sheet' },
+    {
+      className: 'bv-paper-sheet',
+      on: {
+        dragover: (e) => {
+          if (e.dataTransfer?.types.includes('Files')) {
+            const hasImg = Array.from(e.dataTransfer.items ?? []).some((it) => it.type.startsWith('image/'));
+            if (hasImg) {
+              e.preventDefault();
+              paperSheet.classList.add('is-img-drop-target');
+            }
+          }
+        },
+        dragleave: () => paperSheet.classList.remove('is-img-drop-target'),
+        drop: (e) => {
+          paperSheet.classList.remove('is-img-drop-target');
+          const files = e.dataTransfer?.files;
+          if (!files || files.length === 0) return;
+          const imgFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+          if (imgFiles.length === 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          void addImageFilesToScene(imgFiles, scene.id, actions, 0);
+        },
+      },
+    },
     paperFloatNav,
     sceneHeading,
     ...(readOnlyBanner ? [readOnlyBanner] : []),
+    ...(sceneImagesStudio ? [sceneImagesStudio] : []),
     proseTextarea,
   );
 

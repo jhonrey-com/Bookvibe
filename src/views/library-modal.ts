@@ -16,6 +16,102 @@ import {
 import { getProjectWordCount } from '../core/manuscript';
 import { el, icon } from '../ui/dom';
 
+function showDeleteBookConfirmModal(
+  bookTitle: string,
+  onConfirm: () => void,
+): void {
+  document.getElementById('qv-delete-book-confirm')?.remove();
+  const expected = bookTitle.trim() || 'Untitled Book';
+
+  const close = () => backdrop.remove();
+  const confirmBtn = el('button', {
+    className: 'bv-btn bv-btn-danger',
+    text: 'Delete Permanently',
+    attrs: { type: 'button', disabled: true },
+    on: {
+      click: () => {
+        if (nameInput.value.trim() !== expected) return;
+        close();
+        onConfirm();
+      },
+    },
+  });
+
+  const nameInput = el('input', {
+    className: 'bv-input',
+    attrs: {
+      type: 'text',
+      placeholder: `Type "${expected}" to confirm`,
+      autocomplete: 'off',
+      'aria-label': 'Type exact book title to confirm deletion',
+    },
+    on: {
+      input: () => {
+        confirmBtn.disabled = nameInput.value.trim() !== expected;
+      },
+      keydown: (e) => {
+        if (e.key === 'Enter' && nameInput.value.trim() === expected) {
+          e.preventDefault();
+          close();
+          onConfirm();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          close();
+        }
+      },
+    },
+  });
+
+  const backdrop = el(
+    'div',
+    {
+      className: 'bv-modal-backdrop',
+      id: 'qv-delete-book-confirm',
+      on: {
+        click: (e) => {
+          if (e.target === backdrop) close();
+        },
+      },
+    },
+    el(
+      'div',
+      {
+        className: 'bv-modal',
+        style: { maxWidth: '450px' },
+        attrs: { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Confirm Permanent Book Deletion' },
+      },
+      el(
+        'div',
+        { className: 'bv-panel-head' },
+        el('span', { className: 'bv-panel-title', text: 'Confirm Book Deletion' }),
+        el('button', { className: 'bv-mini-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
+      ),
+      el(
+        'div',
+        { className: 'bv-modal-body', style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+        el('p', {
+          text: `This will permanently remove “${expected}” and its chapters, Story Bible, and cover layers from your local Quillvibe library.`,
+          style: { margin: '0', fontSize: '13px', lineHeight: '1.5', color: 'var(--text-primary)' },
+        }),
+        el('p', {
+          className: 'bv-label',
+          text: `To confirm deletion, type the exact book name below: ${expected}`,
+          style: { margin: '0' },
+        }),
+        nameInput,
+        el(
+          'div',
+          { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' } },
+          el('button', { className: 'bv-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
+          confirmBtn,
+        ),
+      ),
+    ),
+  );
+  document.body.appendChild(backdrop);
+  requestAnimationFrame(() => nameInput.focus());
+}
+
 export function showLibraryModal(actions: AppActions): void {
   const existing = document.getElementById('bv-library-modal');
   if (existing) existing.remove();
@@ -151,9 +247,12 @@ export function showLibraryModal(actions: AppActions): void {
                       attrs: { type: 'button' },
                       on: {
                         click: () => {
-                          const nextLib = deleteBookFromLibrary(actions.getState().library, book.id);
-                          actions.replaceLibrary(nextLib);
-                          renderBody(modalBody);
+                          showDeleteBookConfirmModal(book.title, () => {
+                            const nextLib = deleteBookFromLibrary(actions.getState().library, book.id);
+                            actions.replaceLibrary(nextLib);
+                            actions.notify(`Deleted “${book.title}” from library`);
+                            renderBody(modalBody);
+                          });
                         },
                       },
                     },

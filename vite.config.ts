@@ -23,6 +23,8 @@ export default defineConfig(() => ({
       input: {
         main: resolve(rootDir, 'index.html'),
         course: resolve(rootDir, 'course/index.html'),
+        help: resolve(rootDir, 'help/index.html'),
+        faq: resolve(rootDir, 'faq/index.html'),
       },
     },
   },

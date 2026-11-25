@@ -28,10 +28,14 @@ import {
   EXPORT_FORMAT_OPTIONS,
   applySmartTypography,
   buildMarkdownExport,
+  buildPortableMigrationJson,
+  buildPortableMigrationMarkdown,
   buildPrintableBookHtml,
+  buildRtfExport,
   computeBookPagination,
 } from '../src/core/export';
 import { ProjectHistoryStack } from '../src/core/history';
+import { computeSnappedImagePosition } from '../src/core/scene-images';
 import {
   LEGACY_IMPORT_EXTENSIONS,
   QUILLVIBE_EXTENSIONS,
@@ -392,5 +396,37 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     expect(hist.canUndo()).toBe(true);
     expect(hist.undo('v3')?.state).toBe('v2');
     expect(hist.redo('v2')?.state).toBe('v3');
+  });
+
+  it('round-trips all four official extensions (.qv, .qvbible, .qvscene, .qvstyle), routes, migration exports, and image snapping', async () => {
+    const project = normalizeProjectDefaults(createStarterBookProject());
+    const firstSceneId = getAllScenes(project)[0]!.scene.id;
+
+    for (const ext of ['.qv', '.qvbible', '.qvscene', '.qvstyle'] as const) {
+      const bin = await serializeQuillvibeBinary(ext, project, { sceneId: firstSceneId });
+      const decoded = await parseQuillvibeInput(bin, { filenameHint: `sample${ext}` });
+      expect(decoded.parsed.extension).toBe(ext);
+      const applied = applyOpenedExtensionFile(decoded.parsed, project);
+      expect(applied.summaryMessage.length).toBeGreaterThan(0);
+    }
+
+    expect(resolvePathToRoute('/', true).canonicalPath).toBe('/start');
+    expect(resolvePathToRoute('/', false).canonicalPath).toBe('/write');
+    expect(resolvePathToRoute('/help', false)).toMatchObject({ view: 'help', canonicalPath: '/help' });
+    expect(resolvePathToRoute('/faq', false)).toMatchObject({ view: 'help', canonicalPath: '/faq' });
+    expect(resolvePathToRoute('/course', false)).toMatchObject({ view: 'course', canonicalPath: '/course' });
+
+    expect(buildRtfExport(project).startsWith('{\\rtf1')).toBe(true);
+    expect(buildPortableMigrationMarkdown(project)).toContain('# Story Bible');
+    expect(JSON.parse(buildPortableMigrationJson(project)).format).toBe('quillvibe-portable-migration-v1');
+
+    const snapped = computeSnappedImagePosition(
+      { offsetX: 197, offsetY: 14, widthPx: 200, heightPx: 140 },
+      [],
+      600,
+      { snapGrid: true, gridPx: 12, magnetPx: 8 },
+    );
+    expect(snapped.offsetX).toBe(200);
+    expect(snapped.guideX).toBe(300);
   });
 });

@@ -16,6 +16,7 @@ const VIEW_TO_PATH: Record<StudioViewId, string> = {
   graph: '/graph',
   typeset: '/studio',
   course: '/course',
+  help: '/help',
 };
 
 export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): RouteMatch {
@@ -29,6 +30,9 @@ export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): R
   }
   if (clean === '/course' || clean.startsWith('/course/')) {
     return { view: 'course', showStartSplash: false, canonicalPath: '/course' };
+  }
+  if (clean === '/help' || clean.startsWith('/help/') || clean === '/faq' || clean.startsWith('/faq/')) {
+    return { view: 'help', showStartSplash: false, canonicalPath: clean.startsWith('/faq') ? '/faq' : '/help' };
   }
   if (clean === '/write' || clean === '/editor' || clean === '/') {
     return { view: 'editor', showStartSplash: false, canonicalPath: '/write' };
@@ -78,7 +82,11 @@ export function readInitialBrowserRoute(isFirstWebVisit: boolean): RouteMatch {
   const rawPath = forwarded || window.location.pathname;
   const resolved = resolvePathToRoute(rawPath, isFirstWebVisit);
 
-  if (forwarded || (window.location.pathname === '/' && resolved.canonicalPath === '/start')) {
+  if (
+    forwarded ||
+    window.location.pathname === '/' ||
+    window.location.pathname === '/index.html'
+  ) {
     try {
       window.history.replaceState({}, '', resolved.canonicalPath);
     } catch {

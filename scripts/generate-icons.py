@@ -15,7 +15,7 @@ os.makedirs(ASSETS_DIR, exist_ok=True)
 
 EMBLEM_CENTER_X = 32.0
 EMBLEM_CENTER_Y = 32.5
-EMBLEM_SCALE = 1.28
+EMBLEM_SCALE = 1.46
 
 
 def norm_pt(x: float, y: float) -> tuple[float, float]:

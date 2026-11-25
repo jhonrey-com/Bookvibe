@@ -6,9 +6,19 @@ const PRESENCE_KEY = 'quillvibe.windowPresence.v1';
 const PRESENCE_TTL_MS = 12_000;
 
 export const EMPTY_TAB_PREFIX = '__qv_new_tab__';
+export const COURSE_TAB_ID = '__qv_course_tab__';
+export const HELP_TAB_ID = '__qv_help_tab__';
 
 export function isEmptyTabId(tabId: string | null | undefined): boolean {
   return Boolean(tabId && tabId.startsWith(EMPTY_TAB_PREFIX));
+}
+
+export function isSpecialPageTabId(tabId: string | null | undefined): boolean {
+  return tabId === COURSE_TAB_ID || tabId === HELP_TAB_ID;
+}
+
+export function isNonBookTabId(tabId: string | null | undefined): boolean {
+  return isEmptyTabId(tabId) || isSpecialPageTabId(tabId);
 }
 
 export function createEmptyTabId(): string {
@@ -37,6 +47,12 @@ export type SyncMessage =
       bookId: string;
     }
   | {
+      type: 'tab-drop-into';
+      targetWindowLabel: string;
+      fromWindowId: string;
+      bookId: string;
+    }
+  | {
       type: 'merge-all-into';
       targetWindowId: string;
     }
@@ -53,10 +69,12 @@ export type SyncMessage =
     };
 
 export interface WindowSyncCallbacks {
+  getWindowLabel(): string;
   getOpenBookIds(): string[];
   getActiveBookId(): string;
   onRemoteBookUpdated(bookId: string, project: BookProject, rev: number): void;
   onTabTransferredAway(bookId: string): void;
+  onTabDroppedIntoMe(fromWindowId: string, bookId: string): void;
   onMergeRequested(targetWindowId: string): void;
   onMergeOfferReceived(fromWindowId: string, bookIds: string[]): void;
   onMergeAcknowledged(): void;
@@ -134,8 +152,8 @@ export class WorkspaceWindowSync {
       const map = this.readPresenceMap();
       map[this.windowId] = {
         windowId: this.windowId,
-        openBookIds: this.callbacks.getOpenBookIds().filter((id) => !isEmptyTabId(id)),
-        activeBookId: isEmptyTabId(this.callbacks.getActiveBookId()) ? '' : this.callbacks.getActiveBookId(),
+        openBookIds: this.callbacks.getOpenBookIds().filter((id) => !isNonBookTabId(id)),
+        activeBookId: isNonBookTabId(this.callbacks.getActiveBookId()) ? '' : this.callbacks.getActiveBookId(),
         updatedAt: Date.now(),
       };
       window.localStorage.setItem(PRESENCE_KEY, JSON.stringify(map));
@@ -208,6 +226,15 @@ export class WorkspaceWindowSync {
     });
   }
 
+  sendTabDropIntoWindow(targetWindowLabel: string, bookId: string): void {
+    this.post({
+      type: 'tab-drop-into',
+      targetWindowLabel,
+      fromWindowId: this.windowId,
+      bookId,
+    });
+  }
+
   requestMergeAllWindowsHere(): void {
     this.post({
       type: 'merge-all-into',
@@ -250,6 +277,13 @@ export class WorkspaceWindowSync {
     } else if (msg.type === 'tab-transferred') {
       if (msg.fromWindowId === this.windowId && msg.toWindowId !== this.windowId) {
         this.callbacks.onTabTransferredAway(msg.bookId);
+      }
+    } else if (msg.type === 'tab-drop-into') {
+      if (
+        msg.fromWindowId !== this.windowId &&
+        msg.targetWindowLabel === this.callbacks.getWindowLabel()
+      ) {
+        this.callbacks.onTabDroppedIntoMe(msg.fromWindowId, msg.bookId);
       }
     } else if (msg.type === 'merge-all-into') {
       if (msg.targetWindowId !== this.windowId) {

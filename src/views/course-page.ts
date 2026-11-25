@@ -52,6 +52,21 @@ function getAllFlatLessons(): FlatLessonRef[] {
 /**
  * Full-page educational curriculum integrated at quillvibe.jhonrey.com/course and inside the desktop executable.
  */
+const MODULE_SCREENSHOTS: Partial<Record<string, { src: string; caption: string }>> = {
+  'mod-setup': {
+    src: '/screenshots/editor-workspace.png',
+    caption: 'Quillvibe Manuscript workspace: Binder, Paper Sheet, centered navigation bar, and Inspector.',
+  },
+  'mod-plot': {
+    src: '/screenshots/story-graph.png',
+    caption: 'Story Graph showing character and plot cards linked with crisp left/right connections.',
+  },
+  'mod-cover': {
+    src: '/screenshots/cover-studio.png',
+    caption: 'Book Cover Studio with layered shapes, corner resize handles, and live design properties.',
+  },
+};
+
 export function renderCoursePageView(container: HTMLElement, actions: AppActions): void {
   clearNode(container);
 
@@ -184,11 +199,24 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
   const { module: mod, lesson } = currentRef;
   const isDone = doneSet.has(lesson.id);
 
+  const moduleShot = MODULE_SCREENSHOTS[mod.id];
+  const visualFigure = moduleShot
+    ? el(
+        'figure',
+        { className: 'qv-help-figure' },
+        el('img', {
+          attrs: { src: moduleShot.src, alt: moduleShot.caption, loading: 'lazy' },
+        }),
+        el('figcaption', { text: moduleShot.caption }),
+      )
+    : null;
+
   const conceptsBox = el(
     'section',
     { className: 'qv-course-section' },
     el('h3', { text: 'Why It Matters & How It Works' }),
     ...lesson.concepts.map((para) => el('p', { text: para })),
+    visualFigure,
   );
 
   const stepsOl = el('ol', { className: 'qv-course-steps-list' });

@@ -593,7 +593,22 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
                   },
                 },
                 icon('course', 14),
-                'Open Full Course Page (/course)',
+                'Open Full Course Page',
+              ),
+              el(
+                'button',
+                {
+                  className: 'bv-btn',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      closeModal();
+                      actions.openHelpPage();
+                    },
+                  },
+                },
+                icon('help', 14),
+                'Open Help & FAQ Page',
               ),
               el(
                 'button',

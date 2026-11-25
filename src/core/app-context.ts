@@ -57,6 +57,7 @@ export interface AppActions {
   openSettingsModal(initialTab?: 'fonts' | 'editor' | 'publishing' | 'developer'): void;
   openHelpModal(initialTab?: 'controls' | 'tour' | 'icons' | 'guides' | 'course' | 'reference'): void;
   openCoursePage(moduleId?: string): void;
+  openHelpPage(query?: string): void;
   startInteractiveCourse(moduleIdx?: number): void;
   toggleImmersiveMode(force?: boolean): Promise<void>;
   openNewWindow(bookId?: string): Promise<void>;

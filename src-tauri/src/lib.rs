@@ -15,10 +15,13 @@ use lan_sync::{
 };
 use serde::Serialize;
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -388,7 +391,7 @@ fn export_generic_file(
     description: String,
 ) -> Result<Option<String>, String> {
     let clean_ext = extension.trim().trim_start_matches('.').to_ascii_lowercase();
-    let allowed = ["pdf", "epub", "md", "html", "txt", "png", "svg", "json", "qvext"];
+    let allowed = ["pdf", "epub", "md", "html", "txt", "rtf", "png", "svg", "json", "qvext"];
     if !allowed.contains(&clean_ext.as_str()) {
         return Err(format!("Unsupported export extension: .{clean_ext}"));
     }
@@ -487,11 +490,56 @@ fn launch_os_bluetooth_share_cmd(
     launch_os_bluetooth_share(file_path, mode)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopWindowBounds {
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub scale_factor: f64,
+}
+
+#[tauri::command]
+fn list_desktop_window_bounds(app: AppHandle) -> Vec<DesktopWindowBounds> {
+    let mut out = Vec::new();
+    for (label, win) in app.webview_windows() {
+        let scale = win.scale_factor().unwrap_or(1.0).max(0.5);
+        if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
+            out.push(DesktopWindowBounds {
+                label,
+                x: (pos.x as f64) / scale,
+                y: (pos.y as f64) / scale,
+                width: (size.width as f64) / scale,
+                height: (size.height as f64) / scale,
+                scale_factor: scale,
+            });
+        }
+    }
+    out
+}
+
+#[tauri::command]
+fn focus_desktop_window(app: AppHandle, label: String) -> Result<bool, String> {
+    if let Some(win) = app.get_webview_window(&label) {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 #[tauri::command]
 async fn open_book_in_new_window(
     app: AppHandle,
     book_id: Option<String>,
     title: Option<String>,
+    maximized: Option<bool>,
+    pos_x: Option<f64>,
+    pos_y: Option<f64>,
 ) -> Result<String, String> {
     let idx = WINDOW_COUNTER.fetch_add(1, Ordering::Relaxed);
     let label = format!("quillvibe-win-{idx}");
@@ -511,21 +559,50 @@ async fn open_book_in_new_window(
         "window.__QUILLVIBE_INITIAL_BOOK_ID__ = {encoded_book}; window.__QUILLVIBE_SKIP_SPLASH__ = true;"
     );
 
-    let builder = tauri::WebviewWindowBuilder::new(
+    let should_maximize = maximized.unwrap_or(true);
+    let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
         tauri::WebviewUrl::App("index.html".into()),
     )
     .title(clean_title)
-    .inner_size(1440.0, 900.0)
+    .inner_size(1280.0, 840.0)
     .min_inner_size(640.0, 520.0)
-    .maximized(true)
+    .maximized(should_maximize)
     .resizable(true)
     .decorations(false)
     .visible(true)
     .focused(true)
     .background_color(tauri::window::Color(246, 244, 239, 255))
     .initialization_script(&init_script);
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon).unwrap_or_else(|_| {
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                &label,
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title(clean_title)
+            .inner_size(1280.0, 840.0)
+            .min_inner_size(640.0, 520.0)
+            .maximized(should_maximize)
+            .resizable(true)
+            .decorations(false)
+            .visible(true)
+            .focused(true)
+            .background_color(tauri::window::Color(246, 244, 239, 255))
+            .initialization_script(&init_script)
+        });
+    }
+
+    if !should_maximize {
+        if let (Some(px), Some(py)) = (pos_x, pos_y) {
+            if px.is_finite() && py.is_finite() {
+                builder = builder.position((px - 140.0).max(16.0), (py - 20.0).max(16.0));
+            }
+        }
+    }
 
     let win = builder
         .build()
@@ -536,20 +613,112 @@ async fn open_book_in_new_window(
     Ok(label)
 }
 
-fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
+fn find_startup_file_path_from_args() -> Option<PathBuf> {
     for arg in std::env::args_os().skip(1) {
         let candidate = PathBuf::from(&arg);
         if candidate.is_file() && is_supported_quillvibe_path(&candidate) {
-            if let Ok(loaded) = read_validated_quillvibe_file(&candidate, false) {
-                return Some(loaded);
-            }
+            return Some(candidate);
         }
     }
     None
 }
 
+fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
+    let candidate = find_startup_file_path_from_args()?;
+    read_validated_quillvibe_file(&candidate, false).ok()
+}
+
+fn instance_lock_path() -> PathBuf {
+    std::env::temp_dir().join("quillvibe-single-instance.lock")
+}
+
+fn try_forward_file_to_running_instance(file_path: &Path) -> bool {
+    let lock_path = instance_lock_path();
+    let Ok(raw) = fs::read_to_string(&lock_path) else {
+        return false;
+    };
+    let mut lines = raw.lines();
+    let Some(port_str) = lines.next() else { return false };
+    let Some(token) = lines.next() else { return false };
+    let Ok(port) = port_str.trim().parse::<u16>() else { return false };
+    if token.trim().len() < 16 {
+        return false;
+    }
+    let addr = format!("127.0.0.1:{port}");
+    let Ok(mut stream) = TcpStream::connect_timeout(
+        &addr.parse().unwrap(),
+        Duration::from_millis(350),
+    ) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
+    let payload = format!("{}\n{}\n", token.trim(), file_path.to_string_lossy());
+    if stream.write_all(payload.as_bytes()).is_err() {
+        return false;
+    }
+    let mut resp = String::new();
+    let mut reader = BufReader::new(stream);
+    if reader.read_line(&mut resp).is_ok() && resp.trim() == "OK" {
+        return true;
+    }
+    false
+}
+
+fn start_single_instance_listener(app: AppHandle) {
+    let Ok(listener) = TcpListener::bind("127.0.0.1:0") else {
+        return;
+    };
+    let Ok(local_addr) = listener.local_addr() else {
+        return;
+    };
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let token = format!("qv{:x}{:x}", std::process::id(), nanos);
+    let lock_path = instance_lock_path();
+    let _ = fs::write(&lock_path, format!("{}\n{}\n", local_addr.port(), token));
+
+    std::thread::spawn(move || {
+        for conn in listener.incoming().flatten() {
+            let _ = conn.set_read_timeout(Some(Duration::from_millis(1200)));
+            let mut reader = BufReader::new(conn);
+            let mut recv_token = String::new();
+            let mut recv_path = String::new();
+            if reader.read_line(&mut recv_token).is_err() || reader.read_line(&mut recv_path).is_err() {
+                continue;
+            }
+            if recv_token.trim() != token {
+                continue;
+            }
+            let mut stream = reader.into_inner();
+            let candidate = PathBuf::from(recv_path.trim());
+            if candidate.is_file() && is_supported_quillvibe_path(&candidate) {
+                if let Ok(loaded) = read_validated_quillvibe_file(&candidate, false) {
+                    let _ = stream.write_all(b"OK\n");
+                    if let Some(first_win) = app.webview_windows().values().next() {
+                        let _ = first_win.unminimize();
+                        let _ = first_win.show();
+                        let _ = first_win.set_focus();
+                        let _ = first_win.emit("quillvibe://open-file", loaded);
+                    }
+                    continue;
+                }
+            }
+            let _ = stream.write_all(b"ERR\n");
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if let Some(startup_path) = find_startup_file_path_from_args() {
+        if try_forward_file_to_running_instance(&startup_path) {
+            return;
+        }
+    }
+
     let initial_file = find_startup_file_from_args();
 
     // Auto-register official extensions in the active user profile on compiled desktop runs
@@ -558,6 +727,10 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .setup(|app| {
+            start_single_instance_listener(app.handle().clone());
+            Ok(())
+        })
         .manage(StartupFileState {
             pending: Mutex::new(initial_file),
         })
@@ -583,6 +756,8 @@ pub fn run() {
             pull_book_from_lan_peer_cmd,
             push_book_to_lan_peer_cmd,
             launch_os_bluetooth_share_cmd,
+            list_desktop_window_bounds,
+            focus_desktop_window,
             open_book_in_new_window
         ])
         .run(tauri::generate_context!())

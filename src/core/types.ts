@@ -2,7 +2,7 @@ export type SceneStatus = 'outline' | 'draft' | 'revision' | 'final';
 
 export type PaperTheme = 'obsidian' | 'parchment' | 'ivory';
 
-export type AppThemeId = 'ivory' | 'parchment' | 'obsidian';
+export type AppThemeId = 'system' | 'ivory' | 'parchment' | 'obsidian';
 
 export type ToolTier = 'basic' | 'intermediate' | 'advanced';
 
@@ -14,7 +14,7 @@ export type FontFamilyId = 'garamond' | 'baskerville' | 'palatino' | 'inter';
 
 export type ChapterNumeralStyle = 'roman' | 'word' | 'numeric';
 
-export type StudioViewId = 'editor' | 'corkboard' | 'outline' | 'bible' | 'graph' | 'typeset' | 'course';
+export type StudioViewId = 'editor' | 'corkboard' | 'outline' | 'bible' | 'graph' | 'typeset' | 'course' | 'help';
 
 export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom';
 
@@ -223,9 +223,33 @@ export interface QuillvibeSettings {
   alarmVolume: number;
   enableSpellcheck: boolean;
   enableDesktopBookTabs: boolean;
+  enableSmoothAnimations: boolean;
   immersiveHudX: number;
   immersiveHudY: number;
   immersiveHudCollapsed: boolean;
+}
+
+export type SceneImageWrapMode =
+  | 'inline'
+  | 'square-left'
+  | 'square-right'
+  | 'top-bottom'
+  | 'behind-text';
+
+export interface SceneImageItem {
+  id: string;
+  dataUrl: string;
+  originalDataUrl?: string;
+  alt: string;
+  caption?: string;
+  widthPx: number;
+  heightPx: number;
+  offsetX: number;
+  offsetY: number;
+  wrapMode: SceneImageWrapMode;
+  anchorParagraph: number;
+  bgRemoved?: boolean;
+  bgTolerance?: number;
 }
 
 export interface SceneSnapshot {
@@ -261,6 +285,7 @@ export interface SceneNode {
   snapshots: SceneSnapshot[];
   annotations?: SceneAnnotation[];
   proofreadMarks?: ProofreadMark[];
+  images?: SceneImageItem[];
   updatedAt: string;
 }
 

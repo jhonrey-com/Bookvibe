@@ -96,6 +96,7 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
       body: 'Work through 10 guided modules, 28 hands-on lessons, and quick knowledge checks at your own pace.',
     },
   ],
+  help: [],
 };
 
 let activeTourOverlay: {
@@ -369,10 +370,17 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
   const themeToggleRow = el(
     'div',
     { className: 'qv-splash-theme-row' },
-    ...(['ivory', 'parchment', 'obsidian'] as AppThemeId[]).map((th) => {
+    ...(['system', 'ivory', 'parchment', 'obsidian'] as AppThemeId[]).map((th) => {
       const btn = el('button', {
         className: `bv-mini-btn${chosenTheme === th ? ' is-active' : ''}`,
-        text: th === 'ivory' ? 'Ivory Light' : th === 'parchment' ? 'Parchment' : 'Obsidian Dark',
+        text:
+          th === 'system'
+            ? 'Match Device'
+            : th === 'ivory'
+              ? 'Ivory Light'
+              : th === 'parchment'
+                ? 'Parchment'
+                : 'Obsidian Dark',
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -381,7 +389,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
             Array.from(themeToggleRow.children).forEach((c, idx) => {
               c.classList.toggle(
                 'is-active',
-                idx === (['ivory', 'parchment', 'obsidian'] as AppThemeId[]).indexOf(th),
+                idx === (['system', 'ivory', 'parchment', 'obsidian'] as AppThemeId[]).indexOf(th),
               );
             });
           },

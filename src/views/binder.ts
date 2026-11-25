@@ -73,6 +73,13 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
   for (const part of project.parts) {
     const partWrap = el('div', { className: 'bv-tree-part' });
 
+    const partBodyInner = el('div', { className: 'qv-accordion-inner' });
+    const partBodyWrap = el(
+      'div',
+      { className: `qv-accordion-wrap${part.collapsed ? ' is-collapsed' : ''}` },
+      partBodyInner,
+    );
+
     const partRow = el(
       'div',
       { className: 'bv-tree-row' },
@@ -82,12 +89,14 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           className: 'bv-tree-row-left',
           on: {
             click: () => {
+              const nextCollapsed = !partBodyWrap.classList.contains('is-collapsed');
+              partBodyWrap.classList.toggle('is-collapsed', nextCollapsed);
               actions.mutateProject((prev) => {
                 const next = structuredClone(prev);
                 const target = next.parts.find((p) => p.id === part.id);
-                if (target) target.collapsed = !target.collapsed;
+                if (target) target.collapsed = nextCollapsed;
                 return next;
-              });
+              }, false);
             },
           },
         },
@@ -119,12 +128,17 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
 
     partWrap.appendChild(partRow);
 
-    if (!part.collapsed) {
-      for (const chapter of part.chapters) {
-        const chapWrap = el('div', { className: 'bv-tree-chapter' });
-        const chapWords = getChapterWordCount(chapter);
+    for (const chapter of part.chapters) {
+      const chapWrap = el('div', { className: 'bv-tree-chapter' });
+      const chapWords = getChapterWordCount(chapter);
+      const chapBodyInner = el('div', { className: 'qv-accordion-inner' });
+      const chapBodyWrap = el(
+        'div',
+        { className: `qv-accordion-wrap${chapter.collapsed ? ' is-collapsed' : ''}` },
+        chapBodyInner,
+      );
 
-        const chapRow = el(
+      const chapRow = el(
           'div',
           {
             className: 'bv-tree-row',
@@ -151,14 +165,16 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               className: 'bv-tree-row-left',
               on: {
                 click: () => {
+                  const nextCollapsed = !chapBodyWrap.classList.contains('is-collapsed');
+                  chapBodyWrap.classList.toggle('is-collapsed', nextCollapsed);
                   actions.mutateProject((prev) => {
                     const next = structuredClone(prev);
                     for (const p of next.parts) {
                       const c = p.chapters.find((ch) => ch.id === chapter.id);
-                      if (c) c.collapsed = !c.collapsed;
+                      if (c) c.collapsed = nextCollapsed;
                     }
                     return next;
-                  });
+                  }, false);
                 },
               },
             },
@@ -294,8 +310,7 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           },
         ]);
 
-        if (!chapter.collapsed) {
-          chapter.scenes.forEach((scene, sIdx) => {
+        chapter.scenes.forEach((scene, sIdx) => {
             const words = countWords(scene.content);
             const sceneRow = el(
               'div',
@@ -386,7 +401,7 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
                 ),
               ),
             );
-            chapWrap.appendChild(sceneRow);
+            chapBodyInner.appendChild(sceneRow);
             attachContextMenu(sceneRow, () => [
               {
                 heading: scene.title || 'Untitled Scene',
@@ -466,10 +481,10 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               },
             ]);
           });
-        }
-        partWrap.appendChild(chapWrap);
+        chapWrap.appendChild(chapBodyWrap);
+        partBodyInner.appendChild(chapWrap);
       }
-    }
+    partWrap.appendChild(partBodyWrap);
     scroll.appendChild(partWrap);
   }
 

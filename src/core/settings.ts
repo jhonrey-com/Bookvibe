@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: QuillvibeSettings = {
   alarmVolume: 0.65,
   enableSpellcheck: false,
   enableDesktopBookTabs: true,
+  enableSmoothAnimations: true,
   immersiveHudX: -1,
   immersiveHudY: 12,
   immersiveHudCollapsed: false,
@@ -55,9 +56,19 @@ function clampInt(raw: unknown, min: number, max: number, fallback: number): num
 }
 
 function normalizeTheme(val: unknown): AppThemeId {
-  return val === 'parchment' || val === 'obsidian' || val === 'ivory'
+  return val === 'system' || val === 'parchment' || val === 'obsidian' || val === 'ivory'
     ? val
     : DEFAULT_SETTINGS.appTheme;
+}
+
+export function resolveEffectiveTheme(theme: AppThemeId): 'ivory' | 'parchment' | 'obsidian' {
+  if (theme === 'system') {
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'obsidian' : 'ivory';
+    }
+    return 'ivory';
+  }
+  return theme;
 }
 
 function normalizeTier(val: unknown): ToolTier {
@@ -119,6 +130,7 @@ export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSett
     alarmVolume: cleanVol,
     enableSpellcheck: raw.enableSpellcheck !== undefined ? Boolean(raw.enableSpellcheck) : false,
     enableDesktopBookTabs: raw.enableDesktopBookTabs !== undefined ? Boolean(raw.enableDesktopBookTabs) : true,
+    enableSmoothAnimations: raw.enableSmoothAnimations !== undefined ? Boolean(raw.enableSmoothAnimations) : true,
     immersiveHudX: Number.isFinite(Number(raw.immersiveHudX)) ? Math.round(Number(raw.immersiveHudX)) : -1,
     immersiveHudY: Number.isFinite(Number(raw.immersiveHudY)) ? clampInt(raw.immersiveHudY, 0, 2400, 12) : 12,
     immersiveHudCollapsed: Boolean(raw.immersiveHudCollapsed),
@@ -181,6 +193,8 @@ export function resolveSectionDisplayName(
       return 'Story Graph';
     case 'course':
       return 'Book Writing Course';
+    case 'help':
+      return 'Help & FAQ';
     case 'typeset':
       if (typesetSubTab === 'cover') return 'Book Cover Studio';
       if (typesetSubTab === 'publish') return 'Publish & Author Seal';
@@ -230,12 +244,15 @@ export function formatAppWindowTitle(
 export function applySettingsToDocument(settings: QuillvibeSettings): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  root.dataset.theme = settings.appTheme;
+  const effectiveTheme = resolveEffectiveTheme(settings.appTheme);
+  root.dataset.theme = effectiveTheme;
+  root.dataset.themePref = settings.appTheme;
   root.dataset.tier = settings.toolTier;
   root.dataset.toolbarMode = settings.toolbarDisplayMode;
   root.dataset.density = settings.uiDensity;
   root.dataset.devMode = settings.developerMode ? 'true' : 'false';
   root.dataset.motion = settings.reducedMotionOverride;
+  root.dataset.smoothAnimations = settings.enableSmoothAnimations ? 'true' : 'false';
 
   if (settings.editorFontFamily.trim()) {
     root.style.setProperty('--bv-editor-font', settings.editorFontFamily.trim());
@@ -253,9 +270,9 @@ export function applySettingsToDocument(settings: QuillvibeSettings): void {
   const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (metaTheme) {
     metaTheme.content =
-      settings.appTheme === 'obsidian'
+      effectiveTheme === 'obsidian'
         ? '#08080a'
-        : settings.appTheme === 'parchment'
+        : effectiveTheme === 'parchment'
           ? '#ebe4d5'
           : '#f6f4ef';
   }
