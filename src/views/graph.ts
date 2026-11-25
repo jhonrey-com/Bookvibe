@@ -1,41 +1,83 @@
 import type { AppActions } from '../core/app-context';
 import { exportGenericFile } from '../core/bridge';
+import { routeConnector, type RectBox } from '../core/connector-router';
 import {
-  GRAPH_KIND_COLORS,
-  GRAPH_KIND_LABELS,
+  DEFAULT_FORCE_PARAMS,
+  findShortestNarrativePath,
+  ForceGraphSimulation,
+  getNeighborhoodIds,
+  resolveNodeColorByRules,
+  type ForceParams,
+} from '../core/force-engine';
+import {
   addGraphEdge,
+  addGraphGroup,
   addGraphNode,
   applyAutoLayout,
   applyRadialLayout,
   applyTimelineFlowLayout,
   changeGraphNodeKind,
   deleteGraphEdge,
+  deleteGraphGroup,
   deleteGraphNode,
   exportGraphAsSvgString,
+  GRAPH_KIND_LABELS,
   reverseGraphEdge,
   seedGraphFromProject,
   updateGraphEdge,
+  updateGraphGroup,
   updateGraphNode,
 } from '../core/graph';
+import {
+  exportStoryGraphToJsonCanvas,
+  importJsonCanvasToStoryGraph,
+  syncWikilinkEdgesInGraph,
+} from '../core/graph-canvas-io';
 import { normalizeProjectDefaults } from '../core/library';
 import { newId } from '../core/manuscript';
-import type { GraphNodeKind, StoryGraph, StoryGraphEdge, StoryGraphNode } from '../core/types';
+import type {
+  GraphAnchorSide,
+  GraphArrowHead,
+  GraphLineStyle,
+  GraphNodeKind,
+  GraphRoutingMode,
+  StoryGraph,
+  StoryGraphEdge,
+  StoryGraphGroup,
+  StoryGraphNode,
+} from '../core/types';
 import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon, svgEl } from '../ui/dom';
 
+type GraphViewMode = 'storyboard' | 'force';
 type GraphDensity = 'detailed' | 'standard' | 'compact';
-type GraphEdgeStyle = 'curved' | 'step' | 'straight';
 type GraphLayoutMode = 'columns' | 'radial' | 'flow';
 
+const ALL_GRAPH_KINDS: readonly GraphNodeKind[] = [
+  'character',
+  'plot',
+  'scene',
+  'storyline',
+  'faction',
+  'location',
+  'item',
+  'lore',
+  'note',
+  'custom',
+];
+
+let graphViewMode: GraphViewMode = 'storyboard';
 let zoomScale = 1;
 let panX = 0;
 let panY = 0;
 let selectedEdgeId = '';
+let selectedGroupId = '';
+const selectedNodeIds = new Set<string>();
 let connectMode = false;
 let connectSourceId = '';
 let activeKindFilter: GraphNodeKind | 'all' = 'all';
 let graphDensity: GraphDensity = 'detailed';
-let edgeRouting: GraphEdgeStyle = 'curved';
+let edgeRouting: GraphRoutingMode = 'elbow';
 let snapToGrid = true;
 let showEdgeLabels = true;
 let graphSearchQuery = '';
@@ -44,107 +86,62 @@ let propsDetached = false;
 let propsFloatX = 24;
 let propsFloatY = 24;
 
+// Force-directed simulation controls
+let forceParams: ForceParams = { ...DEFAULT_FORCE_PARAMS };
+let hopDepthFilter: 0 | 1 | 2 | 3 = 0;
+let pathSourceId = '';
+let pathTargetId = '';
+let activeForceRafId: number | null = null;
+let activeGraphKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
 function withGraph(
   actions: AppActions,
-  updater: (graph: StoryGraph) => StoryGraph,
-  rerender = true,
+  mutator: (g: StoryGraph) => StoryGraph,
+  recordUndo = true,
 ): void {
   actions.mutateProject((prev) => {
-    const next = normalizeProjectDefaults(prev);
-    next.storyGraph = updater(next.storyGraph!);
-    return next;
-  }, rerender);
+    const base = normalizeProjectDefaults(prev);
+    return {
+      ...base,
+      storyGraph: mutator(base.storyGraph!),
+    };
+  }, recordUndo);
 }
 
-function nodeCardBox(_node: StoryGraphNode, cardEl?: HTMLElement): { w: number; h: number } {
+function nodeCardBox(node: StoryGraphNode, cardEl?: HTMLElement): { w: number; h: number } {
   if (cardEl && cardEl.offsetWidth > 0 && cardEl.offsetHeight > 0) {
     return { w: cardEl.offsetWidth, h: cardEl.offsetHeight };
   }
-  if (graphDensity === 'compact') return { w: 152, h: 38 };
-  if (graphDensity === 'standard') return { w: 174, h: 64 };
-  return { w: 192, h: 92 };
+  const w = node.width ?? (graphDensity === 'compact' ? 156 : graphDensity === 'standard' ? 174 : 196);
+  const h = node.height ?? (graphDensity === 'compact' ? 50 : graphDensity === 'standard' ? 72 : 96);
+  return { w, h };
 }
 
-function computeExactPortConnection(
-  src: StoryGraphNode,
-  sBox: { w: number; h: number },
-  dst: StoryGraphNode,
-  dBox: { w: number; h: number },
-): { sx: number; sy: number; tx: number; ty: number; outDir: 1 | -1; inDir: 1 | -1 } {
-  const srcMidX = src.x + sBox.w / 2;
-  const dstMidX = dst.x + dBox.w / 2;
-  const sy = src.y + sBox.h / 2;
-  const ty = dst.y + dBox.h / 2;
-
-  if (dstMidX >= srcMidX) {
-    return {
-      sx: src.x + sBox.w,
-      sy,
-      tx: dst.x,
-      ty,
-      outDir: 1,
-      inDir: -1,
-    };
-  }
-  return {
-    sx: src.x,
-    sy,
-    tx: dst.x + dBox.w,
-    ty,
-    outDir: -1,
-    inDir: 1,
-  };
+function edgeDashArray(style: GraphLineStyle): string {
+  if (style === 'dashed') return '6 4';
+  if (style === 'dotted') return '2 4';
+  return '';
 }
 
-function computeEdgeSvgPath(
-  sx: number,
-  sy: number,
-  tx: number,
-  ty: number,
-  mode: GraphEdgeStyle,
-  outDir: 1 | -1 = 1,
-  inDir: 1 | -1 = -1,
-): { d: string; labelX: number; labelY: number } {
-  const dx = tx - sx;
-  const dy = ty - sy;
-  if (mode === 'straight') {
-    return { d: `M ${sx} ${sy} L ${tx} ${ty}`, labelX: (sx + tx) / 2, labelY: (sy + ty) / 2 - 7 };
-  }
-  if (mode === 'step') {
-    const exitX = sx + outDir * 24;
-    const enterX = tx + inDir * 24;
-    if ((outDir === 1 && enterX >= exitX) || (outDir === -1 && enterX <= exitX)) {
-      const midX = Math.round((sx + tx) / 2);
-      return {
-        d: `M ${sx} ${sy} H ${midX} V ${ty} H ${tx}`,
-        labelX: midX,
-        labelY: (sy + ty) / 2 - 7,
-      };
-    }
-    const midY = Math.round((sy + ty) / 2);
-    return {
-      d: `M ${sx} ${sy} H ${exitX} V ${midY} H ${enterX} V ${ty} H ${tx}`,
-      labelX: (exitX + enterX) / 2,
-      labelY: midY - 7,
-    };
-  }
-  // Exit and enter strictly horizontally at the exact left/right side midpoint of each card
-  const bend = Math.max(46, Math.min(180, Math.abs(dx) * 0.48));
-  const c1x = sx + outDir * bend;
-  const c1y = sy + dy * 0.06;
-  const c2x = tx + inDir * bend;
-  const c2y = ty - dy * 0.06;
-  const midX = 0.125 * sx + 0.375 * c1x + 0.375 * c2x + 0.125 * tx;
-  const midY = 0.125 * sy + 0.375 * c1y + 0.375 * c2y + 0.125 * ty;
-  return {
-    d: `M ${sx} ${sy} C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${tx} ${ty}`,
-    labelX: midX,
-    labelY: midY - 6,
-  };
+function markerUrlFor(head: GraphArrowHead | undefined, pos: 'start' | 'end'): string {
+  const h = head ?? (pos === 'end' ? 'arrow' : 'none');
+  if (h === 'none') return '';
+  if (h === 'diamond') return 'url(#bv-diamond)';
+  if (h === 'circle') return 'url(#bv-circle)';
+  return pos === 'start' ? 'url(#bv-arrow-start)' : 'url(#bv-arrow)';
+}
+
+function isPointInGroup(x: number, y: number, g: StoryGraphGroup): boolean {
+  return x >= g.x && x <= g.x + g.width && y >= g.y && y <= g.y + g.height;
 }
 
 export function renderGraphView(container: HTMLElement, actions: AppActions): void {
+  if (activeForceRafId !== null) {
+    cancelAnimationFrame(activeForceRafId);
+    activeForceRafId = null;
+  }
   clearNode(container);
+
   const state = actions.getState();
   const project = normalizeProjectDefaults(state.project);
   const graph = project.storyGraph!;
@@ -153,11 +150,85 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     state.activeGraphNodeId = graph.nodes[0]?.id ?? '';
   }
 
+  // Hidden .canvas file uploader
+  const canvasImportInput = el('input', {
+    attrs: { type: 'file', accept: '.canvas,application/json' },
+    style: { display: 'none' },
+    on: {
+      change: async () => {
+        const f = canvasImportInput.files?.[0];
+        canvasImportInput.value = '';
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const imported = importJsonCanvasToStoryGraph(text);
+          withGraph(actions, () => imported);
+          actions.notify(`Imported ${imported.nodes.length} nodes from ${f.name}`);
+        } catch (err) {
+          actions.notify(err instanceof Error ? err.message : 'Invalid .canvas JSON file.');
+        }
+      },
+    },
+  });
+
+  // Compute path highlighting & neighborhood filter sets
+  const highlightedPath =
+    pathSourceId && pathTargetId ? findShortestNarrativePath(graph, pathSourceId, pathTargetId) : null;
+  const pathNodeSet = new Set(highlightedPath?.nodeIds ?? []);
+  const pathEdgeSet = new Set(highlightedPath?.edgeIds ?? []);
+
+  const hopAllowedIds =
+    hopDepthFilter > 0 && state.activeGraphNodeId
+      ? getNeighborhoodIds(graph, state.activeGraphNodeId, hopDepthFilter)
+      : null;
+
+  const visibleNodes = graph.nodes.filter((n) => {
+    if (activeKindFilter !== 'all' && n.kind !== activeKindFilter) return false;
+    if (hopAllowedIds && !hopAllowedIds.has(n.id)) return false;
+    return true;
+  });
+  const visibleIds = new Set(visibleNodes.map((n) => n.id));
+  const visibleEdges = graph.edges.filter(
+    (e) => visibleIds.has(e.sourceId) && visibleIds.has(e.targetId),
+  );
+  const edgeCounts = new Map<string, number>();
+  for (const e of graph.edges) {
+    edgeCounts.set(e.sourceId, (edgeCounts.get(e.sourceId) ?? 0) + 1);
+    edgeCounts.set(e.targetId, (edgeCounts.get(e.targetId) ?? 0) + 1);
+  }
+
+  // Mode toggle buttons
+  const modeToggle = el(
+    'div',
+    { className: 'bv-subbar-group', style: { gap: '2px' } },
+    el('button', {
+      className: `bv-fmt-btn${graphViewMode === 'storyboard' ? ' is-active' : ''}`,
+      text: 'Storyboard',
+      attrs: { type: 'button', title: 'Spatial infinite storyboard cards, groups & smart connectors' },
+      on: {
+        click: () => {
+          graphViewMode = 'storyboard';
+          renderGraphView(container, actions);
+        },
+      },
+    }),
+    el('button', {
+      className: `bv-fmt-btn${graphViewMode === 'force' ? ' is-active' : ''}`,
+      text: 'Force Graph',
+      attrs: { type: 'button', title: 'Interactive physics constellation, depth filter & pathfinder' },
+      on: {
+        click: () => {
+          graphViewMode = 'force';
+          renderGraphView(container, actions);
+        },
+      },
+    }),
+  );
+
   const filterSelect = el(
     'select',
     {
       className: 'bv-select',
-      tooltip: { title: 'Filter Node Types', short: 'Show all nodes or focus on one category.' },
       attrs: { 'aria-label': 'Filter graph node types' },
       on: {
         change: () => {
@@ -167,7 +238,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       },
     },
     el('option', { text: 'All Types', attrs: { value: 'all', selected: activeKindFilter === 'all' } }),
-    ...(['character', 'plot', 'scene', 'location', 'lore', 'custom'] as const).map((k) =>
+    ...ALL_GRAPH_KINDS.map((k) =>
       el('option', { text: GRAPH_KIND_LABELS[k], attrs: { value: k, selected: activeKindFilter === k } }),
     ),
   );
@@ -176,7 +247,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     'select',
     {
       className: 'bv-select',
-      tooltip: { title: 'Card Density', short: 'Switch cards between Detailed, Standard, and Compact pills.' },
       attrs: { 'aria-label': 'Graph card density' },
       on: {
         change: () => {
@@ -194,17 +264,16 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     'select',
     {
       className: 'bv-select',
-      tooltip: { title: 'Connector Style', short: 'Choose Curved Bezier, Orthogonal Step, or Straight lines.' },
-      attrs: { 'aria-label': 'Graph edge routing style' },
+      attrs: { 'aria-label': 'Connector routing mode' },
       on: {
         change: () => {
-          edgeRouting = edgeStyleSel.value as GraphEdgeStyle;
+          edgeRouting = edgeStyleSel.value as GraphRoutingMode;
           renderGraphView(container, actions);
         },
       },
     },
+    el('option', { text: 'Lines: Elbow', attrs: { value: 'elbow', selected: edgeRouting === 'elbow' } }),
     el('option', { text: 'Lines: Curved', attrs: { value: 'curved', selected: edgeRouting === 'curved' } }),
-    el('option', { text: 'Lines: Step', attrs: { value: 'step', selected: edgeRouting === 'step' } }),
     el('option', { text: 'Lines: Straight', attrs: { value: 'straight', selected: edgeRouting === 'straight' } }),
   );
 
@@ -212,7 +281,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     'select',
     {
       className: 'bv-select',
-      tooltip: { title: 'Auto-Arrange Graph', short: 'Arrange nodes into Columns, Radial hub, or Story Flow.' },
       attrs: { 'aria-label': 'Auto-arrange graph layout' },
       on: {
         change: () => {
@@ -230,7 +298,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         },
       },
     },
-    el('option', { text: 'Layout: Choose…', attrs: { value: '', selected: true, disabled: true } }),
+    el('option', { text: 'Layout…', attrs: { value: '', selected: true, disabled: true } }),
     el('option', { text: 'Arrange Columns', attrs: { value: 'columns' } }),
     el('option', { text: 'Radial Cast Hub', attrs: { value: 'radial' } }),
     el('option', { text: 'Timeline Story Flow', attrs: { value: 'flow' } }),
@@ -239,23 +307,20 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   const newKindSelect = el(
     'select',
     { className: 'bv-select', attrs: { 'aria-label': 'New node type' } },
-    ...(['character', 'plot', 'location', 'lore', 'scene', 'custom'] as const).map((k) =>
-      el('option', { text: GRAPH_KIND_LABELS[k], attrs: { value: k } }),
-    ),
+    ...ALL_GRAPH_KINDS.map((k) => el('option', { text: GRAPH_KIND_LABELS[k], attrs: { value: k } })),
   );
 
   const newLabelInput = el('input', {
     className: 'bv-input',
-    style: { width: '132px', height: '26px' },
+    style: { width: '124px', height: '26px' },
     attrs: { type: 'text', placeholder: 'Add node…', 'aria-label': 'New graph node title' },
   });
 
   let applySearchHighlight = () => {};
-
   const searchInput = el('input', {
     className: 'bv-input',
-    style: { width: '125px', height: '26px' },
-    attrs: { type: 'search', value: graphSearchQuery, placeholder: 'Find node…', 'aria-label': 'Search graph nodes' },
+    style: { width: '122px', height: '26px' },
+    attrs: { type: 'search', value: graphSearchQuery, placeholder: 'Find node/#tag…', 'aria-label': 'Search graph nodes' },
     on: {
       input: () => {
         graphSearchQuery = searchInput.value;
@@ -264,22 +329,136 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     },
   });
 
-  const visibleNodes = graph.nodes.filter(
-    (n) => activeKindFilter === 'all' || n.kind === activeKindFilter,
-  );
-  const visibleIds = new Set(visibleNodes.map((n) => n.id));
-  const visibleEdges = graph.edges.filter(
-    (e) => visibleIds.has(e.sourceId) && visibleIds.has(e.targetId),
-  );
-  const edgeCounts = new Map<string, number>();
-  for (const e of graph.edges) {
-    edgeCounts.set(e.sourceId, (edgeCounts.get(e.sourceId) ?? 0) + 1);
-    edgeCounts.set(e.targetId, (edgeCounts.get(e.targetId) ?? 0) + 1);
-  }
+  let canvasWrap!: HTMLElement;
+
+  const fitCanvas = (nodesSubset?: StoryGraphNode[]) => {
+    const list = nodesSubset && nodesSubset.length > 0 ? nodesSubset : visibleNodes;
+    if (list.length === 0) {
+      panX = 0;
+      panY = 0;
+      zoomScale = 1;
+    } else {
+      const minX = Math.min(...list.map((n) => n.x)) - 60;
+      const maxX = Math.max(...list.map((n) => n.x + 220)) + 60;
+      const minY = Math.min(...list.map((n) => n.y)) - 60;
+      const maxY = Math.max(...list.map((n) => n.y + 120)) + 60;
+      const cw = Math.max(480, canvasWrap?.clientWidth || 720);
+      const ch = Math.max(360, canvasWrap?.clientHeight || 480);
+      const bw = Math.max(240, maxX - minX);
+      const bh = Math.max(200, maxY - minY);
+      zoomScale = Math.max(0.3, Math.min(1.3, Number(Math.min(cw / bw, ch / bh).toFixed(2))));
+      panX = Math.round((cw - bw * zoomScale) / 2 - minX * zoomScale);
+      panY = Math.round((ch - bh * zoomScale) / 2 - minY * zoomScale);
+    }
+    renderGraphView(container, actions);
+  };
+
+  const exportCanvasJson = () => {
+    const payload = exportStoryGraphToJsonCanvas(graph);
+    void exportGenericFile({
+      suggestedName: `${project.title || 'story'}-board`,
+      extension: 'canvas',
+      description: 'Spatial Storyboard (.canvas)',
+      mimeType: 'application/json;charset=utf-8',
+      textContent: payload,
+    }).then((out) => {
+      if (out) actions.notify('Exported .canvas board file');
+    });
+  };
+
+  const exportHighResPng = () => {
+    const nodes = graph.nodes;
+    const minX = Math.min(0, ...nodes.map((n) => n.x - 40));
+    const minY = Math.min(0, ...nodes.map((n) => n.y - 40));
+    const maxX = Math.max(960, ...nodes.map((n) => n.x + 260));
+    const maxY = Math.max(640, ...nodes.map((n) => n.y + 160));
+    const w = Math.round((maxX - minX) * 2);
+    const h = Math.round((maxY - minY) * 2);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(2, 2);
+    ctx.translate(-minX, -minY);
+    ctx.fillStyle = '#08080a';
+    ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    for (const grp of graph.groups ?? []) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(199, 169, 123, 0.08)';
+      ctx.strokeStyle = grp.color || '#c7a97b';
+      ctx.setLineDash([6, 4]);
+      ctx.fillRect(grp.x, grp.y, grp.width, grp.height);
+      ctx.strokeRect(grp.x, grp.y, grp.width, grp.height);
+      ctx.fillStyle = grp.color || '#c7a97b';
+      ctx.font = 'bold 12px Inter, sans-serif';
+      ctx.fillText(grp.label.toUpperCase(), grp.x + 12, grp.y + 20);
+      ctx.restore();
+    }
+    for (const e of graph.edges) {
+      const s = byId.get(e.sourceId);
+      const d = byId.get(e.targetId);
+      if (!s || !d) continue;
+      ctx.save();
+      ctx.strokeStyle = e.color || '#8aa4c8';
+      ctx.lineWidth = 1.6;
+      if (e.style === 'dashed') ctx.setLineDash([6, 4]);
+      else if (e.style === 'dotted') ctx.setLineDash([2, 4]);
+      const sx = s.x + 98;
+      const sy = s.y + 40;
+      const tx = d.x + 98;
+      const ty = d.y + 40;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      if (e.label) {
+        ctx.fillStyle = '#c8ced9';
+        ctx.font = '11px Inter, sans-serif';
+        ctx.fillText(e.label, (sx + tx) / 2, (sy + ty) / 2 - 6);
+      }
+      ctx.restore();
+    }
+    for (const n of nodes) {
+      const box = nodeCardBox(n);
+      ctx.save();
+      ctx.fillStyle = '#12151e';
+      ctx.strokeStyle = '#323642';
+      ctx.beginPath();
+      ctx.roundRect(n.x, n.y, box.w, box.h, 7);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = resolveNodeColorByRules(n, graph.colorRules);
+      ctx.fillRect(n.x, n.y, box.w, 3);
+      ctx.fillStyle = '#eceef2';
+      ctx.font = '600 13px Inter, sans-serif';
+      ctx.fillText(n.label, n.x + 12, n.y + 34);
+      ctx.fillStyle = '#8b93a5';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.fillText(n.subtitle || GRAPH_KIND_LABELS[n.kind], n.x + 12, n.y + 52);
+      ctx.restore();
+    }
+    const pngUrl = canvas.toDataURL('image/png');
+    const b64 = pngUrl.replace(/^data:image\/png;base64,/, '');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    void exportGenericFile({
+      suggestedName: `${project.title || 'story'}-graph`,
+      extension: 'png',
+      description: 'Story Graph PNG Snapshot',
+      mimeType: 'image/png',
+      binaryBytes: bytes,
+    }).then((out) => {
+      if (out) actions.notify('Exported high-resolution Story Graph PNG');
+    });
+  };
 
   const subbar = el(
     'div',
     { className: 'bv-subbar' },
+    modeToggle,
     el(
       'div',
       { className: 'bv-subbar-group' },
@@ -300,13 +479,14 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
                 const res = addGraphNode(g, {
                   kind,
                   label,
-                  x: Math.round(280 - panX + (g.nodes.length % 5) * 45),
-                  y: Math.round(180 - panY + (g.nodes.length % 4) * 45),
+                  x: Math.round((280 - panX) / zoomScale + (g.nodes.length % 5) * 45),
+                  y: Math.round((180 - panY) / zoomScale + (g.nodes.length % 4) * 45),
                 });
                 createdId = res.node.id;
                 return res.graph;
               }, false);
               selectedEdgeId = '';
+              selectedGroupId = '';
               actions.setState({ activeGraphNodeId: createdId }, true);
             },
           },
@@ -315,12 +495,24 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         'Node',
       ),
       el('button', {
+        className: 'bv-mini-btn',
+        text: '+ Group',
+        tooltip: { title: 'Add Act / Section Frame', short: 'Create a container frame that moves child cards together.' },
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            withGraph(actions, (g) =>
+              addGraphGroup(g, {
+                x: Math.round((160 - panX) / zoomScale),
+                y: Math.round((110 - panY) / zoomScale),
+              }),
+            );
+          },
+        },
+      }),
+      el('button', {
         className: `bv-fmt-btn${connectMode ? ' is-active' : ''}`,
         text: connectMode ? 'Click 2 Nodes…' : 'Connect',
-        tooltip: {
-          title: 'Connect Nodes',
-          short: 'Click two nodes, or drag from any card port dot onto another card.',
-        },
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -335,26 +527,26 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     el(
       'div',
       { className: 'bv-subbar-group' },
-      densitySelect,
-      edgeStyleSel,
+      graphViewMode === 'storyboard' ? densitySelect : null,
+      graphViewMode === 'storyboard' ? edgeStyleSel : null,
       layoutSelect,
       filterSelect,
-      el('button', {
-        className: `bv-mini-btn${snapToGrid ? ' is-active' : ''}`,
-        text: 'Grid',
-        tooltip: { title: 'Snap to 24px Grid', short: 'Aligns dragged cards neatly to the canvas dots.' },
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            snapToGrid = !snapToGrid;
-            renderGraphView(container, actions);
-          },
-        },
-      }),
+      graphViewMode === 'storyboard'
+        ? el('button', {
+            className: `bv-mini-btn${snapToGrid ? ' is-active' : ''}`,
+            text: 'Grid',
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                snapToGrid = !snapToGrid;
+                renderGraphView(container, actions);
+              },
+            },
+          })
+        : null,
       el('button', {
         className: `bv-mini-btn${showEdgeLabels ? ' is-active' : ''}`,
         text: 'Labels',
-        tooltip: { title: 'Toggle Edge Labels', short: 'Show or hide text tags along connecting lines.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -366,7 +558,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-fmt-btn',
         text: 'Sync Book',
-        tooltip: { title: 'Sync Graph from Book', short: 'Pull characters, locations, lore, and scenes into nodes.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -381,49 +572,34 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       el('button', {
         className: 'bv-mini-btn',
         text: 'Fit',
-        tooltip: { title: 'Fit Canvas View', short: 'Center and scale viewport across all placed nodes.' },
+        tooltip: { title: 'Fit Canvas (Shift+1)', short: 'Frame the entire graph cleanly inside the viewport.' },
         attrs: { type: 'button' },
-        on: {
-          click: () => {
-            if (visibleNodes.length === 0) {
-              panX = 0;
-              panY = 0;
-              zoomScale = 1;
-            } else {
-              const minX = Math.min(...visibleNodes.map((n) => n.x)) - 48;
-              const maxX = Math.max(...visibleNodes.map((n) => n.x + 210)) + 48;
-              const minY = Math.min(...visibleNodes.map((n) => n.y)) - 48;
-              const maxY = Math.max(...visibleNodes.map((n) => n.y + 110)) + 48;
-              const cw = Math.max(480, canvasWrap.clientWidth);
-              const ch = Math.max(360, canvasWrap.clientHeight);
-              const bw = Math.max(240, maxX - minX);
-              const bh = Math.max(200, maxY - minY);
-              zoomScale = Math.max(0.45, Math.min(1.15, Number(Math.min(cw / bw, ch / bh).toFixed(2))));
-              panX = Math.round((cw - bw * zoomScale) / 2 - minX * zoomScale);
-              panY = Math.round((ch - bh * zoomScale) / 2 - minY * zoomScale);
-            }
-            renderGraphView(container, actions);
-          },
-        },
+        on: { click: () => fitCanvas() },
       }),
       el('button', {
         className: 'bv-mini-btn',
-        text: 'Undo',
-        tooltip: { title: 'Undo Graph Change (Ctrl+Z)', short: 'Revert the previous graph change.' },
-        attrs: { type: 'button', disabled: !actions.canUndo() },
-        on: { click: () => actions.undo() },
+        text: '.canvas',
+        tooltip: { title: 'Export .canvas JSON', short: 'Save lossless JSON Canvas board file.' },
+        attrs: { type: 'button' },
+        on: { click: exportCanvasJson },
       }),
       el('button', {
         className: 'bv-mini-btn',
-        text: 'Redo',
-        tooltip: { title: 'Redo Graph Change (Ctrl+Y)', short: 'Re-apply the reverted graph change.' },
-        attrs: { type: 'button', disabled: !actions.canRedo() },
-        on: { click: () => actions.redo() },
+        text: 'Import',
+        tooltip: { title: 'Import .canvas JSON', short: 'Load an existing .canvas spatial board into this book.' },
+        attrs: { type: 'button' },
+        on: { click: () => canvasImportInput.click() },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'PNG',
+        tooltip: { title: 'Export High-Res PNG', short: 'Render full spatial board to PNG image.' },
+        attrs: { type: 'button' },
+        on: { click: exportHighResPng },
       }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'SVG',
-        tooltip: { title: 'Export Graph as SVG', short: 'Save clean vector diagram of the story graph.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -442,604 +618,1162 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       }),
       el('button', {
         className: 'bv-mini-btn',
-        text: '−',
-        tooltip: { title: 'Zoom Out', short: 'Shrink graph canvas.' },
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            zoomScale = Math.max(0.45, Number((zoomScale - 0.1).toFixed(2)));
-            renderGraphView(container, actions);
-          },
-        },
+        text: 'Undo',
+        attrs: { type: 'button', disabled: !actions.canUndo() },
+        on: { click: () => actions.undo() },
       }),
-      el('span', { className: 'bv-mono-tag', text: `${Math.round(zoomScale * 100)}%` }),
       el('button', {
         className: 'bv-mini-btn',
-        text: '+',
-        tooltip: { title: 'Zoom In', short: 'Magnify graph canvas.' },
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            zoomScale = Math.min(1.8, Number((zoomScale + 0.1).toFixed(2)));
-            renderGraphView(container, actions);
-          },
-        },
+        text: 'Redo',
+        attrs: { type: 'button', disabled: !actions.canRedo() },
+        on: { click: () => actions.redo() },
       }),
     ),
   );
 
-  const viewport = el('div', {
-    className: 'bv-graph-viewport',
-    style: {
-      transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`,
-    },
-  });
-
-  const svg = svgEl('svg', {
-    class: 'bv-graph-svg',
-    width: 1,
-    height: 1,
-  });
-  const defs = svgEl('defs');
-  const marker = svgEl('marker', {
-    id: 'bv-arrow',
-    markerWidth: 8,
-    markerHeight: 8,
-    refX: 7,
-    refY: 3.5,
-    orient: 'auto',
-  });
-  marker.appendChild(svgEl('path', { d: 'M0,0 L8,3.5 L0,7 z', fill: '#8e96a4' }));
-  defs.appendChild(marker);
-  svg.appendChild(defs);
-
-  // Rubber-band line during drag-to-connect from node port
-  const rubberLine = svgEl('path', {
-    fill: 'none',
-    stroke: '#67b08c',
-    'stroke-width': '2',
-    'stroke-dasharray': '5 4',
-    visibility: 'hidden',
-  });
-
-  const nodeMap = new Map(visibleNodes.map((n) => [n.id, n]));
-  const nodeCards = new Map<string, HTMLElement>();
-
-  interface EdgeRenderRef {
-    edge: StoryGraphEdge;
-    pathEl: SVGPathElement;
-    labelEl: SVGTextElement;
-    pillEl: SVGRectElement;
+  // Scoped Shift+1 (Fit All) & Shift+2 (Zoom to Selection) shortcuts
+  if (activeGraphKeyHandler) {
+    window.removeEventListener('keydown', activeGraphKeyHandler);
   }
-  const edgeRefs: EdgeRenderRef[] = [];
-  const labelLayer = svgEl('g');
+  activeGraphKeyHandler = (e: KeyboardEvent) => {
+    if (!document.body.contains(container)) {
+      window.removeEventListener('keydown', activeGraphKeyHandler!);
+      return;
+    }
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+    if (e.shiftKey && e.code === 'Digit1') {
+      e.preventDefault();
+      fitCanvas();
+    } else if (e.shiftKey && e.code === 'Digit2') {
+      e.preventDefault();
+      const targetNodes = graph.nodes.filter(
+        (n) => selectedNodeIds.has(n.id) || n.id === state.activeGraphNodeId,
+      );
+      if (targetNodes.length > 0) fitCanvas(targetNodes);
+    }
+  };
+  window.addEventListener('keydown', activeGraphKeyHandler);
 
-  const queryLower = graphSearchQuery.trim().toLowerCase();
+  canvasWrap = el('div', { className: 'bv-graph-canvas-wrap' });
 
-  for (const edge of visibleEdges) {
-    const src = nodeMap.get(edge.sourceId);
-    const dst = nodeMap.get(edge.targetId);
-    if (!src || !dst) continue;
-
-    const sBox = nodeCardBox(src);
-    const dBox = nodeCardBox(dst);
-    const ports = computeExactPortConnection(src, sBox, dst, dBox);
-    const geom = computeEdgeSvgPath(
-      ports.sx,
-      ports.sy,
-      ports.tx,
-      ports.ty,
-      edgeRouting,
-      ports.outDir,
-      ports.inDir,
+  if (graphViewMode === 'force') {
+    // ================= FORCE-DIRECTED GRAPH MODE (2D CANVAS @ 60FPS) =================
+    const sim = new ForceGraphSimulation(
+      { nodes: visibleNodes, edges: visibleEdges, groups: graph.groups, colorRules: graph.colorRules },
+      460,
+      310,
     );
+    const nodeById = new Map(visibleNodes.map((n) => [n.id, n]));
+    const canvas = document.createElement('canvas');
+    canvas.className = 'qv-force-canvas';
+    canvasWrap.appendChild(canvas);
 
-    const isEdgeSelected = edge.id === selectedEdgeId;
-    const isIncidentToSelected =
-      Boolean(state.activeGraphNodeId) &&
-      (edge.sourceId === state.activeGraphNodeId || edge.targetId === state.activeGraphNodeId);
+    let hoverNodeId: string | null = null;
+    let draggedBodyId: string | null = null;
+    let draggedMoved = false;
 
-    const pathEl = svgEl('path', {
-      d: geom.d,
-      fill: 'none',
-      stroke: isEdgeSelected
-        ? '#f2efe8'
-        : isIncidentToSelected
-          ? '#c7a97b'
-          : edge.color || '#6e7684',
-      'stroke-width': isEdgeSelected || isIncidentToSelected ? '2.2' : '1.4',
-      'stroke-opacity': queryLower && !isIncidentToSelected ? '0.28' : '0.92',
-      'stroke-dasharray': edge.style === 'dashed' ? '5 4' : '',
-      'marker-end': 'url(#bv-arrow)',
-    });
-    pathEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      selectedEdgeId = edge.id;
-      actions.setState({ activeGraphNodeId: '' }, true);
-    });
-
-    const pillW = Math.max(30, edge.label.length * 6.4 + 12);
-    const pillEl = svgEl('rect', {
-      x: Math.round(geom.labelX - pillW / 2),
-      y: Math.round(geom.labelY - 12),
-      width: Math.round(pillW),
-      height: 16,
-      rx: 4,
-      fill: 'var(--bg-bar)',
-      'fill-opacity': showEdgeLabels ? '0.94' : '0',
-      stroke: isEdgeSelected ? 'var(--accent-ivory)' : 'var(--border-hairline)',
-      'stroke-width': '1',
-      visibility: showEdgeLabels ? 'visible' : 'hidden',
-    });
-
-    const labelEl = svgEl('text', {
-      x: Math.round(geom.labelX),
-      y: Math.round(geom.labelY),
-      fill: isEdgeSelected || isIncidentToSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
-      'font-size': '10.5',
-      'text-anchor': 'middle',
-      'font-family': 'Inter, sans-serif',
-      visibility: showEdgeLabels ? 'visible' : 'hidden',
-    });
-    labelEl.textContent = edge.label;
-
-    const selectEdge = (e: Event) => {
-      e.stopPropagation();
-      selectedEdgeId = edge.id;
-      actions.setState({ activeGraphNodeId: '' }, true);
-    };
-    pillEl.addEventListener('click', selectEdge);
-    labelEl.addEventListener('click', selectEdge);
-
-    svg.appendChild(pathEl);
-    labelLayer.append(pillEl, labelEl);
-    edgeRefs.push({ edge, pathEl, labelEl, pillEl });
-  }
-
-  svg.append(labelLayer, rubberLine);
-  viewport.appendChild(svg);
-
-  // Real-time 60fps edge updater called on EVERY pointermove frame while dragging a node card (or '' for all edges)
-  const updateConnectedEdgesLive = (movedNodeId: string) => {
-    for (const ref of edgeRefs) {
-      if (movedNodeId && ref.edge.sourceId !== movedNodeId && ref.edge.targetId !== movedNodeId) continue;
-      const src = nodeMap.get(ref.edge.sourceId);
-      const dst = nodeMap.get(ref.edge.targetId);
-      if (!src || !dst) continue;
-      const sBox = nodeCardBox(src, nodeCards.get(src.id));
-      const dBox = nodeCardBox(dst, nodeCards.get(dst.id));
-      const ports = computeExactPortConnection(src, sBox, dst, dBox);
-      const geom = computeEdgeSvgPath(
-        ports.sx,
-        ports.sy,
-        ports.tx,
-        ports.ty,
-        edgeRouting,
-        ports.outDir,
-        ports.inDir,
-      );
-      ref.pathEl.setAttribute('d', geom.d);
-      const pillW = Math.max(30, ref.edge.label.length * 6.4 + 12);
-      ref.pillEl.setAttribute('x', String(Math.round(geom.labelX - pillW / 2)));
-      ref.pillEl.setAttribute('y', String(Math.round(geom.labelY - 12)));
-      ref.labelEl.setAttribute('x', String(Math.round(geom.labelX)));
-      ref.labelEl.setAttribute('y', String(Math.round(geom.labelY)));
-    }
-  };
-
-  let draggingNodeId: string | null = null;
-  let dragOffsetX = 0;
-  let dragOffsetY = 0;
-  let movedNode = false;
-
-  let portDragSourceId: string | null = null;
-  let portDragSide: 'left' | 'right' = 'right';
-
-  let panning = false;
-  let panStartClientX = 0;
-  let panStartClientY = 0;
-  let panOriginX = 0;
-  let panOriginY = 0;
-
-  let activeWinMove: ((ev: PointerEvent) => void) | null = null;
-  let activeWinUp: ((ev: PointerEvent) => void) | null = null;
-
-  const detachGlobalDrag = () => {
-    if (activeWinMove) {
-      window.removeEventListener('pointermove', activeWinMove);
-      activeWinMove = null;
-    }
-    if (activeWinUp) {
-      window.removeEventListener('pointerup', activeWinUp);
-      window.removeEventListener('pointercancel', activeWinUp);
-      activeWinUp = null;
-    }
-  };
-
-  const attachGlobalDrag = () => {
-    detachGlobalDrag();
-    activeWinMove = (ev: PointerEvent) => {
-      if (!canvasWrap.isConnected) {
-        detachGlobalDrag();
-        return;
-      }
-      handlePointerMove(ev);
-    };
-    activeWinUp = (ev: PointerEvent) => {
-      detachGlobalDrag();
-      if (!canvasWrap.isConnected) return;
-      handlePointerUp(ev);
-    };
-    window.addEventListener('pointermove', activeWinMove);
-    window.addEventListener('pointerup', activeWinUp);
-    window.addEventListener('pointercancel', activeWinUp);
-  };
-
-  const handlePointerMove = (e: PointerEvent) => {
-    if (portDragSourceId) {
-      const srcNode = nodeMap.get(portDragSourceId);
-      if (!srcNode) return;
-      const wrapRect = canvasWrap.getBoundingClientRect();
-      const curX = (e.clientX - wrapRect.left - panX) / zoomScale;
-      const curY = (e.clientY - wrapRect.top - panY) / zoomScale;
-      const box = nodeCardBox(srcNode, nodeCards.get(srcNode.id));
-      const sx = portDragSide === 'right' ? srcNode.x + box.w : srcNode.x;
-      const sy = srcNode.y + box.h / 2;
-      rubberLine.setAttribute('d', `M ${sx} ${sy} L ${curX.toFixed(1)} ${curY.toFixed(1)}`);
-      return;
-    }
-
-    if (draggingNodeId) {
-      movedNode = true;
-      let nx = Math.round(e.clientX / zoomScale - dragOffsetX);
-      let ny = Math.round(e.clientY / zoomScale - dragOffsetY);
-      if (snapToGrid) {
-        nx = Math.round(nx / 24) * 24;
-        ny = Math.round(ny / 24) * 24;
-      }
-      const targetCard = nodeCards.get(draggingNodeId);
-      if (targetCard) {
-        targetCard.style.left = `${nx}px`;
-        targetCard.style.top = `${ny}px`;
-      }
-      const nodeRef = nodeMap.get(draggingNodeId);
-      if (nodeRef) {
-        nodeRef.x = nx;
-        nodeRef.y = ny;
-      }
-      // Live connector update every pointer frame during drag!
-      updateConnectedEdgesLive(draggingNodeId);
-    } else if (panning) {
-      panX = Math.round(panOriginX + (e.clientX - panStartClientX));
-      panY = Math.round(panOriginY + (e.clientY - panStartClientY));
-      viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
-      syncCanvasGrid();
-    }
-  };
-
-  const handlePointerUp = (e: PointerEvent) => {
-    if (portDragSourceId) {
-      const srcId = portDragSourceId;
-      portDragSourceId = null;
-      rubberLine.setAttribute('visibility', 'hidden');
-      const dropTargetEl = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>(
-        '.bv-graph-node',
-      );
-      const targetId = dropTargetEl?.dataset.nodeId;
-      if (targetId && targetId !== srcId) {
-        let createdEdgeId = '';
-        withGraph(actions, (g) => {
-          const res = addGraphEdge(g, srcId, targetId, 'connects to');
-          createdEdgeId = res.edge?.id ?? '';
-          return res.graph;
-        }, false);
-        selectedEdgeId = createdEdgeId;
-        actions.setState({ activeGraphNodeId: '' }, true);
-      }
-      return;
-    }
-
-    if (draggingNodeId) {
-      const id = draggingNodeId;
-      draggingNodeId = null;
-      if (movedNode) {
-        const moved = nodeMap.get(id);
-        if (moved) {
-          withGraph(actions, (g) => updateGraphNode(g, id, { x: moved.x, y: moved.y }));
-        }
-      } else {
-        selectedEdgeId = '';
-        actions.setState({ activeGraphNodeId: id }, true);
-      }
-    }
-    panning = false;
-  };
-
-  for (const node of visibleNodes) {
-    const isSelected = node.id === state.activeGraphNodeId;
-    const isSource = connectMode && node.id === connectSourceId;
-    const matchesSearch =
-      !queryLower ||
-      `${node.label} ${node.subtitle} ${node.notes}`.toLowerCase().includes(queryLower);
-
-    const makePort = (side: 'left' | 'right') =>
-      el('div', {
-        className: `bv-graph-port is-${side}`,
-        tooltip: { title: 'Drag to Connect', short: 'Drag from this port to another node to create a link.' },
+    const addSliderRow = (
+      label: string,
+      min: number,
+      max: number,
+      step: number,
+      value: number,
+      onChange: (v: number) => void,
+    ) => {
+      const valLbl = el('span', { className: 'bv-mono-tag', text: String(value) });
+      const inp = el('input', {
+        attrs: { type: 'range', min, max, step, value },
         on: {
-          pointerdown: (e) => {
-            if (e.button !== 0) return;
-            e.stopPropagation();
-            portDragSourceId = node.id;
-            portDragSide = side;
-            const box = nodeCardBox(node, nodeCards.get(node.id));
-            const sx = side === 'right' ? node.x + box.w : node.x;
-            const sy = node.y + box.h / 2;
-            rubberLine.setAttribute('d', `M ${sx} ${sy} L ${sx} ${sy}`);
-            rubberLine.setAttribute('visibility', 'visible');
-            attachGlobalDrag();
+          input: () => {
+            const v = Number(inp.value);
+            valLbl.textContent = String(v);
+            onChange(v);
           },
         },
       });
-
-    const countBadge = edgeCounts.get(node.id) ?? 0;
-    const cardChildren = [
-      el(
+      return el(
         'div',
-        { className: 'bv-graph-node-head' },
-        el('span', {
-          className: 'bv-mono-tag',
-          text: GRAPH_KIND_LABELS[node.kind],
-          style: { color: node.color || GRAPH_KIND_COLORS[node.kind] },
-        }),
-        ...(graphDensity === 'detailed'
-          ? [el('span', { className: 'bv-mono-tag', text: `${countBadge} link${countBadge === 1 ? '' : 's'}` })]
-          : []),
-      ),
-      el('div', {
-        text: node.label,
-        style: { fontWeight: '600', fontSize: graphDensity === 'compact' ? '11.5px' : '12.5px' },
-      }),
-      ...(graphDensity !== 'compact' && node.subtitle
-        ? [el('div', { className: 'bv-label', text: node.subtitle })]
-        : []),
-      ...(graphDensity === 'detailed' && node.notes
-        ? [el('div', { className: 'bv-graph-note-excerpt', text: node.notes })]
-        : []),
-      makePort('left'),
-      makePort('right'),
-    ];
+        { className: 'bv-field', style: { marginBottom: '2px' } },
+        el('div', { style: { display: 'flex', justifyContent: 'space-between' } }, el('label', { className: 'bv-label', text: label }), valLbl),
+        inp,
+      );
+    };
 
-    const card = el(
-      'div',
+    const depthSel = el(
+      'select',
       {
-        className: `bv-graph-node is-${graphDensity}${isSelected ? ' is-selected' : ''}${isSource ? ' is-connect-source' : ''}${!matchesSearch ? ' is-dimmed' : ''}`,
-        dataset: { nodeId: node.id },
-        style: {
-          left: `${node.x}px`,
-          top: `${node.y}px`,
-          borderTop: `3px solid ${node.color || GRAPH_KIND_COLORS[node.kind]}`,
-        },
+        className: 'bv-input',
         on: {
-          pointerdown: (e) => {
-            if (e.button !== 0) return;
-            e.stopPropagation();
-            if (connectMode) {
-              if (!connectSourceId) {
-                connectSourceId = node.id;
-                renderGraphView(container, actions);
-              } else if (connectSourceId !== node.id) {
-                const srcId = connectSourceId;
-                connectSourceId = '';
-                connectMode = false;
-                let createdEdgeId = '';
-                withGraph(actions, (g) => {
-                  const res = addGraphEdge(g, srcId, node.id, 'connects to');
-                  createdEdgeId = res.edge?.id ?? '';
-                  return res.graph;
-                }, false);
-                selectedEdgeId = createdEdgeId;
-                actions.setState({ activeGraphNodeId: '' }, true);
-              }
-              return;
-            }
-
-            draggingNodeId = node.id;
-            movedNode = false;
-            dragOffsetX = e.clientX / zoomScale - node.x;
-            dragOffsetY = e.clientY / zoomScale - node.y;
-            attachGlobalDrag();
-          },
-          dblclick: (e) => {
-            e.stopPropagation();
-            if (node.kind === 'scene' && node.refId) {
-              actions.selectScene(node.refId, true);
-            } else if (
-              (node.kind === 'character' || node.kind === 'location' || node.kind === 'lore') &&
-              node.refId
-            ) {
-              const cat =
-                node.kind === 'character'
-                  ? 'characters'
-                  : node.kind === 'location'
-                    ? 'locations'
-                    : 'lore';
-              actions.openBibleEntry(cat, node.refId);
-            }
+          change: () => {
+            hopDepthFilter = Number(depthSel.value) as 0 | 1 | 2 | 3;
+            renderGraphView(container, actions);
           },
         },
       },
-      ...cardChildren,
+      el('option', { text: 'Depth: All Nodes', attrs: { value: '0', selected: hopDepthFilter === 0 } }),
+      el('option', { text: '1-Hop Neighbors', attrs: { value: '1', selected: hopDepthFilter === 1 } }),
+      el('option', { text: '2-Hop Cluster', attrs: { value: '2', selected: hopDepthFilter === 2 } }),
+      el('option', { text: '3-Hop Reach', attrs: { value: '3', selected: hopDepthFilter === 3 } }),
     );
-    nodeCards.set(node.id, card);
-    viewport.appendChild(card);
 
-    attachContextMenu(card, () => [
+    const pathFromSel = el(
+      'select',
       {
-        heading: node.label,
-        items: [
-          {
-            label: 'Inspect Node',
-            onSelect: () => {
-              selectedEdgeId = '';
-              actions.setState({ activeGraphNodeId: node.id }, true);
-            },
+        className: 'bv-input',
+        on: {
+          change: () => {
+            pathSourceId = pathFromSel.value;
+            renderGraphView(container, actions);
           },
-          {
-            label: 'Connect From This Node',
-            icon: 'graph',
-            onSelect: () => {
-              connectMode = true;
-              connectSourceId = node.id;
-              renderGraphView(container, actions);
-              actions.notify(`Click another node to link from "${node.label}"`);
-            },
-          },
-          ...(node.refId && (node.kind === 'scene' || node.kind === 'character' || node.kind === 'location' || node.kind === 'lore')
-            ? [
-                {
-                  label: node.kind === 'scene' ? 'Open Linked Scene' : 'Open Linked Bible Card',
-                  onSelect: () => {
-                    if (node.kind === 'scene' && node.refId) {
-                      actions.selectScene(node.refId, true);
-                    } else if (node.refId) {
-                      const cat =
-                        node.kind === 'character'
-                          ? 'characters'
-                          : node.kind === 'location'
-                            ? 'locations'
-                            : 'lore';
-                      actions.openBibleEntry(cat, node.refId);
-                    }
-                  },
-                },
-              ]
-            : []),
-        ],
+        },
       },
+      el('option', { text: 'Path Start…', attrs: { value: '', selected: !pathSourceId } }),
+      ...graph.nodes.map((n) => el('option', { text: n.label, attrs: { value: n.id, selected: pathSourceId === n.id } })),
+    );
+    const pathToSel = el(
+      'select',
       {
-        items: [
-          {
-            label: 'Remove Node',
-            icon: 'trash',
-            danger: true,
-            onSelect: () => withGraph(actions, (g) => deleteGraphNode(g, node.id)),
+        className: 'bv-input',
+        on: {
+          change: () => {
+            pathTargetId = pathToSel.value;
+            renderGraphView(container, actions);
           },
-        ],
+        },
       },
-    ]);
-  }
+      el('option', { text: 'Path Target…', attrs: { value: '', selected: !pathTargetId } }),
+      ...graph.nodes.map((n) => el('option', { text: n.label, attrs: { value: n.id, selected: pathTargetId === n.id } })),
+    );
 
-  applySearchHighlight = () => {
-    const q = graphSearchQuery.trim().toLowerCase();
-    for (const node of visibleNodes) {
-      const card = nodeCards.get(node.id);
-      if (!card) continue;
-      const matches =
-        !q || `${node.label} ${node.subtitle} ${node.notes}`.toLowerCase().includes(q);
-      card.classList.toggle('is-dimmed', !matches);
+    const hud = el(
+      'div',
+      { className: 'qv-force-hud' },
+      el('span', { className: 'bv-panel-title', text: 'Force Simulation' }),
+      addSliderRow('Center Gravity', 0.01, 0.25, 0.01, forceParams.centerForce, (v) => (forceParams.centerForce = v)),
+      addSliderRow('Repulsion', 1200, 14000, 200, forceParams.repelForce, (v) => (forceParams.repelForce = v)),
+      addSliderRow('Link Tension', 0.02, 0.4, 0.02, forceParams.linkForce, (v) => (forceParams.linkForce = v)),
+      addSliderRow('Link Spacing', 60, 320, 10, forceParams.linkDistance, (v) => (forceParams.linkDistance = v)),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Local Hop Filter' }), depthSel),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Shortest Path Tracer' }), pathFromSel, pathToSel),
+      highlightedPath
+        ? el('div', { className: 'bv-mono-tag', text: `Path: ${highlightedPath.nodeIds.length - 1} steps` })
+        : null,
+    );
+    hud.addEventListener('pointerdown', (e) => e.stopPropagation());
+    canvasWrap.appendChild(hud);
+
+    const toWorld = (clientX: number, clientY: number) => {
+      const r = canvas.getBoundingClientRect();
+      return {
+        x: (clientX - r.left - panX) / zoomScale,
+        y: (clientY - r.top - panY) / zoomScale,
+      };
+    };
+
+    const pickBodyAt = (wx: number, wy: number) => {
+      for (const b of sim.bodies.values()) {
+        if (Math.hypot(wx - b.x, wy - b.y) <= b.radius + 6) return b;
+      }
+      return null;
+    };
+
+    let forcePanning = false;
+    let fPanX = 0;
+    let fPanY = 0;
+    let fOrigPanX = panX;
+    let fOrigPanY = panY;
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.08 : -0.08;
+      zoomScale = Math.max(0.25, Math.min(2.5, Number((zoomScale + delta).toFixed(2))));
+    }, { passive: false });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      const w = toWorld(e.clientX, e.clientY);
+      const hit = pickBodyAt(w.x, w.y);
+      if (hit) {
+        draggedBodyId = hit.id;
+        draggedMoved = false;
+        hit.pinned = true;
+      } else {
+        forcePanning = true;
+        fPanX = e.clientX;
+        fPanY = e.clientY;
+        fOrigPanX = panX;
+        fOrigPanY = panY;
+      }
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      const w = toWorld(e.clientX, e.clientY);
+      if (draggedBodyId) {
+        draggedMoved = true;
+        const body = sim.bodies.get(draggedBodyId);
+        if (body) {
+          body.x = w.x;
+          body.y = w.y;
+          body.vx = 0;
+          body.vy = 0;
+        }
+        return;
+      }
+      if (forcePanning) {
+        panX = fOrigPanX + (e.clientX - fPanX);
+        panY = fOrigPanY + (e.clientY - fPanY);
+        return;
+      }
+      const hit = pickBodyAt(w.x, w.y);
+      hoverNodeId = hit?.id ?? null;
+      canvas.style.cursor = hit ? 'pointer' : 'grab';
+    });
+
+    canvas.addEventListener('pointerup', () => {
+      if (draggedBodyId) {
+        const id = draggedBodyId;
+        const b = sim.bodies.get(id);
+        draggedBodyId = null;
+        if (b && draggedMoved) {
+          withGraph(actions, (g) => updateGraphNode(g, id, { x: Math.round(b.x), y: Math.round(b.y), pinned: true }));
+        } else {
+          selectedEdgeId = '';
+          actions.setState({ activeGraphNodeId: id }, true);
+        }
+      }
+      forcePanning = false;
+    });
+
+    const drawFrame = () => {
+      if (!canvas.isConnected) return;
+      const rect = canvasWrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const cw = Math.max(300, Math.floor(rect.width));
+      const ch = Math.max(240, Math.floor(rect.height));
+      if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
+        canvas.width = cw * dpr;
+        canvas.height = ch * dpr;
+      }
+      sim.step(forceParams);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = '#07080a';
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.translate(panX, panY);
+        ctx.scale(zoomScale, zoomScale);
+
+        const qLower = graphSearchQuery.trim().toLowerCase();
+        const activeId = hoverNodeId || state.activeGraphNodeId;
+
+        for (const e of visibleEdges) {
+          const sa = sim.bodies.get(e.sourceId);
+          const sb = sim.bodies.get(e.targetId);
+          if (!sa || !sb) continue;
+          const isPathEdge = pathEdgeSet.has(e.id);
+          const isIncident = Boolean(activeId) && (e.sourceId === activeId || e.targetId === activeId);
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = isPathEdge ? '#f0c674' : isIncident ? '#c7a97b' : e.color || '#4a5263';
+          ctx.lineWidth = isPathEdge ? 3 : isIncident ? 2 : 1.1;
+          ctx.globalAlpha = activeId && !isIncident && !isPathEdge ? 0.22 : 0.85;
+          if (e.style === 'dashed') ctx.setLineDash([5, 4]);
+          else if (e.style === 'dotted') ctx.setLineDash([2, 3]);
+          ctx.moveTo(sa.x, sa.y);
+          ctx.lineTo(sb.x, sb.y);
+          ctx.stroke();
+          if (showEdgeLabels && zoomScale >= 0.7 && e.label && (isIncident || isPathEdge)) {
+            ctx.fillStyle = '#d4dae6';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(e.label, (sa.x + sb.x) / 2, (sa.y + sb.y) / 2 - 5);
+          }
+          ctx.restore();
+        }
+
+        for (const b of sim.bodies.values()) {
+          const node = nodeById.get(b.id);
+          if (!node) continue;
+          const fill = resolveNodeColorByRules(node, graph.colorRules);
+          const matchesQuery =
+            !qLower || `${node.label} ${node.subtitle} ${(node.tags ?? []).join(' ')}`.toLowerCase().includes(qLower);
+          const isPath = pathNodeSet.has(node.id);
+          const isSel = node.id === activeId;
+          ctx.save();
+          ctx.globalAlpha = matchesQuery ? 1 : 0.2;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          ctx.lineWidth = isPath || isSel ? 2.5 : 1;
+          ctx.strokeStyle = isPath ? '#f0c674' : isSel ? '#ffffff' : '#0b0d12';
+          ctx.stroke();
+          if (node.pinned) {
+            ctx.fillStyle = '#0b0d12';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = '#eceef2';
+          ctx.font = isSel ? '600 12px Inter, sans-serif' : '500 11px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(node.label, b.x, b.y + b.radius + 13);
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+      activeForceRafId = requestAnimationFrame(drawFrame);
+    };
+    activeForceRafId = requestAnimationFrame(drawFrame);
+  } else {
+    // ================= SPATIAL STORYBOARD MODE =================
+    const viewport = el('div', {
+      className: 'bv-graph-viewport',
+      style: {
+        transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`,
+      },
+    });
+
+    const syncCanvasGrid = () => {
+      const step = Math.max(8, Math.round(24 * zoomScale));
+      canvasWrap.style.backgroundPosition = `${panX}px ${panY}px`;
+      canvasWrap.style.backgroundSize = `${step}px ${step}px`;
+    };
+    syncCanvasGrid();
+
+    // Render Act / Section Group Frames first
+    for (const grp of graph.groups ?? []) {
+      const grpEl = el(
+        'div',
+        {
+          className: `qv-graph-group${grp.id === selectedGroupId ? ' is-selected' : ''}`,
+          style: {
+            left: `${grp.x}px`,
+            top: `${grp.y}px`,
+            width: `${grp.width}px`,
+            height: `${grp.collapsed ? 34 : grp.height}px`,
+            borderColor: grp.color || '#c7a97b',
+          },
+        },
+        el(
+          'div',
+          {
+            className: 'qv-graph-group-head',
+            style: { color: grp.color || '#c7a97b' },
+          },
+          el('span', { text: grp.label }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: grp.collapsed ? 'Expand' : 'Hide',
+            attrs: { type: 'button' },
+            on: {
+              click: (ev) => {
+                ev.stopPropagation();
+                withGraph(actions, (g) => updateGraphGroup(g, grp.id, { collapsed: !grp.collapsed }));
+              },
+            },
+          }),
+        ),
+        !grp.collapsed ? el('div', { className: 'qv-graph-group-resize' }) : null,
+      );
+
+      // Drag group header to translate frame + all child cards inside it
+      const head = grpEl.querySelector<HTMLElement>('.qv-graph-group-head')!;
+      head.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        e.stopPropagation();
+        selectedGroupId = grp.id;
+        const sx = e.clientX;
+        const sy = e.clientY;
+        const origGx = grp.x;
+        const origGy = grp.y;
+        const childNodes = graph.nodes.filter((n) => isPointInGroup(n.x + 80, n.y + 36, grp));
+        const childOrigins = new Map(childNodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+        const onMove = (mv: PointerEvent) => {
+          const dx = Math.round((mv.clientX - sx) / zoomScale);
+          const dy = Math.round((mv.clientY - sy) / zoomScale);
+          grp.x = origGx + dx;
+          grp.y = origGy + dy;
+          grpEl.style.left = `${grp.x}px`;
+          grpEl.style.top = `${grp.y}px`;
+          for (const cn of childNodes) {
+            const o = childOrigins.get(cn.id)!;
+            cn.x = o.x + dx;
+            cn.y = o.y + dy;
+            const cEl = nodeCards.get(cn.id);
+            if (cEl) {
+              cEl.style.left = `${cn.x}px`;
+              cEl.style.top = `${cn.y}px`;
+            }
+          }
+          updateConnectedEdgesLive('');
+        };
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          withGraph(actions, (g) => {
+            let next = updateGraphGroup(g, grp.id, { x: grp.x, y: grp.y });
+            for (const cn of childNodes) {
+              next = updateGraphNode(next, cn.id, { x: cn.x, y: cn.y });
+            }
+            return next;
+          });
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      });
+
+      const resizer = grpEl.querySelector<HTMLElement>('.qv-graph-group-resize');
+      resizer?.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        const sx = e.clientX;
+        const sy = e.clientY;
+        const ow = grp.width;
+        const oh = grp.height;
+        const onMove = (mv: PointerEvent) => {
+          grp.width = Math.max(220, ow + Math.round((mv.clientX - sx) / zoomScale));
+          grp.height = Math.max(140, oh + Math.round((mv.clientY - sy) / zoomScale));
+          grpEl.style.width = `${grp.width}px`;
+          grpEl.style.height = `${grp.height}px`;
+        };
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          withGraph(actions, (g) => updateGraphGroup(g, grp.id, { width: grp.width, height: grp.height }));
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      });
+
+      attachContextMenu(grpEl, () => [
+        {
+          heading: grp.label,
+          items: [
+            {
+              label: 'Rename Group…',
+              onSelect: () => {
+                const name = window.prompt('Group Title', grp.label);
+                if (name !== null) withGraph(actions, (g) => updateGraphGroup(g, grp.id, { label: name }));
+              },
+            },
+            {
+              label: 'Delete Group Frame (Keep Cards)',
+              danger: true,
+              onSelect: () => withGraph(actions, (g) => deleteGraphGroup(g, grp.id)),
+            },
+          ],
+        },
+      ]);
+
+      viewport.appendChild(grpEl);
     }
-    for (const ref of edgeRefs) {
+
+    const svg = svgEl('svg', { class: 'bv-graph-svg', width: 1, height: 1 });
+    const defs = svgEl('defs');
+    const mkArrow = svgEl('marker', { id: 'bv-arrow', markerWidth: 8, markerHeight: 8, refX: 7, refY: 3.5, orient: 'auto' });
+    mkArrow.appendChild(svgEl('path', { d: 'M0,0 L8,3.5 L0,7 z', fill: '#8e96a4' }));
+    const mkArrowStart = svgEl('marker', { id: 'bv-arrow-start', markerWidth: 8, markerHeight: 8, refX: 1, refY: 3.5, orient: 'auto' });
+    mkArrowStart.appendChild(svgEl('path', { d: 'M8,0 L0,3.5 L8,7 z', fill: '#8e96a4' }));
+    const mkDiamond = svgEl('marker', { id: 'bv-diamond', markerWidth: 10, markerHeight: 10, refX: 5, refY: 5, orient: 'auto' });
+    mkDiamond.appendChild(svgEl('path', { d: 'M0,5 L5,1 L10,5 L5,9 z', fill: '#c7a97b' }));
+    const mkCircle = svgEl('marker', { id: 'bv-circle', markerWidth: 8, markerHeight: 8, refX: 4, refY: 4 });
+    mkCircle.appendChild(svgEl('circle', { cx: 4, cy: 4, r: 3, fill: '#67b08c' }));
+    defs.append(mkArrow, mkArrowStart, mkDiamond, mkCircle);
+    svg.appendChild(defs);
+
+    const rubberLine = svgEl('path', {
+      fill: 'none',
+      stroke: '#67b08c',
+      'stroke-width': '2',
+      'stroke-dasharray': '5 4',
+      visibility: 'hidden',
+    });
+
+    const nodeMap = new Map(visibleNodes.map((n) => [n.id, n]));
+    const nodeCards = new Map<string, HTMLElement>();
+
+    const allObstacleBoxes = (): RectBox[] =>
+      visibleNodes.map((n) => {
+        const b = nodeCardBox(n, nodeCards.get(n.id));
+        return { id: n.id, x: n.x, y: n.y, width: b.w, height: b.h };
+      });
+
+    interface EdgeRenderRef {
+      edge: StoryGraphEdge;
+      pathEl: SVGPathElement;
+      labelEl: SVGTextElement;
+      pillEl: SVGRectElement;
+      elbowHandleEl: SVGCircleElement | null;
+    }
+    const edgeRefs: EdgeRenderRef[] = [];
+    const labelLayer = svgEl('g');
+    const queryLower = graphSearchQuery.trim().toLowerCase();
+
+    const startInlineEdgeRename = (edge: StoryGraphEdge, lx: number, ly: number) => {
+      const inp = el('input', {
+        className: 'qv-graph-pill-editor',
+        attrs: { type: 'text', value: edge.label },
+        style: { left: `${lx}px`, top: `${ly}px` },
+      });
+      let done = false;
+      const commit = (save: boolean) => {
+        if (done) return;
+        done = true;
+        const val = inp.value;
+        inp.remove();
+        if (save) withGraph(actions, (g) => updateGraphEdge(g, edge.id, { label: val }));
+      };
+      inp.addEventListener('pointerdown', (e) => e.stopPropagation());
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') commit(false);
+        else if (e.key === 'Enter') commit(true);
+      });
+      inp.addEventListener('blur', () => commit(true));
+      viewport.appendChild(inp);
+      requestAnimationFrame(() => {
+        inp.focus();
+        inp.select();
+      });
+    };
+
+    const obstacles = allObstacleBoxes();
+    for (const edge of visibleEdges) {
+      const src = nodeMap.get(edge.sourceId);
+      const dst = nodeMap.get(edge.targetId);
+      if (!src || !dst) continue;
+
+      const sBox = nodeCardBox(src);
+      const dBox = nodeCardBox(dst);
+      const mode = edge.routingMode ?? edgeRouting;
+      const routed = routeConnector({
+        sourceBox: { id: src.id, x: src.x, y: src.y, width: sBox.w, height: sBox.h },
+        targetBox: { id: dst.id, x: dst.x, y: dst.y, width: dBox.w, height: dBox.h },
+        routingMode: mode,
+        sourceAnchor: edge.sourceAnchor ?? 'auto',
+        targetAnchor: edge.targetAnchor ?? 'auto',
+        elbowOffset: edge.elbowOffset ?? 0,
+        obstacles,
+      });
+
+      const isEdgeSelected = edge.id === selectedEdgeId;
+      const isPathEdge = pathEdgeSet.has(edge.id);
       const isIncidentToSelected =
         Boolean(state.activeGraphNodeId) &&
-        (ref.edge.sourceId === state.activeGraphNodeId || ref.edge.targetId === state.activeGraphNodeId);
-      ref.pathEl.setAttribute('stroke-opacity', q && !isIncidentToSelected ? '0.28' : '0.92');
+        (edge.sourceId === state.activeGraphNodeId || edge.targetId === state.activeGraphNodeId);
+
+      const pathEl = svgEl('path', {
+        d: routed.d,
+        fill: 'none',
+        stroke: isPathEdge
+          ? '#f0c674'
+          : isEdgeSelected
+            ? '#f2efe8'
+            : isIncidentToSelected
+              ? '#c7a97b'
+              : edge.color || '#6e7684',
+        'stroke-width': isPathEdge || isEdgeSelected || isIncidentToSelected ? '2.4' : '1.5',
+        'stroke-opacity': queryLower && !isIncidentToSelected ? '0.28' : '0.92',
+        'stroke-dasharray': edgeDashArray(edge.style),
+        'marker-start': markerUrlFor(edge.startArrow, 'start'),
+        'marker-end': markerUrlFor(edge.endArrow, 'end'),
+      });
+      pathEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedEdgeId = edge.id;
+        actions.setState({ activeGraphNodeId: '' }, true);
+      });
+
+      const pillW = Math.max(30, edge.label.length * 6.4 + 14);
+      const pillEl = svgEl('rect', {
+        x: Math.round(routed.labelPoint.x - pillW / 2),
+        y: Math.round(routed.labelPoint.y - 12),
+        width: Math.round(pillW),
+        height: 17,
+        rx: 4,
+        fill: 'var(--bg-bar)',
+        'fill-opacity': showEdgeLabels ? '0.95' : '0',
+        stroke: isEdgeSelected ? 'var(--accent-ivory)' : 'var(--border-hairline)',
+        'stroke-width': '1',
+        visibility: showEdgeLabels ? 'visible' : 'hidden',
+      });
+
+      const labelEl = svgEl('text', {
+        x: Math.round(routed.labelPoint.x),
+        y: Math.round(routed.labelPoint.y),
+        fill: isEdgeSelected || isIncidentToSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+        'font-size': '10.5',
+        'text-anchor': 'middle',
+        'font-family': 'Inter, sans-serif',
+        visibility: showEdgeLabels ? 'visible' : 'hidden',
+      });
+      labelEl.textContent = edge.label;
+
+      const selectEdge = (e: Event) => {
+        e.stopPropagation();
+        selectedEdgeId = edge.id;
+        actions.setState({ activeGraphNodeId: '' }, true);
+      };
+      pillEl.addEventListener('click', selectEdge);
+      labelEl.addEventListener('click', selectEdge);
+      pillEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startInlineEdgeRename(edge, routed.labelPoint.x, routed.labelPoint.y);
+      });
+      labelEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startInlineEdgeRename(edge, routed.labelPoint.x, routed.labelPoint.y);
+      });
+
+      let elbowHandleEl: SVGCircleElement | null = null;
+      if (isEdgeSelected && mode === 'elbow' && routed.midHandle) {
+        const mh = routed.midHandle;
+        elbowHandleEl = svgEl('circle', {
+          cx: mh.x,
+          cy: mh.y,
+          r: 6,
+          fill: '#c7a97b',
+          stroke: '#0b0d12',
+          'stroke-width': 2,
+          style: `cursor:${mh.axis === 'x' ? 'ew-resize' : 'ns-resize'}`,
+        });
+        elbowHandleEl.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          const sx = e.clientX;
+          const sy = e.clientY;
+          const origOff = edge.elbowOffset ?? 0;
+          const onMove = (mv: PointerEvent) => {
+            const delta = mh.axis === 'x' ? (mv.clientX - sx) / zoomScale : (mv.clientY - sy) / zoomScale;
+            edge.elbowOffset = Math.round(origOff + delta);
+            updateConnectedEdgesLive('');
+          };
+          const onUp = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            withGraph(actions, (g) => updateGraphEdge(g, edge.id, { elbowOffset: edge.elbowOffset ?? 0 }));
+          };
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+        labelLayer.appendChild(elbowHandleEl);
+      }
+
+      svg.appendChild(pathEl);
+      labelLayer.append(pillEl, labelEl);
+      edgeRefs.push({ edge, pathEl, labelEl, pillEl, elbowHandleEl });
     }
-  };
 
-  requestAnimationFrame(() => updateConnectedEdgesLive(''));
+    svg.append(labelLayer, rubberLine);
+    viewport.appendChild(svg);
 
-  const syncCanvasGrid = () => {
-    const step = Math.max(8, Math.round(24 * zoomScale));
-    canvasWrap.style.backgroundPosition = `${panX}px ${panY}px`;
-    canvasWrap.style.backgroundSize = `${step}px ${step}px`;
-  };
+    const updateConnectedEdgesLive = (movedNodeId: string) => {
+      const obs = allObstacleBoxes();
+      for (const ref of edgeRefs) {
+        if (movedNodeId && ref.edge.sourceId !== movedNodeId && ref.edge.targetId !== movedNodeId) continue;
+        const src = nodeMap.get(ref.edge.sourceId);
+        const dst = nodeMap.get(ref.edge.targetId);
+        if (!src || !dst) continue;
+        const sBox = nodeCardBox(src, nodeCards.get(src.id));
+        const dBox = nodeCardBox(dst, nodeCards.get(dst.id));
+        const routed = routeConnector({
+          sourceBox: { id: src.id, x: src.x, y: src.y, width: sBox.w, height: sBox.h },
+          targetBox: { id: dst.id, x: dst.x, y: dst.y, width: dBox.w, height: dBox.h },
+          routingMode: ref.edge.routingMode ?? edgeRouting,
+          sourceAnchor: ref.edge.sourceAnchor ?? 'auto',
+          targetAnchor: ref.edge.targetAnchor ?? 'auto',
+          elbowOffset: ref.edge.elbowOffset ?? 0,
+          obstacles: obs,
+        });
+        ref.pathEl.setAttribute('d', routed.d);
+        const pillW = Math.max(30, ref.edge.label.length * 6.4 + 14);
+        ref.pillEl.setAttribute('x', String(Math.round(routed.labelPoint.x - pillW / 2)));
+        ref.pillEl.setAttribute('y', String(Math.round(routed.labelPoint.y - 12)));
+        ref.labelEl.setAttribute('x', String(Math.round(routed.labelPoint.x)));
+        ref.labelEl.setAttribute('y', String(Math.round(routed.labelPoint.y)));
+        if (ref.elbowHandleEl && routed.midHandle) {
+          ref.elbowHandleEl.setAttribute('cx', String(routed.midHandle.x));
+          ref.elbowHandleEl.setAttribute('cy', String(routed.midHandle.y));
+        }
+      }
+    };
 
-  const canvasWrap = el(
-    'div',
-    {
-      className: 'bv-graph-canvas-wrap',
-      style: {
-        backgroundPosition: `${panX}px ${panY}px`,
-        backgroundSize: `${Math.max(8, Math.round(24 * zoomScale))}px ${Math.max(8, Math.round(24 * zoomScale))}px`,
-      },
-      on: {
-        wheel: (e) => {
-          e.preventDefault();
-          const step = e.deltaY < 0 ? 0.08 : -0.08;
-          zoomScale = Math.max(0.45, Math.min(1.8, Number((zoomScale + step).toFixed(2))));
-          viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
-          syncCanvasGrid();
-        },
-        pointerdown: (e) => {
-          if (e.button !== 0) return;
-          panning = true;
-          panStartClientX = e.clientX;
-          panStartClientY = e.clientY;
-          panOriginX = panX;
-          panOriginY = panY;
-          attachGlobalDrag();
-        },
-      },
-    },
-    viewport,
-  );
+    let draggingNodeId: string | null = null;
+    let dragOriginByNode = new Map<string, { x: number; y: number }>();
+    let dragStartWorldX = 0;
+    let dragStartWorldY = 0;
+    let movedNode = false;
 
-  attachContextMenu(canvasWrap, (e) => {
-    const cRect = canvasWrap.getBoundingClientRect();
-    const worldX = Math.round((e.clientX - cRect.left - panX) / zoomScale);
-    const worldY = Math.round((e.clientY - cRect.top - panY) / zoomScale);
-    return [
-      {
-        heading: 'Story Graph Canvas',
-        items: [
-          {
-            label: 'Add Node Here',
-            icon: 'plus',
-            onSelect: () => {
-              const kind = newKindSelect.value as GraphNodeKind;
-              let createdId = '';
-              withGraph(
-                actions,
-                (g) => {
-                  const res = addGraphNode(g, {
-                    kind,
-                    label: `New ${GRAPH_KIND_LABELS[kind]}`,
-                    x: worldX,
-                    y: worldY,
-                  });
-                  createdId = res.node.id;
-                  return res.graph;
-                },
-                false,
-              );
-              actions.setState({ activeGraphNodeId: createdId }, true);
+    let portDragSourceId: string | null = null;
+    let portDragSide: 'left' | 'right' | 'top' | 'bottom' = 'right';
+
+    let panning = false;
+    let panStartClientX = 0;
+    let panStartClientY = 0;
+    let panOriginX = 0;
+    let panOriginY = 0;
+    let marqueeBox: HTMLElement | null = null;
+    let marqueeStartX = 0;
+    let marqueeStartY = 0;
+
+    let activeWinMove: ((ev: PointerEvent) => void) | null = null;
+    let activeWinUp: ((ev: PointerEvent) => void) | null = null;
+
+    const detachGlobalDrag = () => {
+      if (activeWinMove) {
+        window.removeEventListener('pointermove', activeWinMove);
+        activeWinMove = null;
+      }
+      if (activeWinUp) {
+        window.removeEventListener('pointerup', activeWinUp);
+        window.removeEventListener('pointercancel', activeWinUp);
+        activeWinUp = null;
+      }
+    };
+
+    const attachGlobalDrag = () => {
+      detachGlobalDrag();
+      activeWinMove = (ev: PointerEvent) => {
+        if (!canvasWrap.isConnected) {
+          detachGlobalDrag();
+          return;
+        }
+        handlePointerMove(ev);
+      };
+      activeWinUp = (ev: PointerEvent) => {
+        detachGlobalDrag();
+        if (!canvasWrap.isConnected) return;
+        handlePointerUp(ev);
+      };
+      window.addEventListener('pointermove', activeWinMove);
+      window.addEventListener('pointerup', activeWinUp);
+      window.addEventListener('pointercancel', activeWinUp);
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (portDragSourceId) {
+        const srcNode = nodeMap.get(portDragSourceId);
+        if (!srcNode) return;
+        const wrapRect = canvasWrap.getBoundingClientRect();
+        const curX = (e.clientX - wrapRect.left - panX) / zoomScale;
+        const curY = (e.clientY - wrapRect.top - panY) / zoomScale;
+        const box = nodeCardBox(srcNode, nodeCards.get(srcNode.id));
+        const sx = portDragSide === 'right' ? srcNode.x + box.w : portDragSide === 'left' ? srcNode.x : srcNode.x + box.w / 2;
+        const sy = portDragSide === 'bottom' ? srcNode.y + box.h : portDragSide === 'top' ? srcNode.y : srcNode.y + box.h / 2;
+        rubberLine.setAttribute('d', `M ${sx} ${sy} L ${curX.toFixed(1)} ${curY.toFixed(1)}`);
+        return;
+      }
+
+      if (draggingNodeId) {
+        movedNode = true;
+        const curWorldX = e.clientX / zoomScale;
+        const curWorldY = e.clientY / zoomScale;
+        let dx = Math.round(curWorldX - dragStartWorldX);
+        let dy = Math.round(curWorldY - dragStartWorldY);
+        const anchorOrig = dragOriginByNode.get(draggingNodeId);
+        if (snapToGrid && anchorOrig) {
+          const snappedX = Math.round((anchorOrig.x + dx) / 24) * 24;
+          const snappedY = Math.round((anchorOrig.y + dy) / 24) * 24;
+          dx = snappedX - anchorOrig.x;
+          dy = snappedY - anchorOrig.y;
+        }
+        for (const [nid, orig] of dragOriginByNode.entries()) {
+          const nx = orig.x + dx;
+          const ny = orig.y + dy;
+          const cEl = nodeCards.get(nid);
+          if (cEl) {
+            cEl.style.left = `${nx}px`;
+            cEl.style.top = `${ny}px`;
+          }
+          const nRef = nodeMap.get(nid);
+          if (nRef) {
+            nRef.x = nx;
+            nRef.y = ny;
+          }
+          updateConnectedEdgesLive(nid);
+        }
+      } else if (marqueeBox) {
+        const left = Math.min(marqueeStartX, e.clientX);
+        const top = Math.min(marqueeStartY, e.clientY);
+        const width = Math.abs(e.clientX - marqueeStartX);
+        const height = Math.abs(e.clientY - marqueeStartY);
+        marqueeBox.style.left = `${left}px`;
+        marqueeBox.style.top = `${top}px`;
+        marqueeBox.style.width = `${width}px`;
+        marqueeBox.style.height = `${height}px`;
+      } else if (panning) {
+        panX = Math.round(panOriginX + (e.clientX - panStartClientX));
+        panY = Math.round(panOriginY + (e.clientY - panStartClientY));
+        viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+        syncCanvasGrid();
+      }
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      if (portDragSourceId) {
+        const srcId = portDragSourceId;
+        const srcAnchor = portDragSide;
+        portDragSourceId = null;
+        rubberLine.setAttribute('visibility', 'hidden');
+        const dropTargetEl = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.bv-graph-node');
+        const targetId = dropTargetEl?.dataset.nodeId;
+        if (targetId && targetId !== srcId) {
+          let createdEdgeId = '';
+          withGraph(actions, (g) => {
+            const res = addGraphEdge(g, srcId, targetId, 'connects to');
+            if (res.edge) {
+              res.edge.sourceAnchor = srcAnchor;
+              res.edge.routingMode = edgeRouting;
+            }
+            createdEdgeId = res.edge?.id ?? '';
+            return res.graph;
+          }, false);
+          selectedEdgeId = createdEdgeId;
+          actions.setState({ activeGraphNodeId: '' }, true);
+        } else {
+          // Dropped on empty space -> spawn a connected node right at cursor!
+          const wrapRect = canvasWrap.getBoundingClientRect();
+          const dropX = Math.round((e.clientX - wrapRect.left - panX) / zoomScale - 80);
+          const dropY = Math.round((e.clientY - wrapRect.top - panY) / zoomScale - 36);
+          if (Math.hypot(e.clientX - wrapRect.left, e.clientY - wrapRect.top) > 20) {
+            let newNodeId = '';
+            withGraph(actions, (g) => {
+              const nr = addGraphNode(g, { kind: 'note', label: 'Linked Idea', x: dropX, y: dropY });
+              newNodeId = nr.node.id;
+              const er = addGraphEdge(nr.graph, srcId, nr.node.id, 'leads to');
+              if (er.edge) {
+                er.edge.sourceAnchor = srcAnchor;
+                er.edge.routingMode = edgeRouting;
+              }
+              return er.graph;
+            }, false);
+            selectedEdgeId = '';
+            actions.setState({ activeGraphNodeId: newNodeId }, true);
+          }
+        }
+        return;
+      }
+
+      if (draggingNodeId) {
+        const id = draggingNodeId;
+        const movedEntries = Array.from(dragOriginByNode.keys());
+        draggingNodeId = null;
+        dragOriginByNode.clear();
+        if (movedNode) {
+          withGraph(actions, (g) => {
+            let next = g;
+            for (const nid of movedEntries) {
+              const moved = nodeMap.get(nid);
+              if (moved) next = updateGraphNode(next, nid, { x: moved.x, y: moved.y });
+            }
+            return next;
+          });
+        } else {
+          selectedEdgeId = '';
+          actions.setState({ activeGraphNodeId: id }, true);
+        }
+      }
+
+      if (marqueeBox) {
+        marqueeBox.remove();
+        marqueeBox = null;
+        const mL = Math.min(marqueeStartX, e.clientX);
+        const mT = Math.min(marqueeStartY, e.clientY);
+        const mR = Math.max(marqueeStartX, e.clientX);
+        const mB = Math.max(marqueeStartY, e.clientY);
+        selectedNodeIds.clear();
+        for (const [nid, cardEl] of nodeCards.entries()) {
+          const r = cardEl.getBoundingClientRect();
+          if (!(r.right < mL || r.left > mR || r.bottom < mT || r.top > mB)) {
+            selectedNodeIds.add(nid);
+          }
+        }
+        renderGraphView(container, actions);
+      }
+
+      panning = false;
+    };
+
+    for (const node of visibleNodes) {
+      const isSelected = node.id === state.activeGraphNodeId || selectedNodeIds.has(node.id);
+      const isSource = connectMode && node.id === connectSourceId;
+      const nodeColor = resolveNodeColorByRules(node, graph.colorRules);
+      const matchesSearch =
+        !queryLower ||
+        `${node.label} ${node.subtitle} ${node.notes} ${(node.tags ?? []).join(' ')}`.toLowerCase().includes(queryLower);
+
+      const makePort = (side: 'left' | 'right' | 'top' | 'bottom') =>
+        el('div', {
+          className: `bv-graph-port is-${side}`,
+          tooltip: { title: 'Drag Port to Connect or Spawn', short: 'Drop onto another card to connect, or onto empty canvas to spawn + connect.' },
+          on: {
+            pointerdown: (e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              portDragSourceId = node.id;
+              portDragSide = side;
+              const box = nodeCardBox(node, nodeCards.get(node.id));
+              const sx = side === 'right' ? node.x + box.w : side === 'left' ? node.x : node.x + box.w / 2;
+              const sy = side === 'bottom' ? node.y + box.h : side === 'top' ? node.y : node.y + box.h / 2;
+              rubberLine.setAttribute('d', `M ${sx} ${sy} L ${sx} ${sy}`);
+              rubberLine.setAttribute('visibility', 'visible');
+              attachGlobalDrag();
             },
           },
-          {
-            label: 'Auto-Layout Columns',
-            icon: 'grid-snap',
-            onSelect: () => withGraph(actions, (g) => applyAutoLayout(g)),
+        });
+
+      const countBadge = edgeCounts.get(node.id) ?? 0;
+      const cardChildren = [
+        el(
+          'div',
+          { className: 'bv-graph-node-head' },
+          el('span', {
+            className: 'bv-mono-tag',
+            text: GRAPH_KIND_LABELS[node.kind],
+            style: { color: nodeColor },
+          }),
+          ...(graphDensity === 'detailed'
+            ? [el('span', { className: 'bv-mono-tag', text: `${countBadge} link${countBadge === 1 ? '' : 's'}` })]
+            : []),
+        ),
+        el('div', {
+          text: node.label,
+          style: { fontWeight: '600', fontSize: graphDensity === 'compact' ? '11.5px' : '12.5px' },
+        }),
+        ...(graphDensity !== 'compact' && node.subtitle
+          ? [el('div', { className: 'bv-label', text: node.subtitle })]
+          : []),
+        ...(graphDensity === 'detailed' && node.notes
+          ? [el('div', { className: 'bv-graph-note-excerpt', text: node.notes })]
+          : []),
+        makePort('left'),
+        makePort('right'),
+        makePort('top'),
+        makePort('bottom'),
+      ];
+
+      const card = el(
+        'div',
+        {
+          className: `bv-graph-node is-${graphDensity}${isSelected ? ' is-selected' : ''}${isSource ? ' is-connect-source' : ''}${!matchesSearch ? ' is-dimmed' : ''}`,
+          dataset: { nodeId: node.id },
+          style: {
+            left: `${node.x}px`,
+            top: `${node.y}px`,
+            borderTop: `3px solid ${nodeColor}`,
           },
-          {
-            label: 'Radial Constellation Layout',
-            onSelect: () => withGraph(actions, (g) => applyRadialLayout(g)),
-          },
-          {
-            label: 'Reset Zoom & Center',
-            onSelect: () => {
-              zoomScale = 1;
-              panX = 0;
-              panY = 0;
-              renderGraphView(container, actions);
+          on: {
+            pointerdown: (e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              if (connectMode) {
+                if (!connectSourceId) {
+                  connectSourceId = node.id;
+                  renderGraphView(container, actions);
+                } else if (connectSourceId !== node.id) {
+                  const srcId = connectSourceId;
+                  connectSourceId = '';
+                  connectMode = false;
+                  let createdEdgeId = '';
+                  withGraph(actions, (g) => {
+                    const res = addGraphEdge(g, srcId, node.id, 'connects to');
+                    if (res.edge) res.edge.routingMode = edgeRouting;
+                    createdEdgeId = res.edge?.id ?? '';
+                    return res.graph;
+                  }, false);
+                  selectedEdgeId = createdEdgeId;
+                  actions.setState({ activeGraphNodeId: '' }, true);
+                }
+                return;
+              }
+
+              if (e.shiftKey) {
+                if (selectedNodeIds.has(node.id)) selectedNodeIds.delete(node.id);
+                else selectedNodeIds.add(node.id);
+              } else if (!selectedNodeIds.has(node.id)) {
+                selectedNodeIds.clear();
+                selectedNodeIds.add(node.id);
+              }
+
+              draggingNodeId = node.id;
+              movedNode = false;
+              dragStartWorldX = e.clientX / zoomScale;
+              dragStartWorldY = e.clientY / zoomScale;
+              dragOriginByNode = new Map();
+              for (const nid of selectedNodeIds) {
+                const nr = nodeMap.get(nid);
+                if (nr) dragOriginByNode.set(nid, { x: nr.x, y: nr.y });
+              }
+              if (!dragOriginByNode.has(node.id)) dragOriginByNode.set(node.id, { x: node.x, y: node.y });
+              attachGlobalDrag();
+            },
+            dblclick: (e) => {
+              e.stopPropagation();
+              if (node.kind === 'scene' && node.refId) {
+                actions.selectScene(node.refId, true);
+              } else if (
+                (node.kind === 'character' || node.kind === 'location' || node.kind === 'lore') &&
+                node.refId
+              ) {
+                const cat =
+                  node.kind === 'character'
+                    ? 'characters'
+                    : node.kind === 'location'
+                      ? 'locations'
+                      : 'lore';
+                actions.openBibleEntry(cat, node.refId);
+              }
             },
           },
-        ],
-      },
-    ];
-  });
+        },
+        ...cardChildren,
+      );
+      nodeCards.set(node.id, card);
+      viewport.appendChild(card);
 
-  // Properties panel (dockable on right, detachable into floating panel, or collapsible)
+      attachContextMenu(card, () => [
+        {
+          heading: node.label,
+          items: [
+            {
+              label: 'Inspect Node',
+              onSelect: () => {
+                selectedEdgeId = '';
+                actions.setState({ activeGraphNodeId: node.id }, true);
+              },
+            },
+            {
+              label: 'Connect From This Node',
+              icon: 'graph',
+              onSelect: () => {
+                connectMode = true;
+                connectSourceId = node.id;
+                renderGraphView(container, actions);
+              },
+            },
+          ],
+        },
+        {
+          items: [
+            {
+              label: 'Remove Node',
+              icon: 'trash',
+              danger: true,
+              onSelect: () => withGraph(actions, (g) => deleteGraphNode(g, node.id)),
+            },
+          ],
+        },
+      ]);
+    }
+
+    applySearchHighlight = () => {
+      const q = graphSearchQuery.trim().toLowerCase();
+      for (const node of visibleNodes) {
+        const card = nodeCards.get(node.id);
+        if (!card) continue;
+        const matches =
+          !q || `${node.label} ${node.subtitle} ${node.notes} ${(node.tags ?? []).join(' ')}`.toLowerCase().includes(q);
+        card.classList.toggle('is-dimmed', !matches);
+      }
+      for (const ref of edgeRefs) {
+        const isIncidentToSelected =
+          Boolean(state.activeGraphNodeId) &&
+          (ref.edge.sourceId === state.activeGraphNodeId || ref.edge.targetId === state.activeGraphNodeId);
+        ref.pathEl.setAttribute('stroke-opacity', q && !isIncidentToSelected ? '0.28' : '0.92');
+      }
+    };
+
+    requestAnimationFrame(() => updateConnectedEdgesLive(''));
+
+    canvasWrap.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        const step = e.deltaY < 0 ? 0.08 : -0.08;
+        const nextZoom = Math.max(0.25, Math.min(2.5, Number((zoomScale + step).toFixed(2))));
+        const rect = canvasWrap.getBoundingClientRect();
+        const wx = (e.clientX - rect.left - panX) / zoomScale;
+        const wy = (e.clientY - rect.top - panY) / zoomScale;
+        zoomScale = nextZoom;
+        panX = Math.round(e.clientX - rect.left - wx * zoomScale);
+        panY = Math.round(e.clientY - rect.top - wy * zoomScale);
+        viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+        syncCanvasGrid();
+      },
+      { passive: false },
+    );
+
+    canvasWrap.addEventListener('pointerdown', (e) => {
+      if (e.button === 0 && e.shiftKey) {
+        marqueeStartX = e.clientX;
+        marqueeStartY = e.clientY;
+        marqueeBox = el('div', {
+          className: 'qv-marquee-rect',
+          style: { left: `${e.clientX}px`, top: `${e.clientY}px`, width: '0px', height: '0px' },
+        });
+        document.body.appendChild(marqueeBox);
+        attachGlobalDrag();
+        return;
+      }
+      if (e.button !== 0 && e.button !== 1) return;
+      panning = true;
+      panStartClientX = e.clientX;
+      panStartClientY = e.clientY;
+      panOriginX = panX;
+      panOriginY = panY;
+      attachGlobalDrag();
+    });
+
+    canvasWrap.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.bv-graph-node') || target.closest('.qv-graph-group')) return;
+      const cRect = canvasWrap.getBoundingClientRect();
+      const worldX = Math.round((e.clientX - cRect.left - panX) / zoomScale - 84);
+      const worldY = Math.round((e.clientY - cRect.top - panY) / zoomScale - 32);
+      const kind = (newKindSelect.value as GraphNodeKind) || 'note';
+      let createdId = '';
+      withGraph(actions, (g) => {
+        const res = addGraphNode(g, { kind, label: `New ${GRAPH_KIND_LABELS[kind]}`, x: worldX, y: worldY });
+        createdId = res.node.id;
+        return res.graph;
+      }, false);
+      selectedEdgeId = '';
+      actions.setState({ activeGraphNodeId: createdId }, true);
+    });
+
+    canvasWrap.appendChild(viewport);
+
+    // Minimap widget (bottom-left) showing nodes, groups & clickable navigation
+    const minimapCanvas = document.createElement('canvas');
+    minimapCanvas.width = 168;
+    minimapCanvas.height = 112;
+    const minimap = el('div', { className: 'qv-graph-minimap' }, minimapCanvas);
+    const drawMinimap = () => {
+      const mctx = minimapCanvas.getContext('2d');
+      if (!mctx) return;
+      mctx.clearRect(0, 0, 168, 112);
+      const xs = visibleNodes.map((n) => n.x);
+      const ys = visibleNodes.map((n) => n.y);
+      const minX = Math.min(-100, ...xs);
+      const maxX = Math.max(900, ...xs.map((x) => x + 220));
+      const minY = Math.min(-100, ...ys);
+      const maxY = Math.max(600, ...ys.map((y) => y + 120));
+      const scale = Math.min(156 / Math.max(1, maxX - minX), 100 / Math.max(1, maxY - minY));
+      for (const grp of graph.groups ?? []) {
+        mctx.strokeStyle = 'rgba(199,169,123,0.45)';
+        mctx.strokeRect(6 + (grp.x - minX) * scale, 6 + (grp.y - minY) * scale, grp.width * scale, grp.height * scale);
+      }
+      for (const n of visibleNodes) {
+        mctx.fillStyle = resolveNodeColorByRules(n, graph.colorRules);
+        mctx.fillRect(6 + (n.x - minX) * scale, 6 + (n.y - minY) * scale, Math.max(4, 160 * scale), Math.max(3, 70 * scale));
+      }
+    };
+    requestAnimationFrame(drawMinimap);
+    minimap.addEventListener('pointerdown', (e) => e.stopPropagation());
+    canvasWrap.appendChild(minimap);
+  }
+
+  // Properties & Wikilink Markdown Inspector Panel
   const propsPanel = el('aside', {
     className: propsDetached ? 'bv-graph-floating-props' : 'bv-graph-sidebar',
     style: propsDetached ? { left: `${propsFloatX}px`, top: `${propsFloatY}px` } : undefined,
@@ -1053,18 +1787,15 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   const selectedEdge = graph.edges.find((e) => e.id === selectedEdgeId);
 
   const panelTitleText = selectedNode
-    ? 'Node Properties'
+    ? 'Node & Wikilink Notes'
     : selectedEdge
-      ? 'Connection Properties'
-      : 'Story Graph';
+      ? 'Connector Styling'
+      : 'Board Controls & Rules';
 
   const makePropsHeader = () => {
     const hdr = el(
       'div',
-      {
-        className: 'bv-graph-props-head',
-        style: propsDetached ? { cursor: 'grab' } : undefined,
-      },
+      { className: 'bv-graph-props-head', style: propsDetached ? { cursor: 'grab' } : undefined },
       el('span', { className: 'bv-panel-title', text: panelTitleText }),
       el(
         'div',
@@ -1072,12 +1803,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         el('button', {
           className: 'bv-mini-btn',
           text: propsDetached ? 'Dock' : 'Detach',
-          tooltip: {
-            title: propsDetached ? 'Dock Properties Sidebar' : 'Detach Floating Properties',
-            short: propsDetached
-              ? 'Snap Node Properties back onto the right sidebar.'
-              : 'Pop Node Properties out as a draggable floating card.',
-          },
           attrs: { type: 'button' },
           on: {
             click: () => {
@@ -1090,7 +1815,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         el('button', {
           className: 'bv-mini-btn',
           text: '−',
-          tooltip: { title: 'Collapse Properties', short: 'Hide Node Properties to expand infinite graph canvas.' },
           attrs: { type: 'button', 'aria-label': 'Collapse properties panel' },
           on: {
             click: () => {
@@ -1101,35 +1825,6 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         }),
       ),
     );
-
-    if (propsDetached) {
-      let draggingPanel = false;
-      let startX = 0;
-      let startY = 0;
-      let origX = propsFloatX;
-      let origY = propsFloatY;
-      hdr.addEventListener('pointerdown', (e) => {
-        if ((e.target as HTMLElement | null)?.closest('button')) return;
-        e.stopPropagation();
-        draggingPanel = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        origX = propsFloatX;
-        origY = propsFloatY;
-        hdr.setPointerCapture(e.pointerId);
-      });
-      hdr.addEventListener('pointermove', (e) => {
-        if (!draggingPanel) return;
-        propsFloatX = Math.max(8, Math.min(Math.max(120, canvasWrap.clientWidth - 296), origX + (e.clientX - startX)));
-        propsFloatY = Math.max(8, Math.min(Math.max(120, canvasWrap.clientHeight - 240), origY + (e.clientY - startY)));
-        propsPanel.style.left = `${propsFloatX}px`;
-        propsPanel.style.top = `${propsFloatY}px`;
-      });
-      hdr.addEventListener('pointerup', () => {
-        draggingPanel = false;
-      });
-    }
-
     return hdr;
   };
 
@@ -1138,18 +1833,14 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       className: 'bv-input',
       attrs: { type: 'text', value: selectedNode.label },
       on: {
-        change: () =>
-          withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { label: labelIn.value })),
+        change: () => withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { label: labelIn.value })),
       },
     });
     const subIn = el('input', {
       className: 'bv-input',
       attrs: { type: 'text', value: selectedNode.subtitle },
       on: {
-        change: () =>
-          withGraph(actions, (g) =>
-            updateGraphNode(g, selectedNode.id, { subtitle: subIn.value }),
-          ),
+        change: () => withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { subtitle: subIn.value })),
       },
     });
     const kindSel = el(
@@ -1158,111 +1849,49 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
         className: 'bv-input',
         on: {
           change: () =>
-            withGraph(actions, (g) =>
-              changeGraphNodeKind(g, selectedNode.id, kindSel.value as GraphNodeKind),
-            ),
+            withGraph(actions, (g) => changeGraphNodeKind(g, selectedNode.id, kindSel.value as GraphNodeKind)),
         },
       },
-      ...(['character', 'plot', 'location', 'lore', 'scene', 'custom'] as const).map((k) =>
-        el('option', {
-          text: GRAPH_KIND_LABELS[k],
-          attrs: { value: k, selected: selectedNode.kind === k },
-        }),
+      ...ALL_GRAPH_KINDS.map((k) =>
+        el('option', { text: GRAPH_KIND_LABELS[k], attrs: { value: k, selected: selectedNode.kind === k } }),
       ),
     );
     const notesIn = el('textarea', {
       className: 'bv-textarea',
-      attrs: { rows: 4 },
+      attrs: { rows: 6, placeholder: 'Write Markdown notes with [[Entity Links]] and #tags…' },
       on: {
         change: () =>
-          withGraph(actions, (g) =>
-            updateGraphNode(g, selectedNode.id, { notes: notesIn.value }),
-          ),
+          withGraph(actions, (g) => syncWikilinkEdgesInGraph(g, selectedNode.id, notesIn.value)),
       },
     });
     notesIn.value = selectedNode.notes;
 
-    const connectedEdges = graph.edges.filter(
-      (e) => e.sourceId === selectedNode.id || e.targetId === selectedNode.id,
-    );
-
-    const promoteBtn =
-      !selectedNode.refId &&
-      (selectedNode.kind === 'character' ||
-        selectedNode.kind === 'location' ||
-        selectedNode.kind === 'lore')
-        ? el('button', {
-            className: 'bv-btn',
-            text: `Add to Story Bible (${GRAPH_KIND_LABELS[selectedNode.kind]})`,
-            attrs: { type: 'button' },
-            on: {
-              click: () => {
-                const newRefId = newId('bib');
-                actions.mutateProject((prev) => {
-                  const next = normalizeProjectDefaults(prev);
-                  if (selectedNode.kind === 'character') {
-                    next.bible.characters.push({
-                      id: newRefId,
-                      name: selectedNode.label,
-                      aliases: '',
-                      role: selectedNode.subtitle || 'Character',
-                      motivation: selectedNode.notes,
-                      appearance: '',
-                      notes: '',
-                      customFields: [],
-                    });
-                  } else if (selectedNode.kind === 'location') {
-                    next.bible.locations.push({
-                      id: newRefId,
-                      name: selectedNode.label,
-                      region: selectedNode.subtitle || '',
-                      atmosphere: selectedNode.notes,
-                      notes: '',
-                      customFields: [],
-                    });
-                  } else {
-                    next.bible.lore.push({
-                      id: newRefId,
-                      name: selectedNode.label,
-                      category: selectedNode.subtitle || 'Lore',
-                      summary: selectedNode.notes,
-                      notes: '',
-                      customFields: [],
-                    });
-                  }
-                  next.storyGraph = updateGraphNode(next.storyGraph!, selectedNode.id, {
-                    refId: newRefId,
-                  });
-                  return next;
-                });
-                actions.notify(`Added “${selectedNode.label}” to Story Bible`);
-              },
-            },
-          })
-        : null;
+    const pinChk = el('input', {
+      className: 'bv-lever',
+      attrs: { type: 'checkbox', role: 'switch', checked: Boolean(selectedNode.pinned) },
+      on: {
+        change: () => withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { pinned: pinChk.checked })),
+      },
+    });
 
     propsPanel.append(
       makePropsHeader(),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Title' }), labelIn),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Interchange Type' }), kindSel),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Entity Type' }), kindSel),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Subtitle / Role' }), subIn),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Plot / Link Notes' }), notesIn),
-      el('div', {
-        className: 'bv-mono-tag',
-        text: `${connectedEdges.length} connection(s)`,
-      }),
-    );
-    if (promoteBtn) propsPanel.appendChild(promoteBtn);
-    propsPanel.append(
+      el('label', { className: 'bv-check-row' }, pinChk, el('span', { text: 'Pin Position in Force Graph' })),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Markdown Notes & [[Wikilinks]]' }), notesIn),
+      ...((selectedNode.tags?.length ?? 0) > 0
+        ? [el('div', { className: 'bv-mono-tag', text: selectedNode.tags!.map((t) => `#${t}`).join('  ') })]
+        : []),
       el('button', {
         className: 'bv-btn',
-        text: 'Connect From This Node',
+        text: 'Sync [[Wikilinks]] Now',
         attrs: { type: 'button' },
         on: {
           click: () => {
-            connectMode = true;
-            connectSourceId = selectedNode.id;
-            renderGraphView(container, actions);
+            withGraph(actions, (g) => syncWikilinkEdgesInGraph(g, selectedNode.id, notesIn.value));
+            actions.notify('Synced wikilinks into graph connections');
           },
         },
       }),
@@ -1286,41 +1915,60 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
     const edgeLabelIn = el('input', {
       className: 'bv-input',
       attrs: { type: 'text', value: selectedEdge.label },
-      on: {
-        change: () =>
-          withGraph(actions, (g) =>
-            updateGraphEdge(g, selectedEdge.id, { label: edgeLabelIn.value }),
-          ),
-      },
+      on: { change: () => withGraph(actions, (g) => updateGraphEdge(g, selectedEdge.id, { label: edgeLabelIn.value })) },
     });
+    const routingSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: { change: () => withGraph(actions, (g) => updateGraphEdge(g, selectedEdge.id, { routingMode: routingSel.value as GraphRoutingMode })) },
+      },
+      el('option', { text: '90° Elbow', attrs: { value: 'elbow', selected: (selectedEdge.routingMode ?? edgeRouting) === 'elbow' } }),
+      el('option', { text: 'Smooth Curve', attrs: { value: 'curved', selected: (selectedEdge.routingMode ?? edgeRouting) === 'curved' } }),
+      el('option', { text: 'Straight Line', attrs: { value: 'straight', selected: (selectedEdge.routingMode ?? edgeRouting) === 'straight' } }),
+    );
     const styleSel = el(
       'select',
       {
         className: 'bv-input',
-        on: {
-          change: () =>
-            withGraph(actions, (g) =>
-              updateGraphEdge(g, selectedEdge.id, {
-                style: styleSel.value as 'solid' | 'dashed',
-              }),
-            ),
-        },
+        on: { change: () => withGraph(actions, (g) => updateGraphEdge(g, selectedEdge.id, { style: styleSel.value as GraphLineStyle })) },
       },
-      el('option', { text: 'Solid Line', attrs: { value: 'solid', selected: selectedEdge.style === 'solid' } }),
-      el('option', { text: 'Dashed Line', attrs: { value: 'dashed', selected: selectedEdge.style === 'dashed' } }),
+      el('option', { text: 'Solid', attrs: { value: 'solid', selected: selectedEdge.style === 'solid' } }),
+      el('option', { text: 'Dashed', attrs: { value: 'dashed', selected: selectedEdge.style === 'dashed' } }),
+      el('option', { text: 'Dotted', attrs: { value: 'dotted', selected: selectedEdge.style === 'dotted' } }),
+    );
+    const srcAnchorSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: { change: () => withGraph(actions, (g) => updateGraphEdge(g, selectedEdge.id, { sourceAnchor: srcAnchorSel.value as GraphAnchorSide })) },
+      },
+      ...(['auto', 'left', 'right', 'top', 'bottom'] as const).map((s) =>
+        el('option', { text: `From: ${s}`, attrs: { value: s, selected: (selectedEdge.sourceAnchor ?? 'auto') === s } }),
+      ),
+    );
+    const endHeadSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: { change: () => withGraph(actions, (g) => updateGraphEdge(g, selectedEdge.id, { endArrow: endHeadSel.value as GraphArrowHead })) },
+      },
+      ...(['arrow', 'diamond', 'circle', 'none'] as const).map((h) =>
+        el('option', { text: `Head: ${h}`, attrs: { value: h, selected: (selectedEdge.endArrow ?? 'arrow') === h } }),
+      ),
     );
 
     propsPanel.append(
       makePropsHeader(),
       el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Relationship Label' }), edgeLabelIn),
-      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Line Style' }), styleSel),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Routing Style' }), routingSel),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Line Pattern' }), styleSel),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Anchor & Arrowhead' }), srcAnchorSel, endHeadSel),
       el('button', {
         className: 'bv-btn',
         text: 'Reverse Direction',
         attrs: { type: 'button' },
-        on: {
-          click: () => withGraph(actions, (g) => reverseGraphEdge(g, selectedEdge.id)),
-        },
+        on: { click: () => withGraph(actions, (g) => reverseGraphEdge(g, selectedEdge.id)) },
       }),
       el(
         'button',
@@ -1340,16 +1988,59 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       ),
     );
   } else {
+    const ruleQueryIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'text', placeholder: 'e.g. kind:faction or #betrayal' },
+    });
+    const ruleColorIn = el('input', {
+      attrs: { type: 'color', value: '#e06c75' },
+    });
     propsPanel.append(
       makePropsHeader(),
       el('p', {
         className: 'bv-label',
-        text: 'Infinite canvas: drag cards anywhere (including negative coordinates) and lines follow live. Drag any ● port dot onto another card to link.',
+        text: 'Double-click empty canvas to add a node. Drag any port dot onto another card or empty space to link. Shift+Drag selects multiple cards.',
       }),
       el('div', {
         className: 'bv-mono-tag',
-        text: `${graph.nodes.length} nodes · ${graph.edges.length} connections`,
+        text: `${graph.nodes.length} nodes · ${graph.groups?.length ?? 0} groups · ${graph.edges.length} links`,
       }),
+      el('span', { className: 'bv-panel-title', text: 'Color Group Rules' }),
+      el('div', { style: { display: 'flex', gap: '6px' } }, ruleQueryIn, ruleColorIn),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: '+ Add Color Rule',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            const q = ruleQueryIn.value.trim();
+            if (!q) return;
+            withGraph(actions, (g) => ({
+              ...g,
+              colorRules: [...(g.colorRules ?? []), { id: newId('cr'), query: q, color: ruleColorIn.value }],
+            }));
+          },
+        },
+      }),
+      ...(graph.colorRules ?? []).map((cr) =>
+        el(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' } },
+          el('span', { className: 'bv-mono-tag', text: cr.query, style: { color: cr.color } }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: '×',
+            attrs: { type: 'button' },
+            on: {
+              click: () =>
+                withGraph(actions, (g) => ({
+                  ...g,
+                  colorRules: (g.colorRules ?? []).filter((x) => x.id !== cr.id),
+                })),
+            },
+          }),
+        ),
+      ),
     );
   }
 
@@ -1373,11 +2064,9 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
 
   const layout = el(
     'div',
-    {
-      className: `bv-graph-layout${propsCollapsed || propsDetached ? ' is-props-collapsed' : ''}`,
-    },
+    { className: `bv-graph-layout${propsCollapsed || propsDetached ? ' is-props-collapsed' : ''}` },
     canvasWrap,
     !propsCollapsed && !propsDetached ? propsPanel : null,
   );
-  container.append(subbar, layout);
+  container.append(subbar, canvasImportInput, layout);
 }

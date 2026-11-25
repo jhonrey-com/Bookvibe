@@ -1,4 +1,4 @@
-# Quillvibe Reference Guide (`v2.3.0`)
+# Quillvibe Reference Guide (`v3.0.0`)
 
 A clear guide to every workspace, toolbar icon, image layout control, file format, proofreading mark, and desktop feature in Quillvibe.
 
@@ -89,6 +89,13 @@ In **Editorial** or **Full Studio** layout, switch to **Proofread** mode, select
 ## 5. Desktop Stacked Tabs, Multi-Window Sync & Single-Instance Opening
 
 - **Empty New Tab & New Window:** Clicking **`+`** on the top tab strip or pressing `Ctrl+Shift+N` opens a clean **New Tab** book picker showing recent local books instead of pre-selecting an open book.
-- **Pointer-Driven Tab Drag & Combine:** Drag tabs left or right to reorder, drag a tab downward out of the bar to tear it off into its own stacked taskbar window, drop a tab over another Quillvibe window to combine them, or click **`▾` -> Combine All Windows Here**.
+- **Tab Drag State Machine (Reorder, Tear-Off & Window Merging):** Drag tabs left or right to reorder with neighbor animations; pull a tab vertically outside the strip (`32px`) to detach it into its own window; drag a single-tab window cleanly by its tab; or drop over another Quillvibe window's tab strip to merge at the pointed slot.
 - **Conflict-Safe Live Sync:** Opening the same book in two windows displays a notice dialog and syncs edits automatically across open copies using monotonic revision checks and atomic per-book disk saves.
 - **Single-Instance File Tabs:** Double-clicking a `.qv`, `.qvbible`, `.qvscene`, or `.qvstyle` file while Quillvibe is already running focuses the window and opens the file in a new tab.
+
+---
+
+## 6. Book Cover Studio & Dual-Mode Story Graph (`v3.0.0`)
+
+- **Offline Book Cover Studio:** Zoom between `10%` and `500%` (`Ctrl+Wheel`), pan with `Space+Drag` or middle-mouse, resize and rotate via 8-point handles (`Shift` snaps rotation in 15-degree steps), marquee-select or `Shift+Click` multiple layers, group with `Ctrl+G`, double-click text on canvas for inline editing, snap to 5px magnetic guides and equal-spacing badges (hold `Ctrl` to bypass), and export `PNG` (1x/2x/3x or transparent), `JPEG`, `Vector SVG`, or `Print PDF`.
+- **Dual-Mode Story Graph:** Switch cleanly between **Spatial Storyboard** (Act Group frames, 90-degree obstacle-avoiding elbow connectors with draggable middle handles, double-click canvas node add, 4-side directional ports, Minimap) and **Force Graph** (adjustable simulation forces, 1/2/3-hop isolation, shortest narrative path tracer). Write `[[Entity Links]]` and `#tags` in Markdown notes to wire connections live, or import/export standard `.canvas` JSON, PNG, and SVG files.

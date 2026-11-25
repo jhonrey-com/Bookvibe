@@ -1,4 +1,4 @@
-# Quillvibe Controls, FAQ & Error Code Reference (`v2.3.0`)
+# Quillvibe Controls, FAQ & Error Code Reference (`v3.0.0`)
 
 Plain guide to every workspace control, question, and `QV-xxx` error code in Quillvibe.
 
@@ -43,9 +43,10 @@ Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noref
 | **`QV-104`** | Web & Desktop | File could not be read or parsed (missing payload, >50 MB, or OS lock). Verify the file and retry with `Ctrl+O`. |
 | **`QV-201`** | Web & Desktop | Export or Print PDF failed (restricted collaborator role, canceled dialog, or disk space). Check role permissions and retry. |
 | **`QV-202`** | Web & Desktop | Image upload or background removal failed. Use PNG/JPEG/WebP under 14 MB, adjust the Edge tolerance slider, or click **Restore Original**. |
-| **`QV-301`** | Desktop | Desktop window creation, focus, or tab transfer failed. Retry `Ctrl+Shift+N` or **Tabs Menu -> Combine All Windows Here**. |
+| **`QV-301` / `QV-303`** | Desktop | Desktop window creation, focus, tab tear-off, or window merge failed. Retry `Ctrl+Shift+N` or **Tabs Menu -> Combine All Windows Here**. |
 | **`QV-302`** | Web & Desktop | LAN Wi-Fi PIN, Bluetooth, or Self-Hosted HTTPS sync failed. Check Wi-Fi network, 6-digit PIN, or HTTPS endpoint. |
-| **`QV-401`** | Web & Desktop | Cover Studio render issue (custom font or asset load failure). Re-select a font in Settings or re-upload the cover image. |
+| **`QV-401` / `QV-402`** | Web & Desktop | Cover Studio render or export issue (custom font, PNG/JPEG/SVG export, or asset load failure). Re-select a font in Settings or inspect layers in the Layers panel. |
+| **`QV-403`** | Web & Desktop | Story Graph `.canvas` JSON import or export failed. Verify the `.canvas` file contains valid `nodes` and `edges` arrays. |
 | **`QV-501`** | Web | Browser local storage quota reached (often from large images). Click **Save** to download a `.qv` backup or use the desktop app. |
 | **`QV-502` / `QV-503`** | Web & Desktop | Unexpected runtime or background task error. Click **Copy Error Report** and send it to `quillvibe@jhonrey.com`. |
 | **`QV-504`** | Desktop | Operating system unrecognized publisher prompt on installer launch. Allow via OS prompt or use the browser version. |

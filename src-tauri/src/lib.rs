@@ -391,7 +391,7 @@ fn export_generic_file(
     description: String,
 ) -> Result<Option<String>, String> {
     let clean_ext = extension.trim().trim_start_matches('.').to_ascii_lowercase();
-    let allowed = ["pdf", "epub", "md", "html", "txt", "rtf", "png", "svg", "json", "qvext"];
+    let allowed = ["pdf", "epub", "md", "html", "txt", "rtf", "png", "svg", "json", "canvas", "qvext"];
     if !allowed.contains(&clean_ext.as_str()) {
         return Err(format!("Unsupported export extension: .{clean_ext}"));
     }
@@ -530,6 +530,16 @@ fn focus_desktop_window(app: AppHandle, label: String) -> Result<bool, String> {
     } else {
         Ok(false)
     }
+}
+
+#[tauri::command]
+fn move_desktop_window(app: AppHandle, label: Option<String>, x: f64, y: f64) -> Result<(), String> {
+    let target_label = label.unwrap_or_else(|| "main".to_string());
+    if let Some(win) = app.get_webview_window(&target_label) {
+        let _ = win.unmaximize();
+        let _ = win.set_position(tauri::LogicalPosition::new(x.max(0.0), y.max(0.0)));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -758,6 +768,7 @@ pub fn run() {
             launch_os_bluetooth_share_cmd,
             list_desktop_window_bounds,
             focus_desktop_window,
+            move_desktop_window,
             open_book_in_new_window
         ])
         .run(tauri::generate_context!())

@@ -415,19 +415,19 @@ export const COURSE_MODULES: readonly CourseModule[] = [
       },
       {
         id: 'm3-graph',
-        title: 'Map Relationships & Arcs on the Interactive Story Graph',
-        durationMin: 5,
+        title: 'Map Relationships & Arcs on the Dual-Mode Story Graph',
+        durationMin: 6,
         instruction:
-          'Use Story Graph (Advanced tier) to seed project entities onto an interactive canvas, drag connection ports (●) between cards to draw labeled plot edges, apply auto-layouts, and export clean SVG diagrams.',
-        objective: 'Visualize causal chains, allegiances, and subplot intersections on a zoomable board.',
+          'Switch seamlessly between Spatial Storyboard (cards, Act Group frames, 90-degree obstacle-avoiding elbow connectors, double-click node creation, and .canvas export) and Force Graph (physics layout, hop filters, and shortest path tracing).',
+        objective: 'Visualize causal chains, Act structures, and [[wikilink]] connections cleanly across both spatial boards and dynamic networks.',
         concepts: [
-          'Some story knots only reveal themselves visually: two subplots never cross, or one antagonist carries too few connections. Story Graph lets you pan, mouse-wheel zoom around the cursor, drag nodes freely, convert node types between Character, Location, Lore, Plot, and Scene, and connect edges by dragging from any node edge port (●).',
-          'Right-click empty canvas space to apply Column or Radial auto-layouts, add new plot nodes, fit zoom to view, or export a clean vector SVG diagram.',
+          'In Spatial Storyboard mode, double-click anywhere on the canvas to drop a node, drag Act Group frames to move contained cards together, drag any card port dot to link or spawn a connected card, and drag a selected elbow line handle to fine-tune orthogonal spacing.',
+          'Switch to Force Graph mode at any time using the topbar toggle to balance clusters dynamically, pin important plot hubs, isolate 1-to-3 hop neighborhoods, trace the shortest relationship path between two characters, or import/export standard .canvas files and high-resolution PNG/SVG diagrams.',
         ],
         steps: [
-          'Open the Graph tab and click Seed From Project if starting fresh.',
-          'Drag from a node’s edge port (●) onto another node to wire a relationship line, then click the edge to label or reverse it.',
-          'Right-click the canvas to test Radial Layout or Export Clean SVG.',
+          'Open the Graph tab and toggle between Storyboard and Force Graph on the left sub-toolbar.',
+          'Write [[Character Name]] or #tags inside a node Markdown panel and click Sync [[Wikilinks]] Now to generate connections automatically.',
+          'Use + Group to organize scenes into Act frames, or export the board via .canvas, PNG, or SVG.',
         ],
         example: {
           heading: 'Mystery Clue Board',
@@ -679,7 +679,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
           'Open Studio -> Book Cover Studio. Add unlimited display text boxes, geometric vector shapes, crisp SVG ornaments, or drop your own transparent .png/.svg assets onto any face.',
         objective: 'Build balanced jacket artwork with clean visual hierarchy, blend filters, and undoable transforms.',
         concepts: [
-          'Professional book covers rely on clean typography spacing and restrained contrast—not crowded filters. In Cover Studio, every headline, subtitle, author credit, edition pill, vector shape, and uploaded graphic lives on an addressable stack with visibility toggles, lock pins, opacity sliders, Z-order front/back buttons, and 50-step Undo/Redo.',
+          'Professional book covers rely on clean typography spacing and restrained contrast—not crowded filters. In Cover Studio, every headline, subtitle, author credit, edition pill, vector shape (rectangles, circles, stars, triangles, arrows, hexagons), and uploaded graphic lives on an addressable stack with 100-step Undo/Redo, Ctrl+G layer grouping, 8-point resize and rotation handles, and inline double-click text editing right on the artboard.',
           'You can switch backgrounds between solid color, dual-stop linear gradients, or full-bleed artwork with live Brightness, Contrast, Blur, and Tint Dim controls so light display ink pops reliably over photography.',
         ],
         steps: [
@@ -714,7 +714,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Use Snap-to-Grid, Magnetic Alignment & Full Print Wrap Faces',
         durationMin: 5,
         instruction:
-          'Toggle Snap-to-Grid and Bleed Guides to center elements cleanly across Front Cover, Spine, Back Cover, Front Flap, and Back Flap, then export 1200×1920 Front or Full Wrap PNGs.',
+          'Toggle Snap-to-Grid and Bleed Guides to center elements cleanly across Front Cover, Spine, Back Cover, Front Flap, and Back Flap, zoom between 10% and 500% with Space+Drag panning, and export 1x/2x/3x PNG, Transparent PNG, JPEG, Vector SVG, or Print Interior PDF.',
         objective: 'Eliminate off-center titles and verify calculated paperback spine width from manuscript page count.',
         concepts: [
           'A slight 3% off-center title ruins an otherwise striking cover. Turning on Snap & Guides activates quantized grid increments alongside live magnetic amber center lines whenever an element aligns to 50% horizontal, 25%/75% quarters, or safe trim margins.',

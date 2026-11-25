@@ -14,15 +14,23 @@ export const GRAPH_KIND_COLORS: Record<GraphNodeKind, string> = {
   lore: '#67b08c',
   plot: '#d4827d',
   scene: '#9aa4b8',
+  storyline: '#d19a66',
+  faction: '#e06c75',
+  item: '#56b6c2',
+  note: '#8aa4c8',
   custom: '#b995cc',
 };
 
 export const GRAPH_KIND_LABELS: Record<GraphNodeKind, string> = {
   character: 'Character',
   location: 'Location',
-  lore: 'Lore / Item',
+  lore: 'Lore / Codex',
   plot: 'Plot Beat',
   scene: 'Scene',
+  storyline: 'Storyline',
+  faction: 'Faction',
+  item: 'Item',
+  note: 'Note',
   custom: 'Custom',
 };
 
@@ -214,8 +222,48 @@ export function changeGraphNodeKind(
 
 export function deleteGraphNode(graph: StoryGraph, nodeId: string): StoryGraph {
   return {
+    ...graph,
     nodes: graph.nodes.filter((n) => n.id !== nodeId),
     edges: graph.edges.filter((e) => e.sourceId !== nodeId && e.targetId !== nodeId),
+  };
+}
+
+export function addGraphGroup(
+  graph: StoryGraph,
+  input: { label?: string; x?: number; y?: number; width?: number; height?: number; color?: string },
+): StoryGraph {
+  const groups = graph.groups ?? [];
+  const next = {
+    id: newId('gg'),
+    label: input.label?.trim() || `Act ${groups.length + 1}`,
+    x: input.x ?? 80 + groups.length * 40,
+    y: input.y ?? 60 + groups.length * 40,
+    width: Math.max(220, input.width ?? 420),
+    height: Math.max(160, input.height ?? 300),
+    color: input.color ?? '#c7a97b',
+    collapsed: false,
+  };
+  return {
+    ...graph,
+    groups: [...groups, next],
+  };
+}
+
+export function updateGraphGroup(
+  graph: StoryGraph,
+  groupId: string,
+  patch: Partial<NonNullable<StoryGraph['groups']>[number]>,
+): StoryGraph {
+  return {
+    ...graph,
+    groups: (graph.groups ?? []).map((g) => (g.id === groupId ? { ...g, ...patch } : g)),
+  };
+}
+
+export function deleteGraphGroup(graph: StoryGraph, groupId: string): StoryGraph {
+  return {
+    ...graph,
+    groups: (graph.groups ?? []).filter((g) => g.id !== groupId),
   };
 }
 
@@ -271,7 +319,18 @@ export function deleteGraphEdge(graph: StoryGraph, edgeId: string): StoryGraph {
  * Arranges nodes into categorized non-overlapping columns with generous gap room for edge labels.
  */
 export function applyAutoLayout(graph: StoryGraph): StoryGraph {
-  const order: GraphNodeKind[] = ['character', 'plot', 'scene', 'location', 'lore', 'custom'];
+  const order: GraphNodeKind[] = [
+    'character',
+    'storyline',
+    'plot',
+    'scene',
+    'faction',
+    'location',
+    'item',
+    'lore',
+    'note',
+    'custom',
+  ];
   const activeGroups = order
     .map((kind) => graph.nodes.filter((n) => n.kind === kind))
     .filter((g) => g.length > 0);

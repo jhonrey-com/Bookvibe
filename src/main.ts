@@ -16,7 +16,6 @@ import {
   importLegacyBookFile,
   isDesktopWindowMaximized,
   isTauriRuntime,
-  listDesktopWindowBounds,
   listenDesktopOpenFile,
   loadDefaultExportFormat,
   loadPersistedLibrary,
@@ -53,6 +52,7 @@ import {
   serializeQuillvibeBinary,
 } from './core/extensions';
 import { ProjectHistoryStack } from './core/history';
+import { TabDragController } from './core/tab-drag-controller';
 import { loadCustomFonts } from './core/fonts';
 import { COLLABORATOR_ROLE_LABELS } from './core/collab';
 import { resolveEffectiveFontCss } from './core/fonts';
@@ -234,6 +234,60 @@ let windowSync: WorkspaceWindowSync | null = null;
 let currentWindowLabel = 'main';
 let isApplyingRemoteSync = false;
 const alertedSharedBookIds = new Set<string>();
+
+function activateDesktopTab(tabId: string): void {
+  if (tabId === COURSE_TAB_ID) {
+    state.activeTabId = COURSE_TAB_ID;
+    state.activeView = 'course';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
+  } else if (tabId === HELP_TAB_ID) {
+    state.activeTabId = HELP_TAB_ID;
+    state.activeView = 'help';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
+  } else if (isEmptyTabId(tabId)) {
+    state.activeTabId = tabId;
+    state.activeView = 'editor';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
+  } else {
+    state.activeView = state.activeView === 'course' || state.activeView === 'help' ? 'editor' : state.activeView;
+    actions.switchBook(tabId);
+  }
+}
+
+const tabDragController = new TabDragController({
+  getWindowLabel: () => currentWindowLabel,
+  getTabIds: () => state.openBookTabIds,
+  setTabIds: (nextIds) => {
+    state.openBookTabIds = nextIds;
+    windowSync?.publishPresence();
+  },
+  onActivateTab: (tabId) => activateDesktopTab(tabId),
+  onFinishInStrip: () => renderDesktopTabBar(),
+  onDetachToNewWindow: (tabId, tabTitle, screenX, screenY) => {
+    const isEmpty = isEmptyTabId(tabId);
+    void openBookInNewDesktopWindow(
+      isEmpty ? EMPTY_TAB_PREFIX : tabId,
+      isEmpty ? 'Quillvibe - New Tab' : `Quillvibe - ${tabTitle}`,
+      { maximized: false, posX: screenX, posY: screenY },
+    );
+    actions.closeBookTab(tabId);
+  },
+  onMergeIntoWindow: (targetWindowLabel, tabId, insertionIndex) => {
+    windowSync?.sendTabDropIntoWindow(targetWindowLabel, tabId, insertionIndex);
+    void focusDesktopWindow(targetWindowLabel);
+    if (state.openBookTabIds.length > 1) {
+      actions.closeBookTab(tabId);
+    } else {
+      window.setTimeout(() => void closeDesktopWindow(), 120);
+    }
+  },
+});
 
 function isSmallMobileViewport(): boolean {
   return typeof window !== 'undefined' && window.innerWidth <= 768;
@@ -1870,30 +1924,7 @@ function renderDesktopTabBar(): void {
     attrs: { role: 'tablist', 'aria-label': 'Open books and tabs' },
   });
 
-  const activateTabId = (tabId: string) => {
-    if (tabId === COURSE_TAB_ID) {
-      state.activeTabId = COURSE_TAB_ID;
-      state.activeView = 'course';
-      windowSync?.publishPresence();
-      renderDesktopTabBar();
-      renderActiveView();
-    } else if (tabId === HELP_TAB_ID) {
-      state.activeTabId = HELP_TAB_ID;
-      state.activeView = 'help';
-      windowSync?.publishPresence();
-      renderDesktopTabBar();
-      renderActiveView();
-    } else if (isEmptyTabId(tabId)) {
-      state.activeTabId = tabId;
-      state.activeView = 'editor';
-      windowSync?.publishPresence();
-      renderDesktopTabBar();
-      renderActiveView();
-    } else {
-      state.activeView = state.activeView === 'course' || state.activeView === 'help' ? 'editor' : state.activeView;
-      actions.switchBook(tabId);
-    }
-  };
+  const activateTabId = activateDesktopTab;
 
   validIds.forEach((id) => {
     const isEmpty = isEmptyTabId(id);
@@ -1958,150 +1989,10 @@ function renderDesktopTabBar(): void {
       closeBtn,
     );
 
-    // True pointer-driven browser-style tab drag: reorder, tear-off to new window, and combine across windows
-    tabEl.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      if ((e.target as HTMLElement | null)?.closest('.qv-tab-close')) return;
-      const startX = e.clientX;
-      const startY = e.clientY;
-      let dragging = false;
-      let tornOut = false;
-      let ghostEl: HTMLElement | null = null;
-      let cachedWinBounds: Awaited<ReturnType<typeof listDesktopWindowBounds>> = [];
-      let hoverTargetLabel: string | null = null;
-
-      tabEl.setPointerCapture(e.pointerId);
-
-      const ensureGhost = () => {
-        if (ghostEl) return ghostEl;
-        ghostEl = el(
-          'div',
-          { className: 'qv-tab-drag-ghost', id: 'qv-tab-drag-ghost' },
-          el('strong', { text: tabTitle }),
-          el('span', { className: 'qv-tab-drag-hint', text: 'Release to open in new window' }),
-        );
-        document.body.appendChild(ghostEl);
-        void listDesktopWindowBounds().then((bounds) => {
-          cachedWinBounds = bounds.filter((b) => b.label !== currentWindowLabel);
-        });
-        return ghostEl;
-      };
-
-      const onMove = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        if (!dragging && Math.hypot(dx, dy) < 6) return;
-        if (!dragging) {
-          dragging = true;
-          tabEl.classList.add('is-dragging');
-        }
-
-        const barRect = desktopTabBarEl?.getBoundingClientRect();
-        const outsideBar = Boolean(
-          barRect && (ev.clientY > barRect.bottom + 34 || ev.clientY < barRect.top - 34),
-        );
-
-        if (outsideBar && !isSpecialPageTabId(id)) {
-          tornOut = true;
-          tabEl.style.transform = '';
-          const g = ensureGhost();
-          g.style.left = `${Math.round(ev.clientX + 12)}px`;
-          g.style.top = `${Math.round(ev.clientY + 12)}px`;
-          const hitWin = cachedWinBounds.find(
-            (b) =>
-              ev.screenX >= b.x &&
-              ev.screenX <= b.x + b.width &&
-              ev.screenY >= b.y &&
-              ev.screenY <= b.y + b.height,
-          );
-          hoverTargetLabel = hitWin?.label ?? null;
-          const hint = g.querySelector('.qv-tab-drag-hint');
-          if (hint) {
-            hint.textContent = hitWin
-              ? 'Drop to combine into other Quillvibe window'
-              : 'Release to open in new window';
-          }
-          g.classList.toggle('is-combine', Boolean(hitWin));
-          return;
-        }
-
-        tornOut = false;
-        hoverTargetLabel = null;
-        if (ghostEl) {
-          ghostEl.remove();
-          ghostEl = null;
-        }
-
-        // Smooth horizontal reorder inside current tab strip
-        tabEl.style.transform = `translateX(${Math.round(dx)}px)`;
-        const siblings = Array.from(tabStrip.querySelectorAll<HTMLElement>('.qv-book-tab'));
-        const curIdx = state.openBookTabIds.indexOf(id);
-        for (let i = 0; i < siblings.length; i++) {
-          const sibId = siblings[i].dataset.tabId;
-          if (!sibId || sibId === id) continue;
-          const r = siblings[i].getBoundingClientRect();
-          const mid = r.left + r.width / 2;
-          if ((i > curIdx && ev.clientX > mid) || (i < curIdx && ev.clientX < mid)) {
-            const next = [...state.openBookTabIds];
-            next.splice(curIdx, 1);
-            next.splice(i, 0, id);
-            state.openBookTabIds = next;
-            if (i > curIdx) {
-              tabStrip.insertBefore(tabEl, siblings[i].nextSibling);
-            } else {
-              tabStrip.insertBefore(tabEl, siblings[i]);
-            }
-            tabEl.style.transform = '';
-            break;
-          }
-        }
-      };
-
-      const onUp = (ev: PointerEvent) => {
-        tabEl.removeEventListener('pointermove', onMove);
-        tabEl.removeEventListener('pointerup', onUp);
-        tabEl.removeEventListener('pointercancel', onUp);
-        tabEl.classList.remove('is-dragging');
-        tabEl.style.transform = '';
-        if (ghostEl) {
-          ghostEl.remove();
-          ghostEl = null;
-        }
-
-        if (!dragging) {
-          if (!isActive) activateTabId(id);
-          return;
-        }
-
-        if (tornOut && !isSpecialPageTabId(id)) {
-          if (hoverTargetLabel) {
-            // Combine directly into target Quillvibe window
-            windowSync?.sendTabDropIntoWindow(hoverTargetLabel, id);
-            void focusDesktopWindow(hoverTargetLabel);
-            if (state.openBookTabIds.length > 1) {
-              actions.closeBookTab(id);
-            } else {
-              window.setTimeout(() => void closeDesktopWindow(), 120);
-            }
-            return;
-          }
-          if (state.openBookTabIds.length > 1) {
-            void openBookInNewDesktopWindow(
-              isEmpty ? EMPTY_TAB_PREFIX : id,
-              isEmpty ? 'Quillvibe - New Tab' : `Quillvibe - ${tabTitle}`,
-              { maximized: false, posX: ev.screenX, posY: ev.screenY },
-            );
-            actions.closeBookTab(id);
-            return;
-          }
-        }
-
-        renderDesktopTabBar();
-      };
-
-      tabEl.addEventListener('pointermove', onMove);
-      tabEl.addEventListener('pointerup', onUp);
-      tabEl.addEventListener('pointercancel', onUp);
+    tabDragController.attachTab(tabEl, tabStrip, desktopTabBarEl!, {
+      tabId: id,
+      tabTitle,
+      isActive,
     });
 
     attachContextMenu(tabEl, () => [
@@ -3073,10 +2964,14 @@ async function bootstrap(): Promise<void> {
         renderDesktopTabBar();
       }
     },
-    onTabDroppedIntoMe: (_fromWindowId, incomingBookId) => {
-      if (!state.openBookTabIds.includes(incomingBookId)) {
-        state.openBookTabIds = [...state.openBookTabIds, incomingBookId];
-      }
+    onTabDroppedIntoMe: (_fromWindowId, incomingBookId, insertionIndex) => {
+      const filtered = state.openBookTabIds.filter((id) => id !== incomingBookId);
+      const clampedIdx =
+        typeof insertionIndex === 'number'
+          ? Math.max(0, Math.min(filtered.length, insertionIndex))
+          : filtered.length;
+      filtered.splice(clampedIdx, 0, incomingBookId);
+      state.openBookTabIds = filtered;
       if (isEmptyTabId(incomingBookId)) {
         state.activeTabId = incomingBookId;
         state.activeView = 'editor';

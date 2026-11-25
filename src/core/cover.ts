@@ -203,6 +203,10 @@ export function createShapeLayer(
     rect: 'Rectangle',
     'rounded-rect': 'Rounded Box',
     circle: 'Circle / Seal',
+    triangle: 'Triangle',
+    arrow: 'Arrow',
+    star: 'Star',
+    polygon: 'Hexagon',
     line: 'Rule Line',
     frame: 'Border Frame',
     badge: 'Edition Pill',
@@ -211,6 +215,8 @@ export function createShapeLayer(
   const isCircle = shape === 'circle';
   const isFrame = shape === 'frame';
   const isBadge = shape === 'badge';
+  const isArrow = shape === 'arrow';
+  const isStarOrPoly = shape === 'star' || shape === 'polygon' || shape === 'triangle';
   return {
     id: newId('csl'),
     face,
@@ -218,14 +224,14 @@ export function createShapeLayer(
     shape,
     xPct: 50,
     yPct: isBadge ? 18 : 52,
-    widthPct: isFrame ? 84 : isCircle ? 26 : isLine ? 62 : isBadge ? 38 : 48,
-    heightPct: isFrame ? 86 : isCircle ? 18 : isLine ? 1.5 : isBadge ? 7 : 22,
+    widthPct: isFrame ? 84 : isCircle ? 26 : isLine ? 62 : isBadge ? 38 : isArrow ? 42 : isStarOrPoly ? 24 : 48,
+    heightPct: isFrame ? 86 : isCircle ? 18 : isLine ? 1.5 : isBadge ? 7 : isArrow ? 14 : isStarOrPoly ? 16 : 22,
     fillColor: isFrame || isLine ? 'transparent' : accentColor,
     strokeColor: accentColor,
     strokeWidth: isFrame || isLine ? 2 : 0,
     cornerRadius: isCircle ? 999 : isBadge ? 999 : shape === 'rounded-rect' ? 14 : 0,
     rotationDeg: 0,
-    opacity: isFrame || isLine ? 0.9 : 0.28,
+    opacity: isFrame || isLine ? 0.9 : 0.35,
     visible: true,
     locked: false,
   };
@@ -457,13 +463,21 @@ async function drawGraphicLayersOnRect(
     ctx.globalAlpha = Math.max(0.05, Math.min(1, layer.opacity));
     const b = layer.brightnessPct ?? 100;
     const c = layer.contrastPct ?? 100;
+    const sat = layer.saturationPct ?? 100;
     const blur = layer.blurPx ?? 0;
-    if ('filter' in ctx && (b !== 100 || c !== 100 || blur > 0)) {
-      ctx.filter = `brightness(${b}%) contrast(${c}%) blur(${blur}px)`;
+    if ('filter' in ctx && (b !== 100 || c !== 100 || sat !== 100 || blur > 0)) {
+      ctx.filter = `brightness(${b}%) contrast(${c}%) saturate(${sat}%) blur(${blur}px)`;
     }
     ctx.translate(cx, cy);
     ctx.rotate((layer.rotationDeg * Math.PI) / 180);
     ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+    const radiusPct = Math.max(0, Math.min(50, layer.borderRadiusPct ?? 0));
+    if (radiusPct > 0) {
+      const rPx = (radiusPct / 100) * Math.min(targetW, targetH);
+      ctx.beginPath();
+      ctx.roundRect(-targetW / 2, -targetH / 2, targetW, targetH, rPx);
+      ctx.clip();
+    }
     ctx.drawImage(img, -targetW / 2, -targetH / 2, targetW, targetH);
     ctx.restore();
   }
@@ -497,6 +511,44 @@ function drawShapeLayersOnRect(
     } else if (s.shape === 'line') {
       ctx.moveTo(-hw, 0);
       ctx.lineTo(hw, 0);
+    } else if (s.shape === 'triangle') {
+      ctx.moveTo(0, -hh);
+      ctx.lineTo(hw, hh);
+      ctx.lineTo(-hw, hh);
+      ctx.closePath();
+    } else if (s.shape === 'arrow') {
+      const shaftH = hh * 0.42;
+      const headStart = hw * 0.28;
+      ctx.moveTo(-hw, -shaftH);
+      ctx.lineTo(headStart, -shaftH);
+      ctx.lineTo(headStart, -hh);
+      ctx.lineTo(hw, 0);
+      ctx.lineTo(headStart, hh);
+      ctx.lineTo(headStart, shaftH);
+      ctx.lineTo(-hw, shaftH);
+      ctx.closePath();
+    } else if (s.shape === 'star') {
+      const spikes = 5;
+      for (let i = 0; i < spikes * 2; i++) {
+        const ang = (i * Math.PI) / spikes - Math.PI / 2;
+        const radX = i % 2 === 0 ? hw : hw * 0.42;
+        const radY = i % 2 === 0 ? hh : hh * 0.42;
+        const px = Math.cos(ang) * radX;
+        const py = Math.sin(ang) * radY;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    } else if (s.shape === 'polygon') {
+      const sides = 6;
+      for (let i = 0; i < sides; i++) {
+        const ang = (i * Math.PI * 2) / sides - Math.PI / 2;
+        const px = Math.cos(ang) * hw;
+        const py = Math.sin(ang) * hh;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
     } else {
       const r = Math.min(s.cornerRadius || 0, hw, hh);
       ctx.roundRect(-hw, -hh, w, h, r);
@@ -551,6 +603,24 @@ function drawCustomTextLayersOnRect(
     const content = tl.uppercase ? tl.text.toUpperCase() : tl.text;
     const lines = wrapCanvasLines(ctx, content, boxW * 0.85);
     const step = pxSize * (tl.lineHeight || 1.2);
+    if (tl.backgroundColor && tl.backgroundColor !== 'transparent') {
+      let maxLineW = 0;
+      for (const line of lines) {
+        maxLineW = Math.max(maxLineW, ctx.measureText(line).width);
+      }
+      const padX = pxSize * 0.45;
+      const padY = pxSize * 0.25;
+      const boxBgW = maxLineW + padX * 2;
+      const boxBgH = lines.length * step + padY * 2;
+      const alignOffsetX =
+        tl.align === 'left' ? 0 : tl.align === 'right' ? -boxBgW : -boxBgW / 2;
+      ctx.save();
+      ctx.fillStyle = tl.backgroundColor;
+      ctx.beginPath();
+      ctx.roundRect(alignOffsetX, -boxBgH / 2, boxBgW, boxBgH, 6 * scaleFactor);
+      ctx.fill();
+      ctx.restore();
+    }
     let y = -((lines.length - 1) * step) / 2;
     for (const line of lines) {
       if (tl.strokeWidth && tl.strokeWidth > 0 && tl.strokeColor) {
@@ -560,6 +630,19 @@ function drawCustomTextLayersOnRect(
       }
       ctx.fillStyle = tl.color;
       ctx.fillText(line, 0, y);
+      if (tl.textDecoration === 'underline' || tl.textDecoration === 'line-through') {
+        const lw = ctx.measureText(line).width;
+        const startX = tl.align === 'left' ? 0 : tl.align === 'right' ? -lw : -lw / 2;
+        const lineY = tl.textDecoration === 'underline' ? y + pxSize * 0.42 : y;
+        ctx.save();
+        ctx.strokeStyle = tl.color;
+        ctx.lineWidth = Math.max(1.5, pxSize * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(startX, lineY);
+        ctx.lineTo(startX + lw, lineY);
+        ctx.stroke();
+        ctx.restore();
+      }
       y += step;
     }
     ctx.restore();
@@ -573,6 +656,7 @@ async function paintFrontFaceOnContext(
   oy: number,
   widthPx: number,
   heightPx: number,
+  options: { transparentBackground?: boolean } = {},
 ): Promise<void> {
   const cover = project.cover ?? defaultBookCover(project);
   const identity = ensureAuthorIdentity(project);
@@ -587,35 +671,37 @@ async function paintFrontFaceOnContext(
   ctx.rect(ox, oy, widthPx, heightPx);
   ctx.clip();
 
-  if (cover.bgMode === 'linear-gradient') {
-    const rad = ((cover.bgGradientAngle ?? 155) * Math.PI) / 180;
-    const dx = Math.cos(rad) * (widthPx / 2);
-    const dy = Math.sin(rad) * (heightPx / 2);
-    const grad = ctx.createLinearGradient(
-      ox + widthPx / 2 - dx,
-      oy + heightPx / 2 - dy,
-      ox + widthPx / 2 + dx,
-      oy + heightPx / 2 + dy,
-    );
-    grad.addColorStop(0, cover.backgroundColor);
-    grad.addColorStop(1, cover.bgGradientEnd || cover.accentColor);
-    ctx.fillStyle = grad;
-  } else if (cover.bgMode === 'radial-gradient') {
-    const grad = ctx.createRadialGradient(
-      ox + widthPx * 0.5,
-      oy + heightPx * 0.35,
-      widthPx * 0.05,
-      ox + widthPx * 0.5,
-      oy + heightPx * 0.5,
-      Math.max(widthPx, heightPx) * 0.72,
-    );
-    grad.addColorStop(0, cover.bgGradientEnd || cover.accentColor);
-    grad.addColorStop(1, cover.backgroundColor);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = cover.backgroundColor;
+  if (!options.transparentBackground) {
+    if (cover.bgMode === 'linear-gradient') {
+      const rad = ((cover.bgGradientAngle ?? 155) * Math.PI) / 180;
+      const dx = Math.cos(rad) * (widthPx / 2);
+      const dy = Math.sin(rad) * (heightPx / 2);
+      const grad = ctx.createLinearGradient(
+        ox + widthPx / 2 - dx,
+        oy + heightPx / 2 - dy,
+        ox + widthPx / 2 + dx,
+        oy + heightPx / 2 + dy,
+      );
+      grad.addColorStop(0, cover.backgroundColor);
+      grad.addColorStop(1, cover.bgGradientEnd || cover.accentColor);
+      ctx.fillStyle = grad;
+    } else if (cover.bgMode === 'radial-gradient') {
+      const grad = ctx.createRadialGradient(
+        ox + widthPx * 0.5,
+        oy + heightPx * 0.35,
+        widthPx * 0.05,
+        ox + widthPx * 0.5,
+        oy + heightPx * 0.5,
+        Math.max(widthPx, heightPx) * 0.72,
+      );
+      grad.addColorStop(0, cover.bgGradientEnd || cover.accentColor);
+      grad.addColorStop(1, cover.backgroundColor);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = cover.backgroundColor;
+    }
+    ctx.fillRect(ox, oy, widthPx, heightPx);
   }
-  ctx.fillRect(ox, oy, widthPx, heightPx);
 
   if (cover.backgroundImageDataUrl) {
     const art = await loadImage(cover.backgroundImageDataUrl);
@@ -749,10 +835,11 @@ async function paintFrontFaceOnContext(
   ctx.restore();
 }
 
-export async function renderCoverToPngDataUrl(
+export async function renderCoverToDataUrl(
   project: BookProject,
   widthPx = 1200,
   heightPx = 1920,
+  options: { format?: 'image/png' | 'image/jpeg'; quality?: number; transparentBackground?: boolean } = {},
 ): Promise<string> {
   if (typeof document === 'undefined') return '';
   const canvas = document.createElement('canvas');
@@ -760,8 +847,186 @@ export async function renderCoverToPngDataUrl(
   canvas.height = heightPx;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
-  await paintFrontFaceOnContext(ctx, project, 0, 0, widthPx, heightPx);
-  return canvas.toDataURL('image/png');
+  const fmt = options.format ?? 'image/png';
+  await paintFrontFaceOnContext(ctx, project, 0, 0, widthPx, heightPx, {
+    transparentBackground: fmt === 'image/png' && Boolean(options.transparentBackground),
+  });
+  return canvas.toDataURL(fmt, options.quality ?? 0.92);
+}
+
+export async function renderCoverToPngDataUrl(
+  project: BookProject,
+  widthPx = 1200,
+  heightPx = 1920,
+  transparentBackground = false,
+): Promise<string> {
+  return renderCoverToDataUrl(project, widthPx, heightPx, {
+    format: 'image/png',
+    transparentBackground,
+  });
+}
+
+export async function renderCoverToJpegDataUrl(
+  project: BookProject,
+  widthPx = 1200,
+  heightPx = 1920,
+  quality = 0.92,
+): Promise<string> {
+  return renderCoverToDataUrl(project, widthPx, heightPx, {
+    format: 'image/jpeg',
+    quality,
+  });
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function svgShapeMarkup(s: CoverShapeLayer, boxW: number, boxH: number): string {
+  if (s.visible === false) return '';
+  const cx = (s.xPct / 100) * boxW;
+  const cy = (s.yPct / 100) * boxH;
+  const w = (s.widthPct / 100) * boxW;
+  const h = s.shape === 'line' ? Math.max(2, s.strokeWidth || 2) : (s.heightPct / 100) * boxH;
+  const hw = w / 2;
+  const hh = h / 2;
+  const fill = s.shape === 'line' || !s.fillColor || s.fillColor === 'transparent' ? 'none' : escapeXml(s.fillColor);
+  const stroke = s.strokeWidth > 0 && s.strokeColor ? escapeXml(s.strokeColor) : 'none';
+  const sw = s.strokeWidth > 0 ? s.strokeWidth * (boxW / 400) : 0;
+  const op = Math.max(0.02, Math.min(1, s.opacity));
+  const tf = `translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) rotate(${s.rotationDeg})`;
+
+  if (s.shape === 'circle') {
+    return `<ellipse transform="${tf}" cx="0" cy="0" rx="${hw.toFixed(1)}" ry="${hh.toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}" />`;
+  }
+  if (s.shape === 'line') {
+    return `<line transform="${tf}" x1="${(-hw).toFixed(1)}" y1="0" x2="${hw.toFixed(1)}" y2="0" stroke="${stroke !== 'none' ? stroke : fill}" stroke-width="${Math.max(1.5, sw)}" opacity="${op}" />`;
+  }
+  if (s.shape === 'triangle') {
+    return `<polygon transform="${tf}" points="0,${(-hh).toFixed(1)} ${hw.toFixed(1)},${hh.toFixed(1)} ${(-hw).toFixed(1)},${hh.toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}" />`;
+  }
+  if (s.shape === 'arrow') {
+    const sh = (hh * 0.42).toFixed(1);
+    const hs = (hw * 0.28).toFixed(1);
+    const pts = `${(-hw).toFixed(1)},-${sh} ${hs},-${sh} ${hs},${(-hh).toFixed(1)} ${hw.toFixed(1)},0 ${hs},${hh.toFixed(1)} ${hs},${sh} ${(-hw).toFixed(1)},${sh}`;
+    return `<polygon transform="${tf}" points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}" />`;
+  }
+  if (s.shape === 'star' || s.shape === 'polygon') {
+    const pts: string[] = [];
+    const total = s.shape === 'star' ? 10 : 6;
+    for (let i = 0; i < total; i++) {
+      const ang = (i * Math.PI * 2) / total - Math.PI / 2;
+      const rx = s.shape === 'star' && i % 2 === 1 ? hw * 0.42 : hw;
+      const ry = s.shape === 'star' && i % 2 === 1 ? hh * 0.42 : hh;
+      pts.push(`${(Math.cos(ang) * rx).toFixed(1)},${(Math.sin(ang) * ry).toFixed(1)}`);
+    }
+    return `<polygon transform="${tf}" points="${pts.join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}" />`;
+  }
+  const rx = Math.min(s.cornerRadius || 0, hw, hh);
+  return `<rect transform="${tf}" x="${(-hw).toFixed(1)}" y="${(-hh).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}" />`;
+}
+
+export function renderCoverToVectorSvg(
+  project: BookProject,
+  widthPx = 1200,
+  heightPx = 1920,
+): string {
+  const cover = project.cover ?? defaultBookCover(project);
+  const identity = ensureAuthorIdentity(project);
+  const penName = identity.penName || project.author || 'Author';
+  const fontStack = resolveEffectiveFontCss(
+    project.typography.fontFamily,
+    cover.customFontFamily || project.typography.customFontFamily,
+  );
+  const scaleFactor = widthPx / 400;
+  const pad = Math.round(widthPx * 0.075);
+
+  const defs: string[] = [];
+  let bgFill = escapeXml(cover.backgroundColor);
+  if (cover.bgMode === 'linear-gradient') {
+    defs.push(
+      `<linearGradient id="qvBgGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${escapeXml(cover.backgroundColor)}" /><stop offset="100%" stop-color="${escapeXml(cover.bgGradientEnd || cover.accentColor)}" /></linearGradient>`,
+    );
+    bgFill = 'url(#qvBgGrad)';
+  } else if (cover.bgMode === 'radial-gradient') {
+    defs.push(
+      `<radialGradient id="qvBgGrad" cx="50%" cy="35%" r="72%"><stop offset="0%" stop-color="${escapeXml(cover.bgGradientEnd || cover.accentColor)}" /><stop offset="100%" stop-color="${escapeXml(cover.backgroundColor)}" /></radialGradient>`,
+    );
+    bgFill = 'url(#qvBgGrad)';
+  }
+
+  const shapesMarkup = [...(cover.shapeLayers ?? [])]
+    .filter((s) => s.face === 'front')
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map((s) => svgShapeMarkup(s, widthPx, heightPx))
+    .join('\n  ');
+
+  const graphicsMarkup = [...(cover.graphicLayers ?? [])]
+    .filter((g) => g.face === 'front' && g.visible !== false)
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map((g) => {
+      const w = (Math.max(5, Math.min(100, g.widthPct)) / 100) * widthPx;
+      const cx = (g.xPct / 100) * widthPx;
+      const cy = (g.yPct / 100) * heightPx;
+      const sx = g.flipX ? -1 : 1;
+      const sy = g.flipY ? -1 : 1;
+      return `<g transform="translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) rotate(${g.rotationDeg}) scale(${sx}, ${sy})" opacity="${g.opacity}"><image href="${escapeXml(g.dataUrl)}" x="${(-w / 2).toFixed(1)}" y="${(-w / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" preserveAspectRatio="xMidYMid meet" /></g>`;
+    })
+    .join('\n  ');
+
+  const renderCoreText = (
+    text: string,
+    placement: BookCoverConfig['elements']['title'],
+    fallbackColor: string,
+    fallbackWeight = '500',
+    uppercase = false,
+  ) => {
+    if (!placement.visible || !text.trim()) return '';
+    const content = (placement.uppercase ?? uppercase) ? text.toUpperCase() : text;
+    const x = (placement.xPct / 100) * widthPx;
+    const y = (placement.yPct / 100) * heightPx;
+    const anchor = placement.align === 'left' ? 'start' : placement.align === 'right' ? 'end' : 'middle';
+    const pxSize = Math.round(placement.fontSize * scaleFactor);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${escapeXml(placement.color ?? fallbackColor)}" font-family="${escapeXml(fontStack)}" font-size="${pxSize}" font-weight="${placement.fontWeight ?? fallbackWeight}" text-anchor="${anchor}" dominant-baseline="central">${escapeXml(content)}</text>`;
+  };
+
+  const customTextsMarkup = [...(cover.textLayers ?? [])]
+    .filter((t) => t.face === 'front' && t.visible !== false && t.text.trim())
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map((tl) => {
+      const x = (tl.xPct / 100) * widthPx;
+      const y = (tl.yPct / 100) * heightPx;
+      const anchor = tl.align === 'left' ? 'start' : tl.align === 'right' ? 'end' : 'middle';
+      const pxSize = Math.round(tl.fontSize * scaleFactor);
+      const tf = `translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${tl.rotationDeg})`;
+      const content = tl.uppercase ? tl.text.toUpperCase() : tl.text;
+      return `<text transform="${tf}" x="0" y="0" fill="${escapeXml(tl.color)}" opacity="${tl.opacity}" font-family="${escapeXml(fontStack)}" font-size="${pxSize}" font-weight="${tl.fontWeight}" font-style="${tl.italic ? 'italic' : 'normal'}" text-anchor="${anchor}" dominant-baseline="central">${escapeXml(content)}</text>`;
+    })
+    .join('\n  ');
+
+  const frameBorder =
+    cover.template === 'obsidian-foil' || cover.template === 'ivory-classic'
+      ? `<rect x="${pad}" y="${pad}" width="${widthPx - pad * 2}" height="${heightPx - pad * 2}" fill="none" stroke="${escapeXml(cover.accentColor)}" stroke-width="${Math.max(2, Math.round(widthPx * 0.003))}" />`
+      : '';
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${widthPx} ${heightPx}">
+  ${defs.length ? `<defs>${defs.join('')}</defs>` : ''}
+  <rect width="${widthPx}" height="${heightPx}" fill="${bgFill}" />
+  ${frameBorder}
+  ${shapesMarkup}
+  ${graphicsMarkup}
+  ${renderCoreText(cover.editionLabel, cover.elements.edition, cover.accentColor, '600', true)}
+  ${renderCoreText(project.title, cover.elements.title, cover.textColor, '600')}
+  ${renderCoreText(project.subtitle, cover.elements.subtitle, cover.textColor, '400')}
+  ${renderCoreText(penName, cover.elements.author, cover.textColor, '600', true)}
+  ${customTextsMarkup}
+</svg>`;
 }
 
 export async function renderFullWrapToPngDataUrl(

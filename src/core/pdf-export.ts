@@ -463,7 +463,7 @@ export function buildTypesetPdfBytes(project: BookProject): Uint8Array {
     enc.encode(` /Author `),
     encodeWinAnsiPdfLiteral(authorName),
     enc.encode(` /Creator `),
-    encodeWinAnsiPdfLiteral('Quillvibe 2.3.0 (jhonrey.com)'),
+    encodeWinAnsiPdfLiteral('Quillvibe 3.0.0 (jhonrey.com)'),
     enc.encode(` /Producer `),
     encodeWinAnsiPdfLiteral('jhonrey.com Quillvibe PDF Engine'),
     enc.encode(` >>\nendobj\n`),

@@ -373,16 +373,40 @@ export async function exportCoverPngDownload(
   bookTitle: string,
   variant: 'front' | 'wrap' = 'front',
 ): Promise<string | null> {
+  return exportCoverDataUrlDownload(pngDataUrl, bookTitle, 'png', variant);
+}
+
+export async function exportCoverDataUrlDownload(
+  payload: string,
+  bookTitle: string,
+  extension: 'png' | 'jpeg' | 'svg',
+  variant = 'front',
+): Promise<string | null> {
   const base = sanitizeSlug(bookTitle);
-  const b64 = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+  const suggestedName = variant === 'wrap' ? `${base}-full-wrap` : `${base}-cover`;
+  if (extension === 'svg') {
+    return exportGenericFile({
+      suggestedName,
+      extension: 'svg',
+      description: 'Vector Book Cover SVG',
+      mimeType: 'image/svg+xml',
+      textContent: payload,
+    });
+  }
+  const b64 = payload.replace(/^data:image\/(png|jpeg);base64,/, '');
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return exportGenericFile({
-    suggestedName: variant === 'wrap' ? `${base}-full-wrap` : `${base}-cover`,
-    extension: 'png',
-    description: variant === 'wrap' ? 'Print Full Cover Wrap PNG' : 'Front Book Cover PNG',
-    mimeType: 'image/png',
+    suggestedName,
+    extension,
+    description:
+      extension === 'jpeg'
+        ? 'Book Cover JPEG'
+        : variant === 'wrap'
+          ? 'Print Full Cover Wrap PNG'
+          : 'Front Book Cover PNG',
+    mimeType: extension === 'jpeg' ? 'image/jpeg' : 'image/png',
     binaryBytes: bytes,
   });
 }
@@ -607,6 +631,15 @@ export async function focusDesktopWindow(label: string): Promise<boolean> {
     return await tauriInvoke<boolean>('focus_desktop_window', { label });
   } catch {
     return false;
+  }
+}
+
+export async function moveDesktopWindow(x: number, y: number, label?: string): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    await tauriInvoke('move_desktop_window', { label: label ?? null, x, y });
+  } catch {
+    // ignore move failure
   }
 }
 

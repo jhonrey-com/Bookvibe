@@ -34,6 +34,26 @@ import {
   buildRtfExport,
   computeBookPagination,
 } from '../src/core/export';
+import { routeConnector } from '../src/core/connector-router';
+import {
+  alignBoxes,
+  computeStudioSmartSnap,
+  computeUnifiedBounds,
+  CoordinateSystem,
+  scaleBoxesAroundPivot,
+} from '../src/core/cover-studio-math';
+import {
+  findShortestNarrativePath,
+  ForceGraphSimulation,
+  getNeighborhoodIds,
+  resolveNodeColorByRules,
+} from '../src/core/force-engine';
+import {
+  exportStoryGraphToJsonCanvas,
+  extractWikilinksAndTags,
+  importJsonCanvasToStoryGraph,
+  syncWikilinkEdgesInGraph,
+} from '../src/core/graph-canvas-io';
 import { ProjectHistoryStack } from '../src/core/history';
 import { computeSnappedImagePosition } from '../src/core/scene-images';
 import {
@@ -428,5 +448,131 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     );
     expect(snapped.offsetX).toBe(200);
     expect(snapped.guideX).toBe(300);
+  });
+});
+
+describe('Cover Studio Math, Smart Snap, Storyboard Router & Force Graph', () => {
+  it('inverts screen/world coordinates across zoom & pan and snaps cleanly within 5px screen threshold', () => {
+    const coord = new CoordinateSystem({
+      artboardWidth: 400,
+      artboardHeight: 600,
+      zoom: 2,
+      panX: 80,
+      panY: 40,
+      originX: 20,
+      originY: 10,
+    });
+    const pt = coord.worldToScreen(25, 50);
+    const back = coord.screenToWorld(pt.x, pt.y);
+    expect(back.x).toBeCloseTo(25, 4);
+    expect(back.y).toBeCloseTo(50, 4);
+
+    // Card centered near 50% X snaps strictly when within 5px, and bypasses when disabled (Ctrl held)
+    const snapOn = computeStudioSmartSnap(
+      { id: 'moving', left: 39.8, top: 20, width: 20, height: 10 },
+      [],
+      coord,
+      { disabled: false },
+    );
+    expect(snapOn.snappedLeftPct).toBe(40);
+    expect(snapOn.guides.some((g) => g.orientation === 'vertical' && g.positionPct === 50)).toBe(true);
+
+    const snapBypass = computeStudioSmartSnap(
+      { id: 'moving', left: 39.8, top: 20, width: 20, height: 10 },
+      [],
+      coord,
+      { disabled: true },
+    );
+    expect(snapBypass.snappedLeftPct).toBe(39.8);
+    expect(snapBypass.guides).toHaveLength(0);
+
+    // Equal spacing across 3 items triggers spacing badge indicators
+    const siblings = [
+      { id: 'a', left: 10, top: 20, width: 10, height: 10 },
+      { id: 'b', left: 30, top: 20, width: 10, height: 10 },
+    ];
+    const spacingSnap = computeStudioSmartSnap(
+      { id: 'c', left: 50.2, top: 20, width: 10, height: 10 },
+      siblings,
+      new CoordinateSystem({ artboardWidth: 400, artboardHeight: 600, zoom: 1 }),
+    );
+    expect(spacingSnap.snappedLeftPct).toBe(50);
+    expect(spacingSnap.spacingBadges.length).toBeGreaterThanOrEqual(2);
+
+    const bounds = computeUnifiedBounds(siblings)!;
+    expect(bounds).toMatchObject({ left: 10, top: 20, width: 30, height: 10 });
+    const scaled = scaleBoxesAroundPivot(siblings, bounds, { ...bounds, width: 60 });
+    expect(scaled.get('b')?.left).toBe(50);
+
+    const aligned = alignBoxes(siblings, 'tidy');
+    expect(aligned.get('b')?.left).toBe(aligned.get('a')?.left);
+  });
+
+  it('routes orthogonal elbow, curved Bezier, and straight edge-clipped connectors around obstacles', () => {
+    const src = { id: 'n1', x: 0, y: 100, width: 160, height: 80 };
+    const dst = { id: 'n2', x: 400, y: 100, width: 160, height: 80 };
+    const blocker = { id: 'obs', x: 220, y: 60, width: 120, height: 160 };
+
+    const elbow = routeConnector({
+      sourceBox: src,
+      targetBox: dst,
+      routingMode: 'elbow',
+      obstacles: [src, dst, blocker],
+    });
+    expect(elbow.d).toContain('Q ');
+    expect(elbow.midHandle).not.toBeNull();
+    // Detour path avoids vertical pass straight through the blocker card
+    expect(elbow.labelPoint.y < blocker.y || elbow.labelPoint.y > blocker.y + blocker.height).toBe(true);
+
+    const curved = routeConnector({ sourceBox: src, targetBox: dst, routingMode: 'curved' });
+    expect(curved.d).toContain(' C ');
+    expect(curved.sourceSide).toBe('right');
+    expect(curved.targetSide).toBe('left');
+
+    const straight = routeConnector({ sourceBox: src, targetBox: dst, routingMode: 'straight' });
+    expect(straight.startPoint.x).toBe(160);
+    expect(straight.endPoint.x).toBe(400);
+  });
+
+  it('runs ForceGraphSimulation with pins, isolates hop neighborhoods, finds shortest path, and round-trips .canvas + wikilinks', () => {
+    const graph = {
+      nodes: [
+        { id: 'a', kind: 'character' as const, label: 'Aria', subtitle: 'Protagonist', x: 100, y: 100, color: '#c7a97b', notes: 'Allies with [[Rook]] #hero', pinned: true },
+        { id: 'b', kind: 'character' as const, label: 'Rook', subtitle: 'Captain', x: 120, y: 100, color: '#c7a97b', notes: '' },
+        { id: 'c', kind: 'faction' as const, label: 'Iron Guild', subtitle: 'Faction', x: 300, y: 200, color: '#e06c75', notes: '', tags: ['guild'] },
+      ],
+      edges: [
+        { id: 'e1', sourceId: 'a', targetId: 'b', label: 'trusts', style: 'solid' as const, color: '#c7a97b' },
+        { id: 'e2', sourceId: 'b', targetId: 'c', label: 'defected from', style: 'dashed' as const, color: '#e06c75' },
+      ],
+      groups: [{ id: 'g1', label: 'Act I', x: 40, y: 40, width: 380, height: 240, color: '#c7a97b' }],
+      colorRules: [{ id: 'r1', query: 'kind:faction', color: '#ff5555' }],
+    };
+
+    const sim = new ForceGraphSimulation(graph);
+    sim.runSteps(20);
+    expect(sim.bodies.get('a')?.x).toBe(100);
+    expect(sim.bodies.get('b')?.x).not.toBe(120);
+
+    expect(Array.from(getNeighborhoodIds(graph, 'a', 1))).toEqual(['a', 'b']);
+    expect(findShortestNarrativePath(graph, 'a', 'c')).toEqual({
+      nodeIds: ['a', 'b', 'c'],
+      edgeIds: ['e1', 'e2'],
+    });
+    expect(resolveNodeColorByRules(graph.nodes[2], graph.colorRules)).toBe('#ff5555');
+
+    const parsed = extractWikilinksAndTags('See [[Aria]] and [[New Oracle]] #mystery');
+    expect(parsed.links).toEqual(['Aria', 'New Oracle']);
+    expect(parsed.tags).toEqual(['mystery']);
+
+    const synced = syncWikilinkEdgesInGraph(graph, 'a', 'Works with [[Rook]] and [[Vesper]] #act1');
+    expect(synced.nodes.some((n) => n.label === 'Vesper')).toBe(true);
+    expect(synced.edges.some((e) => e.label === 'wikilink')).toBe(true);
+
+    const canvasJson = exportStoryGraphToJsonCanvas(graph);
+    const reimported = importJsonCanvasToStoryGraph(canvasJson);
+    expect(reimported.groups).toHaveLength(1);
+    expect(reimported.nodes).toHaveLength(3);
+    expect(reimported.edges).toHaveLength(2);
   });
 });

@@ -51,6 +51,7 @@ export type SyncMessage =
       targetWindowLabel: string;
       fromWindowId: string;
       bookId: string;
+      insertionIndex?: number;
     }
   | {
       type: 'merge-all-into';
@@ -74,7 +75,7 @@ export interface WindowSyncCallbacks {
   getActiveBookId(): string;
   onRemoteBookUpdated(bookId: string, project: BookProject, rev: number): void;
   onTabTransferredAway(bookId: string): void;
-  onTabDroppedIntoMe(fromWindowId: string, bookId: string): void;
+  onTabDroppedIntoMe(fromWindowId: string, bookId: string, insertionIndex?: number): void;
   onMergeRequested(targetWindowId: string): void;
   onMergeOfferReceived(fromWindowId: string, bookIds: string[]): void;
   onMergeAcknowledged(): void;
@@ -226,12 +227,13 @@ export class WorkspaceWindowSync {
     });
   }
 
-  sendTabDropIntoWindow(targetWindowLabel: string, bookId: string): void {
+  sendTabDropIntoWindow(targetWindowLabel: string, bookId: string, insertionIndex?: number): void {
     this.post({
       type: 'tab-drop-into',
       targetWindowLabel,
       fromWindowId: this.windowId,
       bookId,
+      insertionIndex,
     });
   }
 
@@ -283,7 +285,7 @@ export class WorkspaceWindowSync {
         msg.fromWindowId !== this.windowId &&
         msg.targetWindowLabel === this.callbacks.getWindowLabel()
       ) {
-        this.callbacks.onTabDroppedIntoMe(msg.fromWindowId, msg.bookId);
+        this.callbacks.onTabDroppedIntoMe(msg.fromWindowId, msg.bookId, msg.insertionIndex);
       }
     } else if (msg.type === 'merge-all-into') {
       if (msg.targetWindowId !== this.windowId) {

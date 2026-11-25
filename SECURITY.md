@@ -4,8 +4,8 @@
 
 | Version | Status |
 | :--- | :--- |
-| `2.3.x` | Supported (active website & Windows / macOS / Linux desktop releases) |
-| `< 2.3.0` | Upgrade to latest release |
+| `3.0.x` | Supported (active website & Windows / macOS / Linux desktop releases) |
+| `< 3.0.0` | Upgrade to latest release |
 
 ---
 

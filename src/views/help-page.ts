@@ -83,7 +83,7 @@ export const HELP_FAQ_ARTICLES: readonly HelpFaqArticle[] = [
     keywords: 'corkboard outline story bible characters locations lore story graph nodes wiring',
     screenshot: {
       src: '/screenshots/story-graph.png',
-      caption: 'Story Graph with exact left/right card connections and node editing.',
+      caption: 'Dual-mode Story Graph with Spatial Storyboard groups, 90-degree elbow connectors, and Force Graph physics.',
     },
   },
   {
@@ -91,13 +91,13 @@ export const HELP_FAQ_ARTICLES: readonly HelpFaqArticle[] = [
     category: 'Images & Covers',
     platform: 'both',
     title: 'Book Cover Studio, Interior Typeset & Real Print PDF / EPUB 3',
-    summary: 'Design front, spine, back, and dust-jacket flaps, install custom fonts, and export trim-sized Print PDF and EPUB 3 books.',
+    summary: 'Design front, spine, back, and dust-jacket flaps, install custom fonts, and export trim-sized Print PDF, PNG 1x/2x/3x, JPEG, Vector SVG, and EPUB 3 books.',
     details: [
       'Install your own .ttf, .otf, .woff, or .woff2 fonts in Settings -> Typefaces & Fonts.',
-      'Book Cover Studio supports vector shapes, multi-layer text, gradients, filters, layer ordering, corner resize handles, grid snap, and alignment guides.',
+      'Book Cover Studio supports 100-step undo/redo, 10% to 500% zoom, Space+Drag panning, 8-point scaling and rotation handles, Shift+Click / marquee multi-select, Ctrl+G layer grouping, double-click on-canvas text editing, smart snapping guides with equal-spacing badges, and exports to PNG (1x/2x/3x or transparent), JPEG, and Vector SVG.',
       'Interior Typeset previews trim sizes (5x8, 5.5x8.5, 6x9, A5, Royal, Letter), margins, drop caps, running headers, and exports real Print PDF (.pdf) and EPUB 3 (.epub) files.',
     ],
-    keywords: 'cover studio typeset pdf epub print trim size font drop cap spine wrap',
+    keywords: 'cover studio typeset pdf epub print trim size font drop cap spine wrap svg jpeg png 3x transparent group snap zoom pan',
     screenshot: {
       src: '/screenshots/cover-studio.png',
       caption: 'Book Cover Studio with layered shapes, corner resize handles, and inspector properties.',

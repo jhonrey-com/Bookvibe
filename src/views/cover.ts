@@ -1,5 +1,9 @@
 import type { AppActions } from '../core/app-context';
+import { exportCoverDataUrlDownload } from '../core/bridge';
 import {
+  renderCoverToJpegDataUrl,
+  renderCoverToPngDataUrl,
+  renderCoverToVectorSvg,
   BUILT_IN_COVER_ORNAMENTS,
   COVER_TEMPLATES,
   computeCoverBackgroundCss,
@@ -12,6 +16,15 @@ import {
   encodeSvgStringToDataUrl,
   estimateSpineInches,
 } from '../core/cover';
+import {
+  alignBoxes,
+  computeStudioSmartSnap,
+  CoordinateSystem,
+  type AlignMode,
+  type SnapGuideLine,
+  type SpacingBadgeIndicator,
+  type WorldBox,
+} from '../core/cover-studio-math';
 import { TRIM_SPECS } from '../core/export';
 import { getAllAvailableFontChoices, resolveEffectiveFontCss } from '../core/fonts';
 import { ensureAuthorIdentity } from '../core/identity';
@@ -20,12 +33,15 @@ import { newId } from '../core/manuscript';
 import type {
   BookCoverConfig,
   CoverFaceId,
+  CoverGraphicLayer,
   CoverShapeKind,
+  CoverShapeLayer,
   CoverTemplateId,
+  CoverTextLayer,
   ToolbarDisplayMode,
 } from '../core/types';
 import { attachContextMenu } from '../ui/context-menu';
-import { clearNode, el, icon, type IconName } from '../ui/dom';
+import { clearNode, el, icon, svgEl, type IconName } from '../ui/dom';
 import { createVerticalResizer } from '../ui/resizer';
 
 type CoverPreviewMode = 'front' | 'back' | 'spine' | 'full-wrap' | 'dust-jacket';
@@ -39,7 +55,17 @@ let activeInspectorTab: InspectorTab = 'properties';
 let activeSelectionKind: 'element' | 'text' | 'shape' | 'graphic' = 'element';
 let activeElementKey: CoverElementKey = 'title';
 let activeLayerId = '';
+const selectedLayerKeys = new Set<string>(['element:title']);
 let studioZoom = 1.0;
+let studioPanX = 0;
+let studioPanY = 0;
+let studioClipboard: Array<
+  | { kind: 'text'; layer: CoverTextLayer }
+  | { kind: 'shape'; layer: CoverShapeLayer }
+  | { kind: 'graphic'; layer: CoverGraphicLayer }
+> = [];
+let sliderUndoBaseline: BookCoverConfig | null = null;
+let activeCoverKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 let savedStudioLeftScroll = 0;
 let savedStudioRightScroll = 0;
@@ -47,7 +73,58 @@ let savedStudioStageScrollTop = 0;
 
 const undoStack: BookCoverConfig[] = [];
 const redoStack: BookCoverConfig[] = [];
-const MAX_UNDO = 30;
+const MAX_UNDO = 100;
+
+function layerKeyOf(kind: 'element' | 'text' | 'shape' | 'graphic', idOrKey: string): string {
+  return `${kind}:${idOrKey}`;
+}
+
+function setSingleSelection(
+  cover: BookCoverConfig,
+  kind: 'element' | 'text' | 'shape' | 'graphic',
+  idOrKey: string,
+  additive = false,
+): void {
+  if (!additive) selectedLayerKeys.clear();
+  if (kind === 'element') {
+    activeSelectionKind = 'element';
+    activeElementKey = idOrKey as CoverElementKey;
+    activeLayerId = '';
+    selectedLayerKeys.add(layerKeyOf('element', idOrKey));
+    return;
+  }
+  activeSelectionKind = kind;
+  activeLayerId = idOrKey;
+  selectedLayerKeys.add(layerKeyOf(kind, idOrKey));
+  // Expand selection automatically across layers sharing a groupId
+  const allLayers = [
+    ...(cover.shapeLayers ?? []).map((s) => ({ kind: 'shape' as const, id: s.id, groupId: s.groupId })),
+    ...(cover.graphicLayers ?? []).map((g) => ({ kind: 'graphic' as const, id: g.id, groupId: g.groupId })),
+    ...(cover.textLayers ?? []).map((t) => ({ kind: 'text' as const, id: t.id, groupId: t.groupId })),
+  ];
+  const clicked = allLayers.find((l) => l.kind === kind && l.id === idOrKey);
+  if (clicked?.groupId) {
+    for (const sibling of allLayers) {
+      if (sibling.groupId === clicked.groupId) {
+        selectedLayerKeys.add(layerKeyOf(sibling.kind, sibling.id));
+      }
+    }
+  }
+}
+
+function recordSliderBaseline(cover: BookCoverConfig): void {
+  if (!sliderUndoBaseline) {
+    sliderUndoBaseline = structuredClone(cover);
+  }
+}
+
+function commitSliderBaseline(): void {
+  if (!sliderUndoBaseline) return;
+  undoStack.push(sliderUndoBaseline);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+  sliderUndoBaseline = null;
+}
 
 function activeTargetFace(): CoverFaceId {
   if (coverWrapMode === 'back' || coverWrapMode === 'spine') return coverWrapMode;
@@ -292,6 +369,82 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       detailMode !== 'icons' ? el('span', { className: 'qv-tool-label', text: label }) : null,
     );
 
+  const openExportPopover = (anchor: HTMLElement) => {
+    const existing = document.getElementById('qv-cover-export-popover');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const closePop = () => {
+      pop.remove();
+      document.removeEventListener('pointerdown', onOutside, true);
+      document.removeEventListener('keydown', onEsc);
+    };
+    const onOutside = (ev: PointerEvent) => {
+      const t = ev.target as Node | null;
+      if (t && !pop.contains(t) && !anchor.contains(t)) closePop();
+    };
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') closePop();
+    };
+    const addItem = (label: string, onClick: () => void | Promise<void>) =>
+      el('button', {
+        className: 'qv-tab-picker-item',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            closePop();
+            void onClick();
+          },
+        },
+      }, el('span', { className: 'qv-tab-picker-title', text: label }));
+
+    const pop = el(
+      'div',
+      { className: 'qv-export-popover', id: 'qv-cover-export-popover' },
+      addItem('PNG 1x (600 x 960)', async () => {
+        const url = await renderCoverToPngDataUrl(project, 600, 960, false);
+        if (url) await exportCoverDataUrlDownload(url, project.title, 'png', 'front');
+        actions.notify('Exported 1x PNG cover');
+      }),
+      addItem('PNG 2x Print (1200 x 1920)', () => actions.exportCoverPng()),
+      addItem('PNG 3x Ultra (1800 x 2880)', async () => {
+        const url = await renderCoverToPngDataUrl(project, 1800, 2880, false);
+        if (url) await exportCoverDataUrlDownload(url, project.title, 'png', 'front');
+        actions.notify('Exported 3x Ultra PNG cover');
+      }),
+      addItem('Transparent PNG (No Background)', async () => {
+        const url = await renderCoverToPngDataUrl(project, 1200, 1920, true);
+        if (url) await exportCoverDataUrlDownload(url, project.title, 'png', 'front');
+        actions.notify('Exported transparent layer PNG');
+      }),
+      addItem('JPEG (92% Quality)', async () => {
+        const url = await renderCoverToJpegDataUrl(project, 1200, 1920, 0.92);
+        if (url) await exportCoverDataUrlDownload(url, project.title, 'jpeg', 'front');
+        actions.notify('Exported JPEG cover');
+      }),
+      addItem('Vector SVG (.svg)', async () => {
+        const svg = renderCoverToVectorSvg(project, 1200, 1920);
+        await exportCoverDataUrlDownload(svg, project.title, 'svg', 'front');
+        actions.notify('Exported Vector SVG cover');
+      }),
+      el('div', { className: 'qv-tab-picker-sep' }),
+      addItem('Full Print Wrap PNG (Back + Spine + Front)', () => actions.exportFullWrapPng()),
+      addItem('Print Interior PDF', () => actions.exportPdf()),
+    );
+    document.body.appendChild(pop);
+    const rect = anchor.getBoundingClientRect();
+    const popW = pop.offsetWidth || 288;
+    const popLeft = Math.max(8, Math.min(rect.right - popW, window.innerWidth - popW - 8));
+    pop.style.left = `${Math.round(popLeft)}px`;
+    pop.style.top = `${Math.round(rect.bottom + 4)}px`;
+    window.setTimeout(() => {
+      document.addEventListener('pointerdown', onOutside, true);
+      document.addEventListener('keydown', onEsc);
+    }, 0);
+  };
+
+  let exportMenuBtn!: HTMLButtonElement;
   const studioBar = el(
     'div',
     { className: 'qv-studio-topbar' },
@@ -312,7 +465,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         'magnet',
         'Snap',
         snapGridEnabled,
-        'Snap layers to grid intervals and magnetic center guides',
+        'Snap layers to magnetic alignment guides (hold Ctrl while dragging to bypass)',
         () => mutateCover(actions, (c) => ({ ...c, snapToGrid: !snapGridEnabled }), true, false),
       ),
       makeToolToggleBtn(
@@ -326,25 +479,48 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     el(
       'div',
       { className: 'bv-subbar-group' },
-      makeToolToggleBtn('zoom-out', 'Zoom Out', false, 'Zoom canvas out', () => {
-        studioZoom = Math.max(0.55, Number((studioZoom - 0.1).toFixed(2)));
+      makeToolToggleBtn('zoom-out', 'Zoom Out', false, 'Zoom canvas out (min 10%)', () => {
+        const step = studioZoom <= 0.5 ? 0.05 : 0.15;
+        studioZoom = Math.max(0.1, Number((studioZoom - step).toFixed(2)));
         renderCoverStudio(container, actions);
       }),
       el('button', {
         className: 'bv-mini-btn',
         text: `${Math.round(studioZoom * 100)}%`,
-        tooltip: { title: 'Reset Zoom', short: 'Click to reset canvas scale to 100%.' },
+        tooltip: { title: 'Reset Zoom (100%)', short: 'Click to reset zoom to 100% and center canvas.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
             studioZoom = 1;
+            studioPanX = 0;
+            studioPanY = 0;
             renderCoverStudio(container, actions);
           },
         },
       }),
-      makeToolToggleBtn('zoom-in', 'Zoom In', false, 'Zoom canvas in', () => {
-        studioZoom = Math.min(1.85, Number((studioZoom + 0.1).toFixed(2)));
+      makeToolToggleBtn('zoom-in', 'Zoom In', false, 'Zoom canvas in (max 500%)', () => {
+        const step = studioZoom < 0.5 ? 0.05 : 0.25;
+        studioZoom = Math.min(5, Number((studioZoom + step).toFixed(2)));
         renderCoverStudio(container, actions);
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Fit',
+        tooltip: { title: 'Fit Cover to Viewport', short: 'Scale artboard cleanly to available canvas space.' },
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            const scrollEl = container.querySelector<HTMLElement>('.qv-studio-canvas-scroll');
+            const sw = Math.max(260, (scrollEl?.clientWidth ?? 640) - 80);
+            const sh = Math.max(260, (scrollEl?.clientHeight ?? 620) - 80);
+            const faceUnits = coverWrapMode === 'full-wrap' ? 2.2 : coverWrapMode === 'dust-jacket' ? 3.1 : 1;
+            const fit = Math.min(sw / (frontW * faceUnits), sh / frontH);
+            studioZoom = Math.max(0.1, Math.min(2.5, Number(fit.toFixed(2))));
+            studioPanX = 0;
+            studioPanY = 0;
+            renderCoverStudio(container, actions);
+          },
+        },
       }),
       detailModeSel,
       el(
@@ -358,27 +534,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         icon('printer', 13),
         'Print',
       ),
-      el(
-        'button',
-        {
-          className: 'bv-btn',
-          attrs: { type: 'button' },
-          tooltip: { title: 'Export Interior PDF (.pdf)', short: 'Generate trim-sized print interior PDF file.' },
-          on: { click: () => void actions.exportPdf() },
-        },
-        icon('download', 13),
-        'PDF',
-      ),
-      el(
+      (exportMenuBtn = el(
         'button',
         {
           className: 'bv-btn bv-btn-primary',
           attrs: { type: 'button' },
-          on: { click: () => void actions.exportCoverPng() },
+          on: { click: () => openExportPopover(exportMenuBtn) },
         },
         icon('download', 13),
-        'PNG',
-      ),
+        'Export ▾',
+      )),
     ),
   );
 
@@ -548,6 +713,10 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       { kind: 'rect', label: 'Solid Block / Panel' },
       { kind: 'rounded-rect', label: 'Rounded Card Box' },
       { kind: 'circle', label: 'Geometric Circle Seal' },
+      { kind: 'triangle', label: 'Triangle' },
+      { kind: 'arrow', label: 'Arrow Pointer' },
+      { kind: 'star', label: 'Five-Point Star' },
+      { kind: 'polygon', label: 'Hexagon Crest' },
       { kind: 'line', label: 'Horizontal Rule Line' },
       { kind: 'frame', label: 'Foil Border Frame' },
       { kind: 'badge', label: 'Top Ribbon Pill' },
@@ -790,6 +959,284 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
   const stageScroll = el('div', { className: 'qv-studio-canvas-scroll' });
   const guideV = el('div', { className: 'qv-smart-guide qv-smart-guide-v' });
   const guideH = el('div', { className: 'qv-smart-guide qv-smart-guide-h' });
+  const badgeOverlay = el('div', {
+    className: 'qv-snap-badge-layer',
+    style: { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '11' },
+  });
+
+  const renderSmartGuidesAndBadges = (guides: SnapGuideLine[], badges: SpacingBadgeIndicator[]) => {
+    const vGuide = guides.find((g) => g.orientation === 'vertical');
+    const hGuide = guides.find((g) => g.orientation === 'horizontal');
+    guideV.style.display = vGuide ? 'block' : 'none';
+    if (vGuide) guideV.style.left = `${vGuide.positionPct}%`;
+    guideH.style.display = hGuide ? 'block' : 'none';
+    if (hGuide) guideH.style.top = `${hGuide.positionPct}%`;
+
+    clearNode(badgeOverlay);
+    for (const b of badges) {
+      const mid = (b.startPct + b.endPct) / 2;
+      const badge = el('span', {
+        className: 'qv-snap-badge',
+        text: `${b.gapPx}px`,
+        style:
+          b.orientation === 'horizontal'
+            ? { left: `${mid}%`, top: `${b.crossPct}%` }
+            : { left: `${b.crossPct}%`, top: `${mid}%` },
+      });
+      badgeOverlay.appendChild(badge);
+    }
+  };
+
+  const getSelectedLayersList = () => {
+    const keys = Array.from(selectedLayerKeys);
+    if (keys.length === 0 && activeLayerId) {
+      keys.push(layerKeyOf(activeSelectionKind, activeLayerId));
+    }
+    return keys;
+  };
+
+  const applyAlignToSelected = (mode: AlignMode) => {
+    const face = activeTargetFace();
+    const keys = new Set(getSelectedLayersList());
+    const boxes: WorldBox[] = [];
+    for (const s of shapeLayers) {
+      if (s.face === face && keys.has(layerKeyOf('shape', s.id))) {
+        boxes.push({ id: layerKeyOf('shape', s.id), left: s.xPct - s.widthPct / 2, top: s.yPct - s.heightPct / 2, width: s.widthPct, height: s.heightPct });
+      }
+    }
+    for (const g of graphicLayers) {
+      if (g.face === face && keys.has(layerKeyOf('graphic', g.id))) {
+        boxes.push({ id: layerKeyOf('graphic', g.id), left: g.xPct - g.widthPct / 2, top: g.yPct - 10, width: g.widthPct, height: 20 });
+      }
+    }
+    for (const tl of textLayers) {
+      if (tl.face === face && keys.has(layerKeyOf('text', tl.id))) {
+        boxes.push({ id: layerKeyOf('text', tl.id), left: tl.xPct - 14, top: tl.yPct - 4, width: 28, height: 8 });
+      }
+    }
+    if (boxes.length === 0) return;
+    const aligned = alignBoxes(boxes, mode);
+    mutateCover(actions, (c) => ({
+      ...c,
+      shapeLayers: (c.shapeLayers ?? []).map((s) => {
+        const res = aligned.get(layerKeyOf('shape', s.id));
+        return res ? { ...s, xPct: Number((res.left + s.widthPct / 2).toFixed(2)), yPct: Number((res.top + s.heightPct / 2).toFixed(2)) } : s;
+      }),
+      graphicLayers: (c.graphicLayers ?? []).map((g) => {
+        const res = aligned.get(layerKeyOf('graphic', g.id));
+        return res ? { ...g, xPct: Number((res.left + g.widthPct / 2).toFixed(2)), yPct: Number((res.top + 10).toFixed(2)) } : g;
+      }),
+      textLayers: (c.textLayers ?? []).map((tl) => {
+        const res = aligned.get(layerKeyOf('text', tl.id));
+        return res ? { ...tl, xPct: Number((res.left + 14).toFixed(2)), yPct: Number((res.top + 4).toFixed(2)) } : tl;
+      }),
+    }));
+  };
+
+  const duplicateSelectedLayers = () => {
+    const keys = new Set(getSelectedLayersList());
+    const nextSel = new Set<string>();
+    mutateCover(actions, (c) => {
+      const addShapes: CoverShapeLayer[] = [];
+      const addGraphics: CoverGraphicLayer[] = [];
+      const addTexts: CoverTextLayer[] = [];
+      for (const s of c.shapeLayers ?? []) {
+        if (keys.has(layerKeyOf('shape', s.id))) {
+          const nid = newId('dup');
+          addShapes.push({ ...s, id: nid, groupId: undefined, xPct: Math.min(94, s.xPct + 4), yPct: Math.min(94, s.yPct + 4) });
+          nextSel.add(layerKeyOf('shape', nid));
+          activeSelectionKind = 'shape';
+          activeLayerId = nid;
+        }
+      }
+      for (const g of c.graphicLayers ?? []) {
+        if (keys.has(layerKeyOf('graphic', g.id))) {
+          const nid = newId('dup');
+          addGraphics.push({ ...g, id: nid, groupId: undefined, xPct: Math.min(94, g.xPct + 4), yPct: Math.min(94, g.yPct + 4) });
+          nextSel.add(layerKeyOf('graphic', nid));
+          activeSelectionKind = 'graphic';
+          activeLayerId = nid;
+        }
+      }
+      for (const t of c.textLayers ?? []) {
+        if (keys.has(layerKeyOf('text', t.id))) {
+          const nid = newId('dup');
+          addTexts.push({ ...t, id: nid, groupId: undefined, xPct: Math.min(94, t.xPct + 4), yPct: Math.min(94, t.yPct + 4) });
+          nextSel.add(layerKeyOf('text', nid));
+          activeSelectionKind = 'text';
+          activeLayerId = nid;
+        }
+      }
+      if (nextSel.size > 0) {
+        selectedLayerKeys.clear();
+        nextSel.forEach((k) => selectedLayerKeys.add(k));
+      }
+      return {
+        ...c,
+        shapeLayers: [...(c.shapeLayers ?? []), ...addShapes],
+        graphicLayers: [...(c.graphicLayers ?? []), ...addGraphics],
+        textLayers: [...(c.textLayers ?? []), ...addTexts],
+      };
+    });
+  };
+
+  const deleteSelectedLayers = () => {
+    const keys = new Set(getSelectedLayersList());
+    const hasCustom = Array.from(keys).some((k) => !k.startsWith('element:'));
+    if (!hasCustom) return;
+    selectedLayerKeys.clear();
+    selectedLayerKeys.add('element:title');
+    activeSelectionKind = 'element';
+    activeElementKey = 'title';
+    activeLayerId = '';
+    mutateCover(actions, (c) => ({
+      ...c,
+      shapeLayers: (c.shapeLayers ?? []).filter((s) => !keys.has(layerKeyOf('shape', s.id))),
+      graphicLayers: (c.graphicLayers ?? []).filter((g) => !keys.has(layerKeyOf('graphic', g.id))),
+      textLayers: (c.textLayers ?? []).filter((t) => !keys.has(layerKeyOf('text', t.id))),
+    }));
+  };
+
+  const groupSelectedLayers = (ungroup = false) => {
+    const keys = new Set(getSelectedLayersList());
+    const customKeys = Array.from(keys).filter((k) => !k.startsWith('element:'));
+    if (customKeys.length < (ungroup ? 1 : 2)) {
+      actions.notify(ungroup ? 'Select a grouped layer to ungroup.' : 'Shift+Click or marquee 2+ layers to group.');
+      return;
+    }
+    const gid = ungroup ? undefined : newId('grp');
+    mutateCover(actions, (c) => ({
+      ...c,
+      shapeLayers: (c.shapeLayers ?? []).map((s) => (keys.has(layerKeyOf('shape', s.id)) ? { ...s, groupId: gid } : s)),
+      graphicLayers: (c.graphicLayers ?? []).map((g) => (keys.has(layerKeyOf('graphic', g.id)) ? { ...g, groupId: gid } : g)),
+      textLayers: (c.textLayers ?? []).map((t) => (keys.has(layerKeyOf('text', t.id)) ? { ...t, groupId: gid } : t)),
+    }));
+    actions.notify(ungroup ? 'Ungrouped selected layers' : `Grouped ${customKeys.length} layers`);
+  };
+
+  const copySelectedLayers = () => {
+    const keys = new Set(getSelectedLayersList());
+    const copied: typeof studioClipboard = [];
+    for (const s of shapeLayers) if (keys.has(layerKeyOf('shape', s.id))) copied.push({ kind: 'shape', layer: structuredClone(s) });
+    for (const g of graphicLayers) if (keys.has(layerKeyOf('graphic', g.id))) copied.push({ kind: 'graphic', layer: structuredClone(g) });
+    for (const t of textLayers) if (keys.has(layerKeyOf('text', t.id))) copied.push({ kind: 'text', layer: structuredClone(t) });
+    if (copied.length > 0) {
+      studioClipboard = copied;
+      actions.notify(`Copied ${copied.length} cover layer${copied.length > 1 ? 's' : ''}`);
+    }
+  };
+
+  const pasteCopiedLayers = () => {
+    if (studioClipboard.length === 0) return;
+    const face = activeTargetFace();
+    const nextSel = new Set<string>();
+    mutateCover(actions, (c) => {
+      const addShapes: CoverShapeLayer[] = [];
+      const addGraphics: CoverGraphicLayer[] = [];
+      const addTexts: CoverTextLayer[] = [];
+      for (const item of studioClipboard) {
+        const nid = newId('pst');
+        if (item.kind === 'shape') {
+          addShapes.push({ ...structuredClone(item.layer), id: nid, face, xPct: Math.min(94, item.layer.xPct + 4), yPct: Math.min(94, item.layer.yPct + 4) });
+          nextSel.add(layerKeyOf('shape', nid));
+          activeSelectionKind = 'shape';
+          activeLayerId = nid;
+        } else if (item.kind === 'graphic') {
+          addGraphics.push({ ...structuredClone(item.layer), id: nid, face, xPct: Math.min(94, item.layer.xPct + 4), yPct: Math.min(94, item.layer.yPct + 4) });
+          nextSel.add(layerKeyOf('graphic', nid));
+          activeSelectionKind = 'graphic';
+          activeLayerId = nid;
+        } else {
+          addTexts.push({ ...structuredClone(item.layer), id: nid, face, xPct: Math.min(94, item.layer.xPct + 4), yPct: Math.min(94, item.layer.yPct + 4) });
+          nextSel.add(layerKeyOf('text', nid));
+          activeSelectionKind = 'text';
+          activeLayerId = nid;
+        }
+      }
+      selectedLayerKeys.clear();
+      nextSel.forEach((k) => selectedLayerKeys.add(k));
+      return {
+        ...c,
+        shapeLayers: [...(c.shapeLayers ?? []), ...addShapes],
+        graphicLayers: [...(c.graphicLayers ?? []), ...addGraphics],
+        textLayers: [...(c.textLayers ?? []), ...addTexts],
+      };
+    });
+  };
+
+  const nudgeSelectedLayers = (dxPct: number, dyPct: number) => {
+    const keys = new Set(getSelectedLayersList());
+    mutateCover(actions, (c) => {
+      const clampX = (v: number) => Number(Math.max(4, Math.min(96, v + dxPct)).toFixed(2));
+      const clampY = (v: number) => Number(Math.max(4, Math.min(96, v + dyPct)).toFixed(2));
+      const nextElements = { ...c.elements };
+      for (const key of ['edition', 'title', 'subtitle', 'author', 'signature'] as CoverElementKey[]) {
+        if (keys.has(layerKeyOf('element', key))) {
+          nextElements[key] = { ...nextElements[key], xPct: clampX(nextElements[key].xPct), yPct: clampY(nextElements[key].yPct) };
+        }
+      }
+      return {
+        ...c,
+        elements: nextElements,
+        shapeLayers: (c.shapeLayers ?? []).map((s) => (keys.has(layerKeyOf('shape', s.id)) ? { ...s, xPct: clampX(s.xPct), yPct: clampY(s.yPct) } : s)),
+        graphicLayers: (c.graphicLayers ?? []).map((g) => (keys.has(layerKeyOf('graphic', g.id)) ? { ...g, xPct: clampX(g.xPct), yPct: clampY(g.yPct) } : g)),
+        textLayers: (c.textLayers ?? []).map((t) => (keys.has(layerKeyOf('text', t.id)) ? { ...t, xPct: clampX(t.xPct), yPct: clampY(t.yPct) } : t)),
+      };
+    });
+  };
+
+  const startInlineTextEdit = (
+    faceEl: HTMLElement,
+    initialText: string,
+    xPct: number,
+    yPct: number,
+    fontSize: number,
+    fontFamily: string,
+    color: string,
+    align: 'left' | 'center' | 'right',
+    onCommit: (nextVal: string) => void,
+  ) => {
+    const existing = faceEl.querySelector('.qv-inline-text-editor');
+    if (existing) existing.remove();
+    const editor = el('textarea', {
+      className: 'qv-inline-text-editor',
+      attrs: { rows: 2 },
+      style: {
+        left: `${xPct}%`,
+        top: `${yPct}%`,
+        fontSize: `${fontSize}px`,
+        fontFamily,
+        color,
+        textAlign: align,
+        width: '76%',
+      },
+    });
+    editor.value = initialText;
+    let finished = false;
+    const finish = (save: boolean) => {
+      if (finished) return;
+      finished = true;
+      const val = editor.value;
+      editor.remove();
+      if (save && val !== initialText) onCommit(val);
+    };
+    editor.addEventListener('pointerdown', (e) => e.stopPropagation());
+    editor.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        finish(false);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        finish(true);
+      }
+    });
+    editor.addEventListener('blur', () => finish(true));
+    faceEl.appendChild(editor);
+    requestAnimationFrame(() => {
+      editor.focus();
+      editor.select();
+    });
+  };
 
   const renderFaceLayers = (faceEl: HTMLElement, face: CoverFaceId) => {
     faceEl.addEventListener('dragover', (e) => {
@@ -822,12 +1269,38 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       );
     }
 
+    const getSiblingBoxesForFace = (excludeKey: string): WorldBox[] => {
+      const boxes: WorldBox[] = [];
+      for (const s of shapeLayers) {
+        if (s.face !== face || s.visible === false) continue;
+        const k = layerKeyOf('shape', s.id);
+        if (k === excludeKey) continue;
+        boxes.push({ id: k, left: s.xPct - s.widthPct / 2, top: s.yPct - s.heightPct / 2, width: s.widthPct, height: s.heightPct });
+      }
+      for (const g of graphicLayers) {
+        if (g.face !== face || g.visible === false) continue;
+        const k = layerKeyOf('graphic', g.id);
+        if (k === excludeKey) continue;
+        boxes.push({ id: k, left: g.xPct - g.widthPct / 2, top: g.yPct - 10, width: g.widthPct, height: 20 });
+      }
+      for (const tl of textLayers) {
+        if (tl.face !== face || tl.visible === false) continue;
+        const k = layerKeyOf('text', tl.id);
+        if (k === excludeKey) continue;
+        boxes.push({ id: k, left: tl.xPct - 14, top: tl.yPct - 4, width: 28, height: 8 });
+      }
+      return boxes;
+    };
+
     const bindMagneticDrag = (
       node: HTMLElement,
+      layerKey: string,
+      boxW: number,
+      boxH: number,
       isLocked: boolean | undefined,
       getRot: () => number,
       getFlip: () => [boolean, boolean],
-      onSelect: () => void,
+      onSelect: (additive: boolean) => void,
       onCommit: (xPct: number, yPct: number) => void,
     ) => {
       let dragging = false;
@@ -838,7 +1311,8 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       node.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
-        onSelect();
+        const additive = e.shiftKey;
+        onSelect(additive);
         if (isLocked) {
           actions.notify('Layer is locked. Unlock it in Layers or right-click menu.');
           return;
@@ -858,26 +1332,35 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         if (!dragging) return;
         const rect = faceEl.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
-        const rawX = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
-        const rawY = Math.max(4, Math.min(96, ((e.clientY - rect.top) / rect.height) * 100));
-        const snapped = computeSmartAlignSnap(rawX, rawY, {
-          snapGrid: snapGridEnabled,
-          gridStepPct,
+        const rawCenterX = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
+        const rawCenterY = Math.max(4, Math.min(96, ((e.clientY - rect.top) / rect.height) * 100));
+        const coord = new CoordinateSystem({
+          artboardWidth: rect.width / studioZoom,
+          artboardHeight: rect.height / studioZoom,
+          zoom: studioZoom,
         });
-        lastX = snapped.xPct;
-        lastY = snapped.yPct;
+        const snapRes = computeStudioSmartSnap(
+          {
+            id: layerKey,
+            left: rawCenterX - boxW / 2,
+            top: rawCenterY - boxH / 2,
+            width: boxW,
+            height: boxH,
+          },
+          getSiblingBoxesForFace(layerKey),
+          coord,
+          { disabled: e.ctrlKey || e.metaKey || !snapGridEnabled },
+        );
+        lastX = Math.max(4, Math.min(96, snapRes.snappedLeftPct + boxW / 2));
+        lastY = Math.max(4, Math.min(96, snapRes.snappedTopPct + boxH / 2));
         const [fx, fy] = getFlip();
         applyDragToStyle(node, lastX, lastY, getRot(), fx, fy);
-        guideV.style.display = snapped.guideX !== null ? 'block' : 'none';
-        if (snapped.guideX !== null) guideV.style.left = `${snapped.guideX}%`;
-        guideH.style.display = snapped.guideY !== null ? 'block' : 'none';
-        if (snapped.guideY !== null) guideH.style.top = `${snapped.guideY}%`;
+        renderSmartGuidesAndBadges(snapRes.guides, snapRes.spacingBadges);
       });
       node.addEventListener('pointerup', (e) => {
         if (!dragging) return;
         dragging = false;
-        guideV.style.display = 'none';
-        guideH.style.display = 'none';
+        renderSmartGuidesAndBadges([], []);
         if (Math.hypot(e.clientX - startX, e.clientY - startY) < 2) {
           renderCoverStudio(container, actions);
           return;
@@ -886,59 +1369,153 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       });
       node.addEventListener('pointercancel', () => {
         dragging = false;
-        guideV.style.display = 'none';
-        guideH.style.display = 'none';
+        renderSmartGuidesAndBadges([], []);
       });
     };
 
     const appendSelectionHandles = (
       node: HTMLElement,
-      onResizeDelta?: (dxPct: number, dyPct: number) => void,
+      opts?: {
+        initialW?: number;
+        initialH?: number;
+        initialRot?: number;
+        onResize?: (wPct: number, hPct: number) => void;
+        onRotate?: (deg: number, commit: boolean) => void;
+      },
     ) => {
-      const handles = el('div', { className: 'qv-cover-sel-box' },
-        el('span', { className: 'qv-cover-handle is-nw' }),
-        el('span', { className: 'qv-cover-handle is-ne' }),
-        el('span', { className: 'qv-cover-handle is-sw' }),
-        el('span', {
-          className: 'qv-cover-handle is-se',
-          attrs: { title: onResizeDelta ? 'Drag corner to resize' : '' },
-          on: onResizeDelta
-            ? {
-                pointerdown: (e) => {
-                  e.stopPropagation();
-                  const startX = e.clientX;
-                  const startY = e.clientY;
-                  const faceRect = faceEl.getBoundingClientRect();
-                  const target = e.currentTarget as HTMLElement;
-                  target.setPointerCapture?.(e.pointerId);
-                  const onMove = (mv: PointerEvent) => {
-                    if (faceRect.width <= 0 || faceRect.height <= 0) return;
-                    const dx = ((mv.clientX - startX) / faceRect.width) * 100;
-                    const dy = ((mv.clientY - startY) / faceRect.height) * 100;
-                    onResizeDelta(dx, dy);
-                  };
-                  const onUp = () => {
-                    window.removeEventListener('pointermove', onMove);
-                    window.removeEventListener('pointerup', onUp);
-                  };
-                  window.addEventListener('pointermove', onMove);
-                  window.addEventListener('pointerup', onUp);
-                },
-              }
-            : undefined,
-        }),
-      );
-      node.appendChild(handles);
+      const box = el('div', { className: 'qv-cover-sel-box' });
+      const dirs = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
+      for (const dir of dirs) {
+        box.appendChild(
+          el('span', {
+            className: `qv-cover-handle is-${dir}`,
+            attrs: { title: opts?.onResize ? 'Drag to resize (Shift: free stretch, Alt: from center)' : '' },
+            on: opts?.onResize
+              ? {
+                  pointerdown: (e) => {
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const faceRect = faceEl.getBoundingClientRect();
+                    const bw = opts.initialW ?? 30;
+                    const bh = opts.initialH ?? 20;
+                    const target = e.currentTarget as HTMLElement;
+                    target.setPointerCapture?.(e.pointerId);
+                    const onMove = (mv: PointerEvent) => {
+                      if (faceRect.width <= 0 || faceRect.height <= 0) return;
+                      const symMul = mv.altKey ? 2 : 1;
+                      const dxPct = (((mv.clientX - startX) / faceRect.width) * 100) * symMul;
+                      const dyPct = (((mv.clientY - startY) / faceRect.height) * 100) * symMul;
+                      const signX = dir.includes('w') ? -1 : dir === 'n' || dir === 's' ? 0 : 1;
+                      const signY = dir.includes('n') ? -1 : dir === 'e' || dir === 'w' ? 0 : 1;
+                      let nw = Math.max(4, Math.min(100, bw + dxPct * signX));
+                      let nh = Math.max(2, Math.min(100, bh + dyPct * signY));
+                      // Keep proportional scale on corner drag unless Shift is held
+                      if (!mv.shiftKey && signX !== 0 && signY !== 0 && bh > 0) {
+                        const scale = nw / Math.max(1, bw);
+                        nh = Math.max(2, Math.min(100, bh * scale));
+                      }
+                      opts.onResize?.(Number(nw.toFixed(1)), Number(nh.toFixed(1)));
+                    };
+                    const onUp = () => {
+                      window.removeEventListener('pointermove', onMove);
+                      window.removeEventListener('pointerup', onUp);
+                      renderCoverStudio(container, actions);
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                  },
+                }
+              : undefined,
+          }),
+        );
+      }
+      if (opts?.onRotate) {
+        const stem = el('span', { className: 'qv-cover-rot-stem' });
+        const knob = el('span', {
+          className: 'qv-cover-handle-rot',
+          attrs: { title: 'Drag to rotate (Shift snaps to 15°)' },
+          on: {
+            pointerdown: (e) => {
+              e.stopPropagation();
+              const nodeRect = node.getBoundingClientRect();
+              const cx = nodeRect.left + nodeRect.width / 2;
+              const cy = nodeRect.top + nodeRect.height / 2;
+              const startDeg = opts.initialRot ?? 0;
+              const startAng = Math.atan2(e.clientY - cy, e.clientX - cx);
+              const tip = el('div', { className: 'qv-rot-tooltip', text: `${Math.round(startDeg)}°` });
+              document.body.appendChild(tip);
+              let lastDeg = startDeg;
+              const target = e.currentTarget as HTMLElement;
+              target.setPointerCapture?.(e.pointerId);
+              const onMove = (mv: PointerEvent) => {
+                const curAng = Math.atan2(mv.clientY - cy, mv.clientX - cx);
+                let delta = ((curAng - startAng) * 180) / Math.PI;
+                let deg = startDeg + delta;
+                if (mv.shiftKey) deg = Math.round(deg / 15) * 15;
+                lastDeg = Math.round(((deg + 180) % 360 + 360) % 360 - 180);
+                tip.textContent = `${lastDeg}°`;
+                tip.style.left = `${Math.round(mv.clientX + 12)}px`;
+                tip.style.top = `${Math.round(mv.clientY - 10)}px`;
+                opts.onRotate?.(lastDeg, false);
+              };
+              const onUp = () => {
+                tip.remove();
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                opts.onRotate?.(lastDeg, true);
+              };
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            },
+          },
+        });
+        box.append(stem, knob);
+      }
+      node.appendChild(box);
+    };
+
+    const buildVectorShapeGraphic = (s: CoverShapeLayer): SVGSVGElement => {
+      const svg = svgEl('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none' });
+      svg.style.width = '100%';
+      svg.style.height = '100%';
+      svg.style.display = 'block';
+      const fill = !s.fillColor || s.fillColor === 'transparent' ? 'none' : s.fillColor;
+      const stroke = s.strokeWidth > 0 && s.strokeColor ? s.strokeColor : 'none';
+      const sw = String(Math.max(0, s.strokeWidth));
+      let points = '50,4 96,96 4,96';
+      if (s.shape === 'arrow') {
+        points = '4,30 62,30 62,10 96,50 62,90 62,70 4,70';
+      } else if (s.shape === 'star') {
+        const pts: string[] = [];
+        for (let i = 0; i < 10; i++) {
+          const ang = (i * Math.PI * 2) / 10 - Math.PI / 2;
+          const r = i % 2 === 0 ? 46 : 20;
+          pts.push(`${(50 + Math.cos(ang) * r).toFixed(1)},${(50 + Math.sin(ang) * r).toFixed(1)}`);
+        }
+        points = pts.join(' ');
+      } else if (s.shape === 'polygon') {
+        const pts: string[] = [];
+        for (let i = 0; i < 6; i++) {
+          const ang = (i * Math.PI * 2) / 6 - Math.PI / 2;
+          pts.push(`${(50 + Math.cos(ang) * 46).toFixed(1)},${(50 + Math.sin(ang) * 46).toFixed(1)}`);
+        }
+        points = pts.join(' ');
+      }
+      svg.appendChild(svgEl('polygon', { points, fill, stroke, 'stroke-width': sw, 'vector-effect': 'non-scaling-stroke' }));
+      return svg;
     };
 
     // Vector Shape Layers (sorted by zIndex)
     for (const s of [...shapeLayers]
       .filter((item) => item.face === face && item.visible !== false)
       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
-      const isSelected = activeSelectionKind === 'shape' && activeLayerId === s.id;
+      const k = layerKeyOf('shape', s.id);
+      const isSelected = selectedLayerKeys.has(k) || (activeSelectionKind === 'shape' && activeLayerId === s.id);
+      const isPolyVector = s.shape === 'triangle' || s.shape === 'arrow' || s.shape === 'star' || s.shape === 'polygon';
       const shapeNode = el('div', {
         className: `bv-cover-drag-item qv-cover-shape${isSelected ? ' is-selected' : ''}`,
-        attrs: { 'data-shape-id': s.id },
+        attrs: { 'data-shape-id': s.id, 'data-layer-key': k },
         style: {
           left: `${s.xPct}%`,
           top: `${s.yPct}%`,
@@ -947,40 +1524,57 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           opacity: String(s.opacity),
           zIndex: String(2 + (s.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${s.rotationDeg}deg)`,
-          borderRadius: s.shape === 'circle' || s.shape === 'badge' ? '999px' : `${s.cornerRadius}px`,
-          background:
-            s.shape === 'line'
+          borderRadius: isPolyVector ? '0px' : s.shape === 'circle' || s.shape === 'badge' ? '999px' : `${s.cornerRadius}px`,
+          background: isPolyVector
+            ? 'transparent'
+            : s.shape === 'line'
               ? s.strokeColor
               : s.gradientEndColor
                 ? `linear-gradient(135deg, ${s.fillColor}, ${s.gradientEndColor})`
                 : s.fillColor,
-          border: s.shape !== 'line' && s.strokeWidth > 0 ? `${s.strokeWidth}px solid ${s.strokeColor}` : 'none',
+          border: !isPolyVector && s.shape !== 'line' && s.strokeWidth > 0 ? `${s.strokeWidth}px solid ${s.strokeColor}` : 'none',
+          padding: isPolyVector ? '0' : undefined,
         },
       });
+      if (isPolyVector) {
+        shapeNode.appendChild(buildVectorShapeGraphic(s));
+      }
       if (isSelected) {
-        const baseW = s.widthPct;
-        const baseH = s.heightPct;
-        appendSelectionHandles(shapeNode, (dxPct, dyPct) => {
-          const nw = Math.max(4, Math.min(100, Math.round(baseW + dxPct * 1.4)));
-          const nh = Math.max(2, Math.min(100, Math.round(baseH + dyPct * 1.4)));
-          shapeNode.style.width = `${nw}%`;
-          if (s.shape !== 'line') shapeNode.style.height = `${nh}%`;
-          mutateCover(actions, (c) => ({
-            ...c,
-            shapeLayers: (c.shapeLayers ?? []).map((item) =>
-              item.id === s.id ? { ...item, widthPct: nw, heightPct: nh } : item,
-            ),
-          }), false, false);
+        appendSelectionHandles(shapeNode, {
+          initialW: s.widthPct,
+          initialH: s.heightPct,
+          initialRot: s.rotationDeg,
+          onResize: (nw, nh) => {
+            shapeNode.style.width = `${nw}%`;
+            if (s.shape !== 'line') shapeNode.style.height = `${nh}%`;
+            mutateCover(actions, (c) => ({
+              ...c,
+              shapeLayers: (c.shapeLayers ?? []).map((item) =>
+                item.id === s.id ? { ...item, widthPct: nw, heightPct: nh } : item,
+              ),
+            }), false, false);
+          },
+          onRotate: (deg, commit) => {
+            applyDragToStyle(shapeNode, s.xPct, s.yPct, deg, false, false);
+            mutateCover(actions, (c) => ({
+              ...c,
+              shapeLayers: (c.shapeLayers ?? []).map((item) =>
+                item.id === s.id ? { ...item, rotationDeg: deg } : item,
+              ),
+            }), commit, commit);
+          },
         });
       }
       bindMagneticDrag(
         shapeNode,
+        k,
+        s.widthPct,
+        s.heightPct,
         s.locked,
         () => s.rotationDeg,
         () => [false, false],
-        () => {
-          activeSelectionKind = 'shape';
-          activeLayerId = s.id;
+        (additive) => {
+          setSingleSelection(cover, 'shape', s.id, additive);
           activeInspectorTab = 'properties';
         },
         (nx, ny) =>
@@ -999,15 +1593,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     for (const gLayer of [...graphicLayers]
       .filter((item) => item.face === face && item.visible !== false)
       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
-      const isSelected = activeSelectionKind === 'graphic' && activeLayerId === gLayer.id;
+      const k = layerKeyOf('graphic', gLayer.id);
+      const isSelected = selectedLayerKeys.has(k) || (activeSelectionKind === 'graphic' && activeLayerId === gLayer.id);
       const sx = gLayer.flipX ? -1 : 1;
       const sy = gLayer.flipY ? -1 : 1;
-      const filterStr = `brightness(${gLayer.brightnessPct ?? 100}%) contrast(${gLayer.contrastPct ?? 100}%) blur(${gLayer.blurPx ?? 0}px)`;
+      const filterStr = `brightness(${gLayer.brightnessPct ?? 100}%) contrast(${gLayer.contrastPct ?? 100}%) saturate(${gLayer.saturationPct ?? 100}%) blur(${gLayer.blurPx ?? 0}px)`;
       const gNode = el(
         'div',
         {
           className: `bv-cover-drag-item bv-cover-graphic-layer${isSelected ? ' is-selected' : ''}`,
-          attrs: { 'data-graphic-id': gLayer.id },
+          attrs: { 'data-graphic-id': gLayer.id, 'data-layer-key': k },
           style: {
             left: `${gLayer.xPct}%`,
             top: `${gLayer.yPct}%`,
@@ -1016,6 +1611,8 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
             zIndex: String(2 + (gLayer.zIndex ?? 0)),
             transform: `translate(-50%, -50%) rotate(${gLayer.rotationDeg}deg) scale(${sx}, ${sy})`,
             filter: filterStr,
+            borderRadius: gLayer.borderRadiusPct ? `${gLayer.borderRadiusPct}%` : undefined,
+            overflow: gLayer.borderRadiusPct ? 'hidden' : undefined,
           },
         },
         el('img', {
@@ -1024,26 +1621,41 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         }),
       );
       if (isSelected) {
-        const baseW = gLayer.widthPct;
-        appendSelectionHandles(gNode, (dxPct) => {
-          const nw = Math.max(8, Math.min(95, Math.round(baseW + dxPct * 1.4)));
-          gNode.style.width = `${nw}%`;
-          mutateCover(actions, (c) => ({
-            ...c,
-            graphicLayers: (c.graphicLayers ?? []).map((item) =>
-              item.id === gLayer.id ? { ...item, widthPct: nw } : item,
-            ),
-          }), false, false);
+        appendSelectionHandles(gNode, {
+          initialW: gLayer.widthPct,
+          initialH: gLayer.widthPct,
+          initialRot: gLayer.rotationDeg,
+          onResize: (nw) => {
+            const clamped = Math.max(8, Math.min(95, nw));
+            gNode.style.width = `${clamped}%`;
+            mutateCover(actions, (c) => ({
+              ...c,
+              graphicLayers: (c.graphicLayers ?? []).map((item) =>
+                item.id === gLayer.id ? { ...item, widthPct: clamped } : item,
+              ),
+            }), false, false);
+          },
+          onRotate: (deg, commit) => {
+            applyDragToStyle(gNode, gLayer.xPct, gLayer.yPct, deg, Boolean(gLayer.flipX), Boolean(gLayer.flipY));
+            mutateCover(actions, (c) => ({
+              ...c,
+              graphicLayers: (c.graphicLayers ?? []).map((item) =>
+                item.id === gLayer.id ? { ...item, rotationDeg: deg } : item,
+              ),
+            }), commit, commit);
+          },
         });
       }
       bindMagneticDrag(
         gNode,
+        k,
+        gLayer.widthPct,
+        20,
         gLayer.locked,
         () => gLayer.rotationDeg,
         () => [Boolean(gLayer.flipX), Boolean(gLayer.flipY)],
-        () => {
-          activeSelectionKind = 'graphic';
-          activeLayerId = gLayer.id;
+        (additive) => {
+          setSingleSelection(cover, 'graphic', gLayer.id, additive);
           activeInspectorTab = 'properties';
         },
         (nx, ny) =>
@@ -1058,15 +1670,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       faceEl.appendChild(gNode);
     }
 
-    // Custom Typography Layers (sorted by zIndex + double-click edit)
+    // Custom Typography Layers (sorted by zIndex + live artboard double-click edit)
     for (const tl of [...textLayers]
       .filter((item) => item.face === face && item.visible !== false)
       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
-      const isSelected = activeSelectionKind === 'text' && activeLayerId === tl.id;
+      const k = layerKeyOf('text', tl.id);
+      const isSelected = selectedLayerKeys.has(k) || (activeSelectionKind === 'text' && activeLayerId === tl.id);
       const layerFont = tl.fontFamily ? resolveEffectiveFontCss('garamond', tl.fontFamily) : fontCss;
       const tNode = el('div', {
         className: `bv-cover-drag-item${isSelected ? ' is-selected' : ''}`,
-        attrs: { 'data-text-id': tl.id },
+        attrs: { 'data-text-id': tl.id, 'data-layer-key': k },
         text: tl.uppercase ? tl.text.toUpperCase() : tl.text,
         style: {
           left: `${tl.xPct}%`,
@@ -1074,6 +1687,8 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           fontSize: `${tl.fontSize}px`,
           fontFamily: layerFont,
           color: tl.color,
+          backgroundColor: tl.backgroundColor && tl.backgroundColor !== 'transparent' ? tl.backgroundColor : undefined,
+          textDecoration: tl.textDecoration || 'none',
           textAlign: tl.align,
           fontWeight: tl.fontWeight,
           fontStyle: tl.italic ? 'italic' : 'normal',
@@ -1088,27 +1703,61 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         on: {
           dblclick: (e) => {
             e.stopPropagation();
-            activeSelectionKind = 'text';
-            activeLayerId = tl.id;
-            activeInspectorTab = 'properties';
-            renderCoverStudio(container, actions);
-            requestAnimationFrame(() => {
-              const box = container.querySelector('.qv-studio-right-body textarea') as HTMLTextAreaElement | null;
-              box?.focus();
-              box?.select();
-            });
+            setSingleSelection(cover, 'text', tl.id, false);
+            startInlineTextEdit(
+              faceEl,
+              tl.text,
+              tl.xPct,
+              tl.yPct,
+              tl.fontSize,
+              layerFont,
+              tl.color,
+              tl.align,
+              (nextText) =>
+                mutateCover(actions, (c) => ({
+                  ...c,
+                  textLayers: (c.textLayers ?? []).map((item) => (item.id === tl.id ? { ...item, text: nextText } : item)),
+                })),
+            );
           },
         },
       });
-      if (isSelected) appendSelectionHandles(tNode);
+      if (isSelected) {
+        appendSelectionHandles(tNode, {
+          initialW: tl.fontSize * 2,
+          initialH: tl.fontSize * 2,
+          initialRot: tl.rotationDeg,
+          onResize: (nw) => {
+            const nextFont = Math.max(8, Math.min(72, Math.round(nw / 2)));
+            tNode.style.fontSize = `${nextFont}px`;
+            mutateCover(actions, (c) => ({
+              ...c,
+              textLayers: (c.textLayers ?? []).map((item) =>
+                item.id === tl.id ? { ...item, fontSize: nextFont } : item,
+              ),
+            }), false, false);
+          },
+          onRotate: (deg, commit) => {
+            applyDragToStyle(tNode, tl.xPct, tl.yPct, deg, false, false);
+            mutateCover(actions, (c) => ({
+              ...c,
+              textLayers: (c.textLayers ?? []).map((item) =>
+                item.id === tl.id ? { ...item, rotationDeg: deg } : item,
+              ),
+            }), commit, commit);
+          },
+        });
+      }
       bindMagneticDrag(
         tNode,
+        k,
+        28,
+        8,
         tl.locked,
         () => tl.rotationDeg,
         () => [false, false],
-        () => {
-          activeSelectionKind = 'text';
-          activeLayerId = tl.id;
+        (additive) => {
+          setSingleSelection(cover, 'text', tl.id, additive);
           activeInspectorTab = 'properties';
         },
         (nx, ny) =>
@@ -1301,7 +1950,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     }
 
     renderFaceLayers(frontCanvas, 'front');
-    frontCanvas.append(guideV, guideH);
+    frontCanvas.append(guideV, guideH, badgeOverlay);
 
     const makeDraggableElement = (key: CoverElementKey, content: HTMLElement | string) => {
       const placement = cover.elements[key];
@@ -1361,6 +2010,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
               guideV.style.display = 'none';
               guideH.style.display = 'none';
               if (Math.hypot(e.clientX - startX, e.clientY - startY) < 2) {
+                setSingleSelection(cover, 'element', key, e.shiftKey);
                 renderCoverStudio(container, actions);
                 return;
               }
@@ -1368,6 +2018,41 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
                 ...c,
                 elements: { ...c.elements, [key]: { ...c.elements[key], xPct: placement.xPct, yPct: placement.yPct } },
               }));
+            },
+            dblclick: (e) => {
+              if (key === 'signature') return;
+              e.stopPropagation();
+              const initialVal =
+                key === 'title'
+                  ? project.title
+                  : key === 'subtitle'
+                    ? project.subtitle
+                    : key === 'author'
+                      ? penName
+                      : cover.editionLabel;
+              startInlineTextEdit(
+                frontCanvas,
+                initialVal,
+                placement.xPct,
+                placement.yPct,
+                placement.fontSize,
+                fontCss,
+                placement.color || cover.textColor,
+                placement.align,
+                (nextVal) => {
+                  if (key === 'edition') {
+                    mutateCover(actions, (c) => ({ ...c, editionLabel: nextVal }));
+                  } else {
+                    actions.mutateProject((prev) => {
+                      if (key === 'title') return { ...prev, title: nextVal };
+                      if (key === 'subtitle') return { ...prev, subtitle: nextVal };
+                      const next = normalizeProjectDefaults(prev);
+                      if (next.authorIdentity) next.authorIdentity.penName = nextVal;
+                      return { ...next, author: nextVal };
+                    });
+                  }
+                },
+              );
             },
           },
         },
@@ -1530,8 +2215,13 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
 
   const wrap = el('div', {
     className: 'bv-cover-wrap',
-    style: { transform: `scale(${studioZoom})`, transformOrigin: 'top center' },
+    style: {
+      transform: `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`,
+      transformOrigin: 'top center',
+    },
   });
+  wrap.style.setProperty('--qv-inv-zoom', String(Number((1 / Math.max(0.1, studioZoom)).toFixed(3))));
+
   if (coverWrapMode === 'front') {
     wrap.appendChild(buildFrontFace());
   } else if (coverWrapMode === 'back') {
@@ -1549,6 +2239,178 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       buildFlapFace('front-flap'),
     );
   }
+
+  // Wheel zoom (Ctrl/Cmd + Wheel)
+  stageScroll.addEventListener(
+    'wheel',
+    (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      studioZoom = Math.max(0.1, Math.min(5, Number((studioZoom + delta).toFixed(2))));
+      wrap.style.transform = `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`;
+      wrap.style.setProperty('--qv-inv-zoom', String(Number((1 / Math.max(0.1, studioZoom)).toFixed(3))));
+      const statusZoom = bottomStatusStrip.querySelector('.bv-mono-tag');
+      if (statusZoom) {
+        statusZoom.textContent = `Trim ${trim.label} · Spine ${spineInches}" · Zoom ${Math.round(studioZoom * 100)}%`;
+      }
+    },
+    { passive: false },
+  );
+
+  // Panning (Space+Drag or Middle-Mouse) and Empty-Stage Marquee Box Multi-Select
+  let spaceHeld = false;
+  stageScroll.addEventListener('pointerdown', (e) => {
+    const target = e.target as HTMLElement;
+    const isMiddlePan = e.button === 1;
+    const isSpacePan = e.button === 0 && spaceHeld;
+    if (isMiddlePan || isSpacePan) {
+      e.preventDefault();
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const origX = studioPanX;
+      const origY = studioPanY;
+      stageScroll.classList.add('is-panning');
+      const onMove = (mv: PointerEvent) => {
+        studioPanX = origX + (mv.clientX - sx);
+        studioPanY = origY + (mv.clientY - sy);
+        wrap.style.transform = `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`;
+      };
+      const onUp = () => {
+        stageScroll.classList.remove('is-panning');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      return;
+    }
+
+    if (e.button === 0 && !target.closest('.bv-cover-drag-item') && !target.closest('.qv-inline-text-editor')) {
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const box = el('div', { className: 'qv-marquee-rect' });
+      let started = false;
+      const onMove = (mv: PointerEvent) => {
+        if (!started && Math.hypot(mv.clientX - startX, mv.clientY - startY) < 5) return;
+        if (!started) {
+          started = true;
+          document.body.appendChild(box);
+        }
+        const left = Math.min(startX, mv.clientX);
+        const top = Math.min(startY, mv.clientY);
+        const w = Math.abs(mv.clientX - startX);
+        const h = Math.abs(mv.clientY - startY);
+        box.style.left = `${left}px`;
+        box.style.top = `${top}px`;
+        box.style.width = `${w}px`;
+        box.style.height = `${h}px`;
+      };
+      const onUp = (up: PointerEvent) => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        if (started) {
+          box.remove();
+          const mLeft = Math.min(startX, up.clientX);
+          const mTop = Math.min(startY, up.clientY);
+          const mRight = Math.max(startX, up.clientX);
+          const mBottom = Math.max(startY, up.clientY);
+          if (!up.shiftKey) selectedLayerKeys.clear();
+          wrap.querySelectorAll<HTMLElement>('[data-layer-key]').forEach((itemEl) => {
+            const r = itemEl.getBoundingClientRect();
+            const hits = !(r.right < mLeft || r.left > mRight || r.bottom < mTop || r.top > mBottom);
+            const lk = itemEl.dataset.layerKey;
+            if (hits && lk) {
+              selectedLayerKeys.add(lk);
+              const [kind, id] = lk.split(':') as ['shape' | 'graphic' | 'text', string];
+              activeSelectionKind = kind;
+              activeLayerId = id;
+            }
+          });
+          renderCoverStudio(container, actions);
+        }
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    }
+  });
+
+  // Contextual Floating Action Bar
+  const selectedKeysCount = getSelectedLayersList().length;
+  const contextualStrip = el(
+    'div',
+    { className: 'qv-contextual-strip' },
+    el('span', { className: 'bv-mono-tag', text: selectedKeysCount > 1 ? `${selectedKeysCount} Selected` : 'Selection Tools' }),
+    el('button', { className: 'bv-mini-btn', text: 'Duplicate', attrs: { type: 'button', title: 'Ctrl+D' }, on: { click: duplicateSelectedLayers } }),
+    el('button', { className: 'bv-mini-btn', text: 'Align L', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('left') } }),
+    el('button', { className: 'bv-mini-btn', text: 'Center X', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('center-x') } }),
+    el('button', { className: 'bv-mini-btn', text: 'Align R', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('right') } }),
+    el('button', { className: 'bv-mini-btn', text: 'Middle Y', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('middle-y') } }),
+    el('button', { className: 'bv-mini-btn', text: 'Tidy', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('tidy') } }),
+    el('button', { className: 'bv-mini-btn', text: 'Group', attrs: { type: 'button', title: 'Ctrl+G' }, on: { click: () => groupSelectedLayers(false) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Ungroup', attrs: { type: 'button', title: 'Ctrl+Shift+G' }, on: { click: () => groupSelectedLayers(true) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Forward', attrs: { type: 'button', title: ']' }, on: { click: () => activeLayerId && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, 1) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Back', attrs: { type: 'button', title: '[' }, on: { click: () => activeLayerId && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, -1) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Delete', attrs: { type: 'button', title: 'Delete' }, on: { click: deleteSelectedLayers } }),
+  );
+
+  // Scoped keyboard shortcuts for Cover Studio (cleaned cleanly across renders)
+  if (activeCoverKeyHandler) {
+    window.removeEventListener('keydown', activeCoverKeyHandler);
+  }
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (e.code === 'Space') spaceHeld = false;
+  };
+  activeCoverKeyHandler = (e: KeyboardEvent) => {
+    if (!document.body.contains(container)) {
+      window.removeEventListener('keydown', activeCoverKeyHandler!);
+      window.removeEventListener('keyup', onKeyUp);
+      return;
+    }
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) {
+      return;
+    }
+    if (e.code === 'Space') {
+      spaceHeld = true;
+      return;
+    }
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      duplicateSelectedLayers();
+    } else if (mod && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      copySelectedLayers();
+    } else if (mod && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      copySelectedLayers();
+      deleteSelectedLayers();
+    } else if (mod && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      pasteCopiedLayers();
+    } else if (mod && e.key.toLowerCase() === 'g') {
+      e.preventDefault();
+      groupSelectedLayers(e.shiftKey);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelectionKind !== 'element') {
+      e.preventDefault();
+      deleteSelectedLayers();
+    } else if (e.key === ']' && activeSelectionKind !== 'element' && activeLayerId) {
+      e.preventDefault();
+      bumpLayerZ(activeSelectionKind, activeLayerId, mod ? 10 : 1);
+    } else if (e.key === '[' && activeSelectionKind !== 'element' && activeLayerId) {
+      e.preventDefault();
+      bumpLayerZ(activeSelectionKind, activeLayerId, mod ? -10 : -1);
+    } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      const step = e.shiftKey ? 2 : 0.25;
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+      nudgeSelectedLayers(dx, dy);
+    }
+  };
+  window.addEventListener('keydown', activeCoverKeyHandler);
+  window.addEventListener('keyup', onKeyUp);
 
   attachContextMenu(stageScroll, () => [
     {
@@ -1593,9 +2455,9 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     'div',
     { className: 'qv-studio-status-strip' },
     el('span', { className: 'bv-mono-tag', text: `Trim ${trim.label} · Spine ${spineInches}" · Zoom ${Math.round(studioZoom * 100)}%` }),
-    el('span', { className: 'bv-mono-tag', text: 'Drop .svg or .png onto any cover face · Right-click layers for options' }),
+    el('span', { className: 'bv-mono-tag', text: 'Ctrl+Wheel zoom · Space+Drag pan · Double-click text to edit · Hold Ctrl to bypass snap' }),
   );
-  stageWrap.append(stageScroll, bottomStatusStrip);
+  stageWrap.append(contextualStrip, stageScroll, bottomStatusStrip);
 
   // --- Right Contextual Properties + Layers Panel ---
   const rightDock = el('aside', { className: 'qv-studio-right' });
@@ -1856,12 +2718,34 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         }),
       );
 
+      const bgPillIn = el('input', {
+        attrs: { type: 'color', value: selectedTextLayer.backgroundColor && selectedTextLayer.backgroundColor !== 'transparent' ? selectedTextLayer.backgroundColor : '#11131a' },
+        on: { change: () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((l) => l.id === selectedTextLayer.id ? { ...l, backgroundColor: bgPillIn.value } : l) })) },
+      });
+      const clearBgPillBtn = el('button', {
+        className: 'bv-mini-btn',
+        text: 'Clear Backdrop',
+        attrs: { type: 'button' },
+        on: { click: () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((l) => l.id === selectedTextLayer.id ? { ...l, backgroundColor: undefined } : l) })) },
+      });
+      const decoSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: { change: () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((l) => l.id === selectedTextLayer.id ? { ...l, textDecoration: decoSel.value as 'none' | 'underline' | 'line-through' } : l) })) },
+        },
+        el('option', { text: 'None', attrs: { value: 'none', selected: !selectedTextLayer.textDecoration || selectedTextLayer.textDecoration === 'none' } }),
+        el('option', { text: 'Underline', attrs: { value: 'underline', selected: selectedTextLayer.textDecoration === 'underline' } }),
+        el('option', { text: 'Strikethrough', attrs: { value: 'line-through', selected: selectedTextLayer.textDecoration === 'line-through' } }),
+      );
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: 'Custom Text Layer' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Copy' }), txtVal),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Font' }), fontSel),
         el('div', { className: 'bv-field' }, (sizeLbl = el('label', { className: 'bv-label', text: `Font Size (${selectedTextLayer.fontSize}px)` })), sizeRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Color' }), colorIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Decoration' }), decoSel),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Backdrop Highlight' }), el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, bgPillIn, clearBgPillBtn)),
         el('label', { className: 'bv-check-row' }, italicChk, el('span', { text: 'Italic Style' })),
         el('label', { className: 'bv-check-row' }, upperChk, el('span', { text: 'Uppercase Display' })),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Order' }), zRow),
@@ -2055,11 +2939,46 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         },
       });
 
+      let satLbl: HTMLElement | null = null;
+      const satRange = el('input', {
+        attrs: { type: 'range', min: 0, max: 200, step: 5, value: selectedGraphicLayer.saturationPct ?? 100 },
+        on: {
+          pointerdown: () => recordSliderBaseline(cover),
+          input: () => {
+            const val = Number(satRange.value);
+            if (satLbl) satLbl.textContent = `Saturation (${val}%)`;
+            mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((g) => g.id === selectedGraphicLayer.id ? { ...g, saturationPct: val } : g) }), false, false);
+          },
+          change: () => {
+            mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((g) => g.id === selectedGraphicLayer.id ? { ...g, saturationPct: Number(satRange.value) } : g) }), true, false);
+            commitSliderBaseline();
+          },
+        },
+      });
+      let radLbl: HTMLElement | null = null;
+      const radRange = el('input', {
+        attrs: { type: 'range', min: 0, max: 50, step: 2, value: selectedGraphicLayer.borderRadiusPct ?? 0 },
+        on: {
+          pointerdown: () => recordSliderBaseline(cover),
+          input: () => {
+            const val = Number(radRange.value);
+            if (radLbl) radLbl.textContent = `Corner Roundness (${val}%)`;
+            mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((g) => g.id === selectedGraphicLayer.id ? { ...g, borderRadiusPct: val } : g) }), false, false);
+          },
+          change: () => {
+            mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((g) => g.id === selectedGraphicLayer.id ? { ...g, borderRadiusPct: Number(radRange.value) } : g) }), true, false);
+            commitSliderBaseline();
+          },
+        },
+      });
+
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: `Graphic · ${selectedGraphicLayer.name}` }),
         el('div', { className: 'bv-field' }, (widthLbl = el('label', { className: 'bv-label', text: `Scale (${selectedGraphicLayer.widthPct}%)` })), widthRange),
         el('div', { className: 'bv-field' }, (rotLbl = el('label', { className: 'bv-label', text: `Rotation (${selectedGraphicLayer.rotationDeg}°)` })), rotRange),
         el('div', { className: 'bv-field' }, (opLbl = el('label', { className: 'bv-label', text: `Opacity (${Math.round(selectedGraphicLayer.opacity * 100)}%)` })), opRange),
+        el('div', { className: 'bv-field' }, (satLbl = el('label', { className: 'bv-label', text: `Saturation (${selectedGraphicLayer.saturationPct ?? 100}%)` })), satRange),
+        el('div', { className: 'bv-field' }, (radLbl = el('label', { className: 'bv-label', text: `Corner Roundness (${selectedGraphicLayer.borderRadiusPct ?? 0}%)` })), radRange),
         el(
           'div',
           { style: { display: 'flex', gap: '6px' } },

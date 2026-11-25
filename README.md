@@ -7,7 +7,7 @@
 > **Try Quillvibe in Your Browser:** <a href="https://quillvibe.jhonrey.com/start" target="_blank" rel="noopener noreferrer"><strong>Open <code>https://quillvibe.jhonrey.com/start</code></strong></a>  
 > **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 28 Lessons)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
-> **Download Desktop App (`v2.3.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Download Desktop App (`v3.0.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
@@ -48,7 +48,7 @@ Many writers end up juggling several separate programs—one for writing chapter
 - **Built-in proofreading marks**: Mark up drafts with 15 traditional proofreading symbols right on the page, preview the clean result, and accept changes with automatic backup snapshots.
 - **Ready for publishing & easy migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and one-click **Migrate to Another Writing Tool** exports (`.md`, `.rtf`, `.json`).
 
-### Live Screenshots (`v2.3.0`)
+### Live Screenshots (`v3.0.0`)
 
 <p align="center">
   <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, centered navigation bar, and Inspector" width="100%" />
@@ -68,14 +68,14 @@ Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener nor
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v2.3.0</code>)</strong></a> (published under **`jhonrey.com`**):
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.0.0</code>)</strong></a> (published under **`jhonrey.com`**):
 - **Windows:** `.msi` or `-setup.exe`
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`
 
 Because Quillvibe is a new open-source app still being actively updated and improved, Windows, Mac, or Linux may show a warning before opening the installer. If you prefer to avoid that prompt, you can use the website version above instead.
 
-Desktop builds add automatic saving to your computer, stacked book tabs with drag-and-drop reordering and window combining, an empty **New Tab** book picker for new windows (`Ctrl+Shift+N`), conflict-safe live multi-window sync, single-instance double-click opening into a new tab for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files, `F11` fullscreen focus mode with a clock/timer bar, and Wi-Fi/Bluetooth book sharing.
+Desktop builds add automatic saving to your computer, stacked book tabs driven by a central drag-and-drop state machine (horizontal strip reordering, vertical tear-off detachment while preserving cursor grab offset, sole-tab window dragging, and z-ordered window merging), an empty **New Tab** book picker (`Ctrl+Shift+N`), conflict-safe live multi-window sync, single-instance double-click opening into a new tab for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files, `F11` fullscreen focus mode with a clock/timer bar, and Wi-Fi/Bluetooth book sharing.
 
 ### Option C: Terminal Installers
 
@@ -122,9 +122,9 @@ Switch layouts anytime in **Settings -> Workspace & Editor** or by clicking the 
 ### Editorial — Outlining, Proofreading & Interior Print Layout
 Switch to **Editorial** layout to add **Corkboard** scene cards, **Outline** view, **Proofread** markup (15 copyediting symbols with Clean Preview and revision snapshots), and **Interior Typeset** for print and eBook layout.
 
-### Full Studio — Story Bible, Story Graph, Cover Studio & Collaboration
-1. **Story Bible & Story Graph**: Keep character, location, and lore notes linked to your scenes, and map plot connections visually.
-2. **Book Cover Studio & Author Seals**: Design front, spine, back, and jacket flaps; keep multiple books in **Library**; record your **Origin Author & Device Key**; and seal your **Work Copyright**.
+### Full Studio — Story Bible, Dual-Mode Story Graph, Cover Studio & Collaboration
+1. **Story Bible & Dual-Mode Story Graph**: Keep character, faction, item, location, lore, storyline, and scene cards linked with `[[wikilinks]]` and `#tags`. Switch seamlessly between **Spatial Storyboard** (Act Group frames, 90-degree obstacle-avoiding elbow connectors, Minimap, `.canvas` JSON import/export) and **Force Graph** (60 FPS physics constellation, hop isolation, shortest narrative path tracing).
+2. **Book Cover Studio & Author Seals**: Design front, spine, back, and jacket flaps with 100-step undo/redo, 10%–500% zoom, `Space+Drag` panning, 8-point scaling and rotation handles, `Ctrl+G` layer grouping, magnetic snapping with equal-spacing badges, inline double-click text editing, and `PNG 1x/2x/3x`, transparent PNG, JPEG, Vector SVG, and Print PDF exports. Keep multiple books in **Library**, record your **Origin Author & Device Key**, and seal your **Work Copyright**.
 3. **Co-Authors & Imports**: Pair co-authors using verified device tokens in **Collaborate**, or import `.docx`, `.html`, `.rtf`, `.md`, `.txt`, and older `.quillvibe`/`.bookvibe` files in **Settings -> Publishing & Archive**.
 
 ---

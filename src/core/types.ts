@@ -37,7 +37,17 @@ export interface CollaboratorPermissions {
   canManageCollaborators: boolean;
 }
 
-export type GraphNodeKind = 'character' | 'location' | 'lore' | 'plot' | 'scene' | 'custom';
+export type GraphNodeKind =
+  | 'character'
+  | 'location'
+  | 'lore'
+  | 'plot'
+  | 'scene'
+  | 'storyline'
+  | 'faction'
+  | 'item'
+  | 'note'
+  | 'custom';
 
 export type CoverTemplateId =
   | 'obsidian-foil'
@@ -431,6 +441,11 @@ export interface Collaborator {
   permissions?: CollaboratorPermissions;
 }
 
+export type GraphAnchorSide = 'auto' | 'top' | 'right' | 'bottom' | 'left';
+export type GraphRoutingMode = 'elbow' | 'curved' | 'straight';
+export type GraphLineStyle = 'solid' | 'dashed' | 'dotted';
+export type GraphArrowHead = 'none' | 'arrow' | 'diamond' | 'circle';
+
 export interface StoryGraphNode {
   id: string;
   kind: GraphNodeKind;
@@ -439,8 +454,14 @@ export interface StoryGraphNode {
   subtitle: string;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
   color: string;
   notes: string;
+  tags?: string[];
+  pinned?: boolean;
+  arc?: string;
+  status?: string;
 }
 
 export interface StoryGraphEdge {
@@ -448,13 +469,38 @@ export interface StoryGraphEdge {
   sourceId: string;
   targetId: string;
   label: string;
-  style: 'solid' | 'dashed';
+  style: GraphLineStyle;
+  color: string;
+  sourceAnchor?: GraphAnchorSide;
+  targetAnchor?: GraphAnchorSide;
+  routingMode?: GraphRoutingMode;
+  startArrow?: GraphArrowHead;
+  endArrow?: GraphArrowHead;
+  elbowOffset?: number;
+}
+
+export interface StoryGraphGroup {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  collapsed?: boolean;
+}
+
+export interface StoryGraphColorRule {
+  id: string;
+  query: string;
   color: string;
 }
 
 export interface StoryGraph {
   nodes: StoryGraphNode[];
   edges: StoryGraphEdge[];
+  groups?: StoryGraphGroup[];
+  colorRules?: StoryGraphColorRule[];
 }
 
 export interface CoverElementPlacement {
@@ -494,11 +540,24 @@ export interface CoverGraphicLayer {
   visible?: boolean;
   brightnessPct?: number;
   contrastPct?: number;
+  saturationPct?: number;
   blurPx?: number;
+  borderRadiusPct?: number;
+  groupId?: string;
   zIndex?: number;
 }
 
-export type CoverShapeKind = 'rect' | 'rounded-rect' | 'circle' | 'line' | 'frame' | 'badge';
+export type CoverShapeKind =
+  | 'rect'
+  | 'rounded-rect'
+  | 'circle'
+  | 'triangle'
+  | 'arrow'
+  | 'star'
+  | 'polygon'
+  | 'line'
+  | 'frame'
+  | 'badge';
 
 export interface CoverShapeLayer {
   id: string;
@@ -518,6 +577,7 @@ export interface CoverShapeLayer {
   opacity: number;
   locked?: boolean;
   visible?: boolean;
+  groupId?: string;
   zIndex?: number;
 }
 
@@ -540,10 +600,13 @@ export interface CoverTextLayer {
   strokeColor?: string;
   strokeWidth?: number;
   shadowBlur?: number;
+  backgroundColor?: string;
+  textDecoration?: 'none' | 'underline' | 'line-through';
   rotationDeg: number;
   opacity: number;
   locked?: boolean;
   visible?: boolean;
+  groupId?: string;
   zIndex?: number;
 }
 
