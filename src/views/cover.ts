@@ -88,10 +88,14 @@ function mutateCover(
   }, rerender);
 }
 
-function performCoverUndo(actions: AppActions): void {
+export function hasCoverHistory(): { undo: boolean; redo: boolean } {
+  return { undo: undoStack.length > 0, redo: redoStack.length > 0 };
+}
+
+export function performCoverUndo(actions: AppActions): boolean {
   if (undoStack.length === 0) {
     actions.notify('Nothing to undo in Cover Studio.');
-    return;
+    return false;
   }
   const previous = undoStack.pop()!;
   const current = actions.getState().project.cover;
@@ -105,12 +109,13 @@ function performCoverUndo(actions: AppActions): void {
     return next;
   }, true);
   actions.notify('Undid cover edit');
+  return true;
 }
 
-function performCoverRedo(actions: AppActions): void {
+export function performCoverRedo(actions: AppActions): boolean {
   if (redoStack.length === 0) {
     actions.notify('Nothing to redo in Cover Studio.');
-    return;
+    return false;
   }
   const restored = redoStack.pop()!;
   const current = actions.getState().project.cover;
@@ -124,6 +129,7 @@ function performCoverRedo(actions: AppActions): void {
     return next;
   }, true);
   actions.notify('Redid cover edit');
+  return true;
 }
 
 function applyDragToStyle(node: HTMLElement, xPct: number, yPct: number, rotDeg = 0, flipX = false, flipY = false): void {
@@ -344,6 +350,28 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       el(
         'button',
         {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          tooltip: { title: 'Print Interior PDF', short: 'Print formatted pages or save to PDF.' },
+          on: { click: () => actions.printTypeset() },
+        },
+        icon('printer', 13),
+        'Print',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          tooltip: { title: 'Export Interior PDF (.pdf)', short: 'Generate trim-sized print interior PDF file.' },
+          on: { click: () => void actions.exportPdf() },
+        },
+        icon('download', 13),
+        'PDF',
+      ),
+      el(
+        'button',
+        {
           className: 'bv-btn bv-btn-primary',
           attrs: { type: 'button' },
           on: { click: () => void actions.exportCoverPng() },
@@ -354,7 +382,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     ),
   );
 
-  // --- Left Canva/Illustrator Tool Rail + Drawer ---
+  // --- Left Vector & Layout Tool Rail + Drawer ---
   const toolTabs: Array<{ id: StudioToolTab; ic: IconName; label: string; desc: string }> = [
     { id: 'templates', ic: 'cover', label: 'Templates', desc: 'Style presets & palette' },
     { id: 'text', ic: 'type-tool', label: 'Text', desc: 'Add display headlines' },
@@ -863,8 +891,50 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       });
     };
 
-    // Vector Shape Layers
-    for (const s of shapeLayers.filter((item) => item.face === face && item.visible !== false)) {
+    const appendSelectionHandles = (
+      node: HTMLElement,
+      onResizeDelta?: (dxPct: number, dyPct: number) => void,
+    ) => {
+      const handles = el('div', { className: 'qv-cover-sel-box' },
+        el('span', { className: 'qv-cover-handle is-nw' }),
+        el('span', { className: 'qv-cover-handle is-ne' }),
+        el('span', { className: 'qv-cover-handle is-sw' }),
+        el('span', {
+          className: 'qv-cover-handle is-se',
+          attrs: { title: onResizeDelta ? 'Drag corner to resize' : '' },
+          on: onResizeDelta
+            ? {
+                pointerdown: (e) => {
+                  e.stopPropagation();
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  const faceRect = faceEl.getBoundingClientRect();
+                  const target = e.currentTarget as HTMLElement;
+                  target.setPointerCapture?.(e.pointerId);
+                  const onMove = (mv: PointerEvent) => {
+                    if (faceRect.width <= 0 || faceRect.height <= 0) return;
+                    const dx = ((mv.clientX - startX) / faceRect.width) * 100;
+                    const dy = ((mv.clientY - startY) / faceRect.height) * 100;
+                    onResizeDelta(dx, dy);
+                  };
+                  const onUp = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                },
+              }
+            : undefined,
+        }),
+      );
+      node.appendChild(handles);
+    };
+
+    // Vector Shape Layers (sorted by zIndex)
+    for (const s of [...shapeLayers]
+      .filter((item) => item.face === face && item.visible !== false)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
       const isSelected = activeSelectionKind === 'shape' && activeLayerId === s.id;
       const shapeNode = el('div', {
         className: `bv-cover-drag-item qv-cover-shape${isSelected ? ' is-selected' : ''}`,
@@ -875,6 +945,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           width: `${s.widthPct}%`,
           height: s.shape === 'line' ? `${Math.max(2, s.strokeWidth || 2)}px` : `${s.heightPct}%`,
           opacity: String(s.opacity),
+          zIndex: String(2 + (s.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${s.rotationDeg}deg)`,
           borderRadius: s.shape === 'circle' || s.shape === 'badge' ? '999px' : `${s.cornerRadius}px`,
           background:
@@ -886,6 +957,22 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           border: s.shape !== 'line' && s.strokeWidth > 0 ? `${s.strokeWidth}px solid ${s.strokeColor}` : 'none',
         },
       });
+      if (isSelected) {
+        const baseW = s.widthPct;
+        const baseH = s.heightPct;
+        appendSelectionHandles(shapeNode, (dxPct, dyPct) => {
+          const nw = Math.max(4, Math.min(100, Math.round(baseW + dxPct * 1.4)));
+          const nh = Math.max(2, Math.min(100, Math.round(baseH + dyPct * 1.4)));
+          shapeNode.style.width = `${nw}%`;
+          if (s.shape !== 'line') shapeNode.style.height = `${nh}%`;
+          mutateCover(actions, (c) => ({
+            ...c,
+            shapeLayers: (c.shapeLayers ?? []).map((item) =>
+              item.id === s.id ? { ...item, widthPct: nw, heightPct: nh } : item,
+            ),
+          }), false, false);
+        });
+      }
       bindMagneticDrag(
         shapeNode,
         s.locked,
@@ -908,8 +995,10 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       faceEl.appendChild(shapeNode);
     }
 
-    // Graphic SVG / PNG Layers
-    for (const gLayer of graphicLayers.filter((item) => item.face === face && item.visible !== false)) {
+    // Graphic SVG / PNG Layers (sorted by zIndex)
+    for (const gLayer of [...graphicLayers]
+      .filter((item) => item.face === face && item.visible !== false)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
       const isSelected = activeSelectionKind === 'graphic' && activeLayerId === gLayer.id;
       const sx = gLayer.flipX ? -1 : 1;
       const sy = gLayer.flipY ? -1 : 1;
@@ -924,6 +1013,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
             top: `${gLayer.yPct}%`,
             width: `${gLayer.widthPct}%`,
             opacity: String(gLayer.opacity),
+            zIndex: String(2 + (gLayer.zIndex ?? 0)),
             transform: `translate(-50%, -50%) rotate(${gLayer.rotationDeg}deg) scale(${sx}, ${sy})`,
             filter: filterStr,
           },
@@ -933,6 +1023,19 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           style: { width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' },
         }),
       );
+      if (isSelected) {
+        const baseW = gLayer.widthPct;
+        appendSelectionHandles(gNode, (dxPct) => {
+          const nw = Math.max(8, Math.min(95, Math.round(baseW + dxPct * 1.4)));
+          gNode.style.width = `${nw}%`;
+          mutateCover(actions, (c) => ({
+            ...c,
+            graphicLayers: (c.graphicLayers ?? []).map((item) =>
+              item.id === gLayer.id ? { ...item, widthPct: nw } : item,
+            ),
+          }), false, false);
+        });
+      }
       bindMagneticDrag(
         gNode,
         gLayer.locked,
@@ -955,8 +1058,10 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       faceEl.appendChild(gNode);
     }
 
-    // Custom Typography Layers
-    for (const tl of textLayers.filter((item) => item.face === face && item.visible !== false)) {
+    // Custom Typography Layers (sorted by zIndex + double-click edit)
+    for (const tl of [...textLayers]
+      .filter((item) => item.face === face && item.visible !== false)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
       const isSelected = activeSelectionKind === 'text' && activeLayerId === tl.id;
       const layerFont = tl.fontFamily ? resolveEffectiveFontCss('garamond', tl.fontFamily) : fontCss;
       const tNode = el('div', {
@@ -975,11 +1080,27 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           letterSpacing: `${tl.letterSpacingEm}em`,
           lineHeight: String(tl.lineHeight),
           opacity: String(tl.opacity),
+          zIndex: String(3 + (tl.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${tl.rotationDeg}deg)`,
           textShadow: tl.shadowBlur ? `0 2px ${tl.shadowBlur}px rgba(0,0,0,0.6)` : 'none',
           webkitTextStroke: tl.strokeWidth ? `${tl.strokeWidth}px ${tl.strokeColor || '#000'}` : undefined,
         },
+        on: {
+          dblclick: (e) => {
+            e.stopPropagation();
+            activeSelectionKind = 'text';
+            activeLayerId = tl.id;
+            activeInspectorTab = 'properties';
+            renderCoverStudio(container, actions);
+            requestAnimationFrame(() => {
+              const box = container.querySelector('.qv-studio-right-body textarea') as HTMLTextAreaElement | null;
+              box?.focus();
+              box?.select();
+            });
+          },
+        },
       });
+      if (isSelected) appendSelectionHandles(tNode);
       bindMagneticDrag(
         tNode,
         tl.locked,
@@ -1003,6 +1124,15 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     }
   };
 
+  const bumpLayerZ = (kind: 'text' | 'shape' | 'graphic', id: string, delta: number) => {
+    mutateCover(actions, (c) => ({
+      ...c,
+      textLayers: (c.textLayers ?? []).map((l) => (kind === 'text' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
+      shapeLayers: (c.shapeLayers ?? []).map((l) => (kind === 'shape' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
+      graphicLayers: (c.graphicLayers ?? []).map((l) => (kind === 'graphic' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
+    }));
+  };
+
   function attachLayerContextMenu(
     node: HTMLElement,
     kind: 'text' | 'shape' | 'graphic',
@@ -1013,6 +1143,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       {
         heading: 'Cover Layer Actions',
         items: [
+          {
+            label: 'Bring Forward',
+            icon: 'bring-front',
+            onSelect: () => bumpLayerZ(kind, id, 1),
+          },
+          {
+            label: 'Send Backward',
+            icon: 'send-back',
+            onSelect: () => bumpLayerZ(kind, id, -1),
+          },
           {
             label: 'Align Center Horizontally',
             icon: 'align-center',
@@ -1390,7 +1530,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
 
   const wrap = el('div', {
     className: 'bv-cover-wrap',
-    style: { transform: `scale(${studioZoom})`, transformOrigin: 'center center' },
+    style: { transform: `scale(${studioZoom})`, transformOrigin: 'top center' },
   });
   if (coverWrapMode === 'front') {
     wrap.appendChild(buildFrontFace());
@@ -1664,12 +1804,67 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         on: { change: () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((l) => l.id === selectedTextLayer.id ? { ...l, uppercase: upperChk.checked } : l) })) },
       });
 
+      const fontSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: {
+            change: () =>
+              mutateCover(actions, (c) => ({
+                ...c,
+                textLayers: (c.textLayers ?? []).map((l) =>
+                  l.id === selectedTextLayer.id ? { ...l, fontFamily: fontSel.value || undefined } : l,
+                ),
+              })),
+          },
+        },
+        el('option', { text: 'Cover Default Typeface', attrs: { value: '', selected: !selectedTextLayer.fontFamily } }),
+        ...fontChoices.map((fc) =>
+          el('option', {
+            text: fc.label,
+            attrs: { value: fc.id, selected: selectedTextLayer.fontFamily === fc.id },
+          }),
+        ),
+      );
+      const italicChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: selectedTextLayer.italic },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              textLayers: (c.textLayers ?? []).map((l) =>
+                l.id === selectedTextLayer.id ? { ...l, italic: italicChk.checked } : l,
+              ),
+            })),
+        },
+      });
+      const zRow = el(
+        'div',
+        { style: { display: 'flex', gap: '6px' } },
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Send Back',
+          attrs: { type: 'button' },
+          on: { click: () => bumpLayerZ('text', selectedTextLayer.id, -1) },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Bring Forward',
+          attrs: { type: 'button' },
+          on: { click: () => bumpLayerZ('text', selectedTextLayer.id, 1) },
+        }),
+      );
+
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: 'Custom Text Layer' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Copy' }), txtVal),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Font' }), fontSel),
         el('div', { className: 'bv-field' }, (sizeLbl = el('label', { className: 'bv-label', text: `Font Size (${selectedTextLayer.fontSize}px)` })), sizeRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Color' }), colorIn),
+        el('label', { className: 'bv-check-row' }, italicChk, el('span', { text: 'Italic Style' })),
         el('label', { className: 'bv-check-row' }, upperChk, el('span', { text: 'Uppercase Display' })),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Order' }), zRow),
         alignRow((nx, ny) =>
           mutateCover(actions, (c) => ({
             ...c,
@@ -1723,12 +1918,66 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, rotationDeg: Number(rotRange.value) } : l) })) },
       });
 
+      let hLbl: HTMLElement | null = null;
+      const hRange = el('input', {
+        attrs: { type: 'range', min: 2, max: 100, step: 1, value: selectedShapeLayer.heightPct },
+        on: {
+          input: () => {
+            const val = Number(hRange.value);
+            if (hLbl) hLbl.textContent = `Height (${val}%)`;
+            container.querySelectorAll<HTMLElement>(`[data-shape-id="${selectedShapeLayer.id}"]`).forEach((n) => {
+              if (selectedShapeLayer.shape !== 'line') n.style.height = `${val}%`;
+            });
+            mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, heightPct: val } : l) }), false, false);
+          },
+          change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, heightPct: Number(hRange.value) } : l) }), true),
+        },
+      });
+      const strokeColorIn = el('input', {
+        attrs: { type: 'color', value: selectedShapeLayer.strokeColor || cover.accentColor },
+        on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, strokeColor: strokeColorIn.value } : l) })) },
+      });
+      const strokeWRange = el('input', {
+        attrs: { type: 'range', min: 0, max: 14, step: 1, value: selectedShapeLayer.strokeWidth },
+        on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, strokeWidth: Number(strokeWRange.value) } : l) })) },
+      });
+      const radiusRange = el('input', {
+        attrs: { type: 'range', min: 0, max: 48, step: 2, value: selectedShapeLayer.cornerRadius },
+        on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, cornerRadius: Number(radiusRange.value) } : l) })) },
+      });
+      const gradEndIn = el('input', {
+        attrs: { type: 'color', value: selectedShapeLayer.gradientEndColor || selectedShapeLayer.fillColor || cover.accentColor },
+        on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, gradientEndColor: gradEndIn.value } : l) })) },
+      });
+      const shapeZRow = el(
+        'div',
+        { style: { display: 'flex', gap: '6px' } },
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Send Back',
+          attrs: { type: 'button' },
+          on: { click: () => bumpLayerZ('shape', selectedShapeLayer.id, -1) },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Bring Forward',
+          attrs: { type: 'button' },
+          on: { click: () => bumpLayerZ('shape', selectedShapeLayer.id, 1) },
+        }),
+      );
+
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: `Shape · ${selectedShapeLayer.name}` }),
         el('div', { className: 'bv-field' }, (wLbl = el('label', { className: 'bv-label', text: `Width (${selectedShapeLayer.widthPct}%)` })), wRange),
+        el('div', { className: 'bv-field' }, (hLbl = el('label', { className: 'bv-label', text: `Height (${selectedShapeLayer.heightPct}%)` })), hRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Fill Color' }), fillIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Gradient End (Optional)' }), gradEndIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Border / Stroke Color' }), strokeColorIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Stroke Width (${selectedShapeLayer.strokeWidth}px)` }), strokeWRange),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Corner Radius (${selectedShapeLayer.cornerRadius}px)` }), radiusRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Opacity (${Math.round(selectedShapeLayer.opacity * 100)}%)` }), opRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Rotation (${selectedShapeLayer.rotationDeg}°)` }), rotRange),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Order' }), shapeZRow),
         alignRow((nx, ny) =>
           mutateCover(actions, (c) => ({
             ...c,
@@ -1898,6 +2147,59 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         attrs: { type: 'text', value: cover.editionLabel },
         on: { change: () => mutateCover(actions, (c) => ({ ...c, editionLabel: editionIn.value })) },
       });
+      const elColorIn = el('input', {
+        attrs: { type: 'color', value: activeEl.color || cover.textColor },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              elements: { ...c.elements, [activeElementKey]: { ...c.elements[activeElementKey], color: elColorIn.value } },
+            })),
+        },
+      });
+      const elAlignSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: {
+            change: () =>
+              mutateCover(actions, (c) => ({
+                ...c,
+                elements: { ...c.elements, [activeElementKey]: { ...c.elements[activeElementKey], align: elAlignSel.value as 'left' | 'center' | 'right' } },
+              })),
+          },
+        },
+        el('option', { text: 'Left', attrs: { value: 'left', selected: activeEl.align === 'left' } }),
+        el('option', { text: 'Center', attrs: { value: 'center', selected: activeEl.align === 'center' } }),
+        el('option', { text: 'Right', attrs: { value: 'right', selected: activeEl.align === 'right' } }),
+      );
+      const bookFieldVal =
+        activeElementKey === 'title'
+          ? project.title
+          : activeElementKey === 'subtitle'
+            ? project.subtitle
+            : activeElementKey === 'author'
+              ? penName
+              : '';
+      const bookFieldInput =
+        activeElementKey === 'title' || activeElementKey === 'subtitle' || activeElementKey === 'author'
+          ? el('input', {
+              className: 'bv-input',
+              attrs: { type: 'text', value: bookFieldVal },
+              on: {
+                change: (ev) => {
+                  const val = (ev.target as HTMLInputElement).value;
+                  actions.mutateProject((prev) => {
+                    if (activeElementKey === 'title') return { ...prev, title: val };
+                    if (activeElementKey === 'subtitle') return { ...prev, subtitle: val };
+                    const next = normalizeProjectDefaults(prev);
+                    if (next.authorIdentity) next.authorIdentity.penName = val;
+                    return { ...next, author: val };
+                  });
+                },
+              },
+            })
+          : null;
       const elVisibleChk = el('input', {
         className: 'bv-lever',
         attrs: { type: 'checkbox', role: 'switch', checked: activeEl.visible },
@@ -1913,8 +2215,13 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: 'Front Text Element' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer' }), elKeySel),
-        el('div', { className: 'bv-field' }, (elFontSizeLbl = el('label', { className: 'bv-label', text: `Size (${activeEl.fontSize}px)` })), elFontSizeIn),
+        ...(bookFieldInput
+          ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `${activeElementKey === 'author' ? 'Author / Pen Name' : activeElementKey.charAt(0).toUpperCase() + activeElementKey.slice(1)} Text` }), bookFieldInput)]
+          : []),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Edition Banner Text' }), editionIn),
+        el('div', { className: 'bv-field' }, (elFontSizeLbl = el('label', { className: 'bv-label', text: `Size (${activeEl.fontSize}px)` })), elFontSizeIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Color' }), elColorIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Alignment' }), elAlignSel),
         el('label', { className: 'bv-check-row' }, elVisibleChk, el('span', { text: 'Visible on Front Cover' })),
         alignRow((nx, ny) =>
           mutateCover(actions, (c) => ({

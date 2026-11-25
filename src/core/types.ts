@@ -57,14 +57,15 @@ export type EditorialStage =
   | 'print-ready';
 
 export type QuillvibeExtension =
-  | '.quillvibe'
-  | '.qvibe'
-  | '.qvbook'
+  | '.qv'
   | '.qvbible'
   | '.qvscene'
   | '.qvstyle';
 
 export type LegacyImportExtension =
+  | '.quillvibe'
+  | '.qvibe'
+  | '.qvbook'
   | '.bookvibe'
   | '.bvibe'
   | '.bvbook'
@@ -74,7 +75,7 @@ export type LegacyImportExtension =
 
 export type AnyQuillvibeOrLegacyExtension = QuillvibeExtension | LegacyImportExtension;
 
-export type ExportFormatId = QuillvibeExtension | '.epub' | '.md' | '.html' | '.txt';
+export type ExportFormatId = QuillvibeExtension | '.pdf' | '.epub' | '.md' | '.html' | '.txt';
 
 export type ProofreadMarkKind =
   | 'delete'
@@ -220,6 +221,10 @@ export interface QuillvibeSettings {
   immersiveShowAlarm: boolean;
   alarmRingtone: AlarmRingtoneId;
   alarmVolume: number;
+  enableSpellcheck: boolean;
+  immersiveHudX: number;
+  immersiveHudY: number;
+  immersiveHudCollapsed: boolean;
 }
 
 export interface SceneSnapshot {
@@ -364,6 +369,21 @@ export interface AuthorIdentity {
   keyLockedForever?: boolean;
   keyCreatedAt?: string;
   keyFingerprint?: string;
+  originDeviceId?: string;
+  originDeviceName?: string;
+  originVerifiedAt?: string;
+}
+
+export interface CopyrightOwnershipRecord {
+  sealId: string;
+  ownerName: string;
+  copyrightNotice: string;
+  workTitle: string;
+  registeredAt: string;
+  workDigestSha256: string;
+  certificateSignature?: string;
+  rightsTerritory: string;
+  editionNumber: string;
 }
 
 export interface Collaborator {
@@ -373,6 +393,13 @@ export interface Collaborator {
   role: CollaboratorRole;
   creditLine: string;
   authorKeyId: string;
+  deviceId?: string;
+  deviceLabel?: string;
+  coAuthorKeyId?: string;
+  publicKeyJwk?: string;
+  deviceSignature?: string;
+  verifiedDevice?: boolean;
+  verifiedAt?: string;
   color: string;
   addedAt: string;
   permissions?: CollaboratorPermissions;
@@ -564,6 +591,7 @@ export interface BookProject {
   parts: PartNode[];
   bible: StoryBible;
   authorIdentity?: AuthorIdentity;
+  copyrightOwnership?: CopyrightOwnershipRecord;
   collaborators?: Collaborator[];
   activeAuthorLabel?: string;
   storyGraph?: StoryGraph;
@@ -607,6 +635,7 @@ export interface QuillvibeManuscriptPayload {
   wordTarget: number;
   parts: PartNode[];
   authorIdentity?: AuthorIdentity;
+  copyrightOwnership?: CopyrightOwnershipRecord;
   collaborators?: Collaborator[];
   cover?: BookCoverConfig;
   publishing?: BookPublishingMeta;

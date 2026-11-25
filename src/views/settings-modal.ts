@@ -1,6 +1,6 @@
 import type { AppActions } from '../core/app-context';
 import { ALARM_RINGTONES, playRingtonePreview } from '../core/alarm';
-import { isTauriRuntime } from '../core/bridge';
+import { exportGenericFile, isTauriRuntime } from '../core/bridge';
 import { EXPORT_FORMAT_OPTIONS } from '../core/export';
 import {
   getAllAvailableFontChoices,
@@ -351,7 +351,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             },
           },
         },
-        el('option', { text: 'Icons Only (Minimal Chrome)', attrs: { value: 'icons', selected: settings.toolbarDisplayMode === 'icons' } }),
+        el('option', { text: 'Icons Only (Minimal Bar)', attrs: { value: 'icons', selected: settings.toolbarDisplayMode === 'icons' } }),
         el('option', { text: 'Balanced (Icons + Key Labels)', attrs: { value: 'balanced', selected: settings.toolbarDisplayMode === 'balanced' } }),
         el('option', { text: 'Full Details (Icons + Full Descriptions)', attrs: { value: 'detailed', selected: settings.toolbarDisplayMode === 'detailed' } }),
       );
@@ -452,6 +452,18 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         id: 'bv-set-savedelay',
         attrs: { type: 'range', min: 150, max: 2000, step: 50, value: settings.autoSaveDelayMs },
         on: { input: syncSaveDelay, change: syncSaveDelay },
+      });
+
+      const spellcheckChk = el('input', {
+        className: 'bv-lever',
+        id: 'bv-set-spellcheck',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.enableSpellcheck },
+        on: {
+          change: () => {
+            actions.updateSettings({ enableSpellcheck: spellcheckChk.checked });
+            actions.setState({}, true);
+          },
+        },
       });
 
       const tourChk = el('input', {
@@ -598,6 +610,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-motion' }, text: 'Motion' }), motionSel),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-default-fmt' }, text: 'Default Save / Export Extension' }), defaultFmtSel),
             el('div', { className: 'bv-field' }, saveDelayLabel, saveDelaySlider),
+            el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-spellcheck' } }, spellcheckChk, el('span', { text: 'Enable strict word spellcheck underlines while drafting' })),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-tours' } }, tourChk, el('span', { text: 'Show interactive hints & course tips' })),
             el(
               'button',
@@ -929,10 +942,10 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         el(
           'section',
           { className: 'bv-cork-card', style: { marginTop: '12px' } },
-          el('span', { className: 'bv-panel-title', text: 'Import Manuscripts & Legacy Bookvibe Archives' }),
+          el('span', { className: 'bv-panel-title', text: 'Import Manuscripts & Legacy Archives' }),
           el('p', {
             className: 'bv-label',
-            text: 'Import manuscripts from Word (.docx), Google Docs (.html), Rich Text (.rtf), Markdown (.md), Plain Text (.txt), or upgrade older .bookvibe / .bv* files into Quillvibe.',
+            text: 'Import manuscripts from .docx word-processor files, Web HTML (.html), Rich Text (.rtf), Markdown (.md), Plain Text (.txt), or upgrade legacy .quillvibe / .qvibe / .qvbook / .bookvibe files into .qv.',
           }),
           el(
             'div',
@@ -960,7 +973,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
                 },
               },
               icon('folder', 14),
-              'Import Legacy .bookvibe / .bv* Archive…',
+              'Import Legacy Archive (.quillvibe / .bookvibe)…',
             ),
             migrateInput,
           ),
@@ -1000,7 +1013,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v2.1.0', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.2.0', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -1019,7 +1032,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '2.1.0',
+                    version: '2.2.0',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,
@@ -1028,14 +1041,15 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
                     auditLogCount: auditEntries,
                     viewport: `${window.innerWidth}x${window.innerHeight}`,
                   };
-                  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'quillvibe-diagnostics.json';
-                  a.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 2500);
-                  actions.notify('Downloaded local diagnostics JSON');
+                  void exportGenericFile({
+                    suggestedName: 'quillvibe-diagnostics',
+                    extension: 'json',
+                    description: 'Quillvibe Diagnostics JSON',
+                    mimeType: 'application/json;charset=utf-8',
+                    textContent: JSON.stringify(snapshot, null, 2),
+                  }).then((saved) => {
+                    if (saved) actions.notify('Exported local diagnostics JSON');
+                  });
                 },
               },
             },

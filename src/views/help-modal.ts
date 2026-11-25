@@ -26,8 +26,9 @@ const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
 ];
 
 const SHORTCUT_LIST: Array<{ keys: string; action: string }> = [
+  { keys: 'Ctrl / Cmd + Z / Y', action: 'Undo or redo edits across Manuscript, Corkboard, Outline, Bible, Graph, Typeset, and Cover Studio' },
   { keys: 'Ctrl / Cmd + S', action: 'Capture a Revision Snapshot in Manuscript view, or export default file elsewhere' },
-  { keys: 'Ctrl / Cmd + O', action: 'Open any .quillvibe, .qv* or .qvext file (use Settings -> Publishing & Archive for legacy .bookvibe imports)' },
+  { keys: 'Ctrl / Cmd + O', action: 'Open any .qv, .qv* or .qvext file (use Settings -> Publishing & Archive for legacy .quillvibe / .bookvibe imports)' },
   { keys: 'Ctrl / Cmd + B / I', action: 'Wrap selected draft prose in **bold** or *italic* Markdown' },
   { keys: 'Ctrl / Cmd + Shift + F', action: 'Toggle Zen Focus Mode (hides binder and inspector sidebars)' },
   { keys: 'Right-Click Anywhere', action: 'Open contextual formatting, 15 proofread marks, layer tools, or scene actions' },
@@ -378,7 +379,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
             el('span', { className: 'bv-panel-title', text: 'Desktop App & Browser Workspace' }),
             el('p', {
               className: 'bv-label',
-              text: 'Quillvibe runs on Windows, macOS, and Linux desktop installers, or directly in your browser at https://quillvibe.jhonrey.com/ without logins. Support email: quillvibe@jhonrey.com. Export protected .quillvibe files locally in browser mode to keep backups on disk.',
+              text: 'Quillvibe runs on Windows, macOS, and Linux desktop installers, or directly in your browser at https://quillvibe.jhonrey.com/ without logins. Support email: quillvibe@jhonrey.com. Export protected .qv files locally in browser mode to keep backups on disk.',
             }),
             el(
               'div',
@@ -411,7 +412,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
                   },
                 },
                 icon('folder', 14),
-                'Import Word / Docs',
+                'Import .docx / .html / .md',
               ),
             ),
           ),
@@ -480,10 +481,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
                 }),
                 entry.shortcut
                   ? el('div', {
-                      className: 'bv-mono-tag',
-                      text: `Shortcut: ${entry.shortcut}`,
-                      style: { marginTop: '4px', color: 'var(--accent-amber)' },
-                    })
+                    className: 'bv-mono-tag',
+                    text: `Shortcut: ${entry.shortcut}`,
+                    style: { marginTop: '4px', color: 'var(--accent-amber)' },
+                  })
                   : null,
               ),
             ),
@@ -524,18 +525,18 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           steps: [
             'Install personal .ttf, .otf, .woff, or .woff2 fonts in Settings > Typefaces, then apply them to the Draft canvas, Interior Typeset spread, and Cover Studio.',
             'Flip switches for Drop Caps, Smart Quotes, Running Headers, and ISBN Barcode Box cleanly in Typeset and Cover Studio.',
-            'Each pen name gets one permanent Author Key that cannot be swapped. Set collaborator permissions (Co-Author, Proofreader, Editor, Typesetter, Publisher, Beta Reader) in Collaborate.',
-            'Export protected .quillvibe files with an optional password, configure Commercial & Enterprise publishing fields in Settings > Publishing & Archive, and import legacy .bookvibe archives there.',
+            'Each pen name gets one permanent Author & Origin Device Key, paired with a separate Work Copyright Seal (QVC-). Co-authors require a signed device token generated on their own device.',
+            'Export protected .qv archives with an optional password, configure Commercial & Enterprise publishing fields in Settings > Publishing & Archive, and import legacy .quillvibe or .bookvibe archives there.',
           ],
         },
         {
           tier: 'Desktop App Features',
           title: 'Features Available in the Standalone Desktop Installer',
           steps: [
-            'Immersive Fullscreen Mode (F11) with optional live wall clock, sprint timer, word goal progress, and Alarm Clock ringtone pill.',
+            'Immersive Fullscreen Mode (F11) with a movable, collapsible bar and top-edge screen hover menu.',
             'Multi-Window Editing: open two books or chapters side by side in separate OS windows from Book Library.',
             'Offline Same-Wi-Fi LAN Sync and OS Bluetooth / Nearby Share file handoffs without touching any remote cloud server.',
-            'Native OS File Associations: double-click .quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, or .qvstyle files in Explorer or Finder to open directly in Quillvibe.',
+            'Native OS File Associations: double-click .qv, .qvbible, .qvscene, or .qvstyle files in Explorer or Finder to open directly in Quillvibe.',
           ],
         },
       ];

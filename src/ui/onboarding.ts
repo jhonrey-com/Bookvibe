@@ -1,5 +1,11 @@
 import type { AppActions } from '../core/app-context';
-import { isTauriRuntime } from '../core/bridge';
+import {
+  closeDesktopWindow,
+  isTauriRuntime,
+  minimizeDesktopWindow,
+  startDesktopWindowDrag,
+  toggleMaximizeDesktopWindow,
+} from '../core/bridge';
 import {
   createEmptyBookProject,
   getActiveBookFromLibrary,
@@ -9,7 +15,7 @@ import {
 import { getProjectWordCount } from '../core/manuscript';
 import { syncBrowserPath } from '../core/router';
 import type { AppThemeId, StudioViewId, ToolTier } from '../core/types';
-import { el, icon, quillvibeLogo } from './dom';
+import { el, icon, quillvibeLogo, svgEl } from './dom';
 
 const SPLASH_SEEN_KEY = 'quillvibe.splashSeen.v2';
 const LEGACY_SPLASH_KEY = 'bookvibe.splashSeen.v1';
@@ -44,8 +50,8 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
     },
     {
       selector: '.bv-save-split',
-      title: 'Export Local .quillvibe',
-      body: 'Export .quillvibe archives, EPUB 3, Markdown, or Print PDFs anytime with zero accounts.',
+      title: 'Export Local .qv Archive',
+      body: 'Export protected .qv archives, Print PDF, EPUB 3, or Markdown anytime with zero accounts.',
     },
   ],
   corkboard: [
@@ -471,7 +477,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       },
       icon('folder', 15),
       el('span', { text: 'Open Quillvibe File…' }),
-      el('span', { className: 'qv-welcome-link-sub', text: '.quillvibe / .qv*' }),
+      el('span', { className: 'qv-welcome-link-sub', text: '.qv / .qv*' }),
     ),
     el(
       'button',
@@ -481,7 +487,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
         on: { click: () => finishWithMode('import-doc') },
       },
       icon('download', 15),
-      el('span', { text: 'Import Word or Markdown…' }),
+      el('span', { text: 'Import Manuscript (.docx / .md)…' }),
       el('span', { className: 'qv-welcome-link-sub', text: '.docx / .md / .html' }),
     ),
     el(
@@ -542,9 +548,80 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
         ? 'Mobile Web Edition · Local Browser Auto-Save · Zero Login'
         : 'Web Studio (quillvibe.jhonrey.com) · Instant Local Workspace · Zero Login';
 
+  const desktopTitlebar = isTauriRuntime()
+    ? el(
+        'div',
+        {
+          className: 'qv-splash-win-bar',
+          on: {
+            mousedown: (e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              void startDesktopWindowDrag();
+            },
+            dblclick: (e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              void toggleMaximizeDesktopWindow();
+            },
+          },
+        },
+        el(
+          'div',
+          { className: 'qv-splash-win-meta' },
+          quillvibeLogo(14),
+          el('span', { text: 'Quillvibe Desktop · jhonrey.com' }),
+        ),
+        el(
+          'div',
+          { className: 'bv-win-controls' },
+          el(
+            'button',
+            {
+              className: 'bv-win-btn',
+              attrs: { type: 'button', 'aria-label': 'Minimize window' },
+              on: { click: () => void minimizeDesktopWindow() },
+            },
+            (() => {
+              const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+              s.appendChild(svgEl('line', { x1: 2, y1: 6.5, x2: 10, y2: 6.5, stroke: 'currentColor', 'stroke-width': 1.4 }));
+              return s;
+            })(),
+          ),
+          el(
+            'button',
+            {
+              className: 'bv-win-btn',
+              attrs: { type: 'button', 'aria-label': 'Maximize or restore window' },
+              on: { click: () => void toggleMaximizeDesktopWindow() },
+            },
+            (() => {
+              const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+              s.appendChild(svgEl('rect', { x: 2.25, y: 2.25, width: 7.5, height: 7.5, rx: 1, stroke: 'currentColor', 'stroke-width': 1.3 }));
+              return s;
+            })(),
+          ),
+          el(
+            'button',
+            {
+              className: 'bv-win-btn bv-win-btn-close',
+              attrs: { type: 'button', 'aria-label': 'Close window' },
+              on: { click: () => void closeDesktopWindow() },
+            },
+            (() => {
+              const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+              s.appendChild(
+                svgEl('path', { d: 'M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5', stroke: 'currentColor', 'stroke-width': 1.4, 'stroke-linecap': 'round' }),
+              );
+              return s;
+            })(),
+          ),
+        ),
+      )
+    : null;
+
   const frame = el(
     'div',
     { className: 'qv-welcome-frame' },
+    ...(desktopTitlebar ? [desktopTitlebar] : []),
     el(
       'div',
       { className: 'qv-welcome-head' },

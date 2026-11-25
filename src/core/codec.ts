@@ -1,4 +1,8 @@
-import type { QuillvibeEnvelope, QuillvibeExtension } from './types';
+import type {
+  AnyQuillvibeOrLegacyExtension,
+  QuillvibeEnvelope,
+  QuillvibeExtension,
+} from './types';
 
 export type QuillvibeCodecErrorCode =
   | 'INVALID_FORMAT'
@@ -28,22 +32,24 @@ const FLAG_PASSWORD_PROTECTED = 0x01;
 const FLAG_AUTHOR_KEY_BOUND = 0x02;
 const FLAG_RESTRICTED_COLLAB = 0x04;
 
-const EXT_TO_CODE: Record<QuillvibeExtension, number> = {
-  '.quillvibe': 1,
-  '.qvibe': 2,
-  '.qvbook': 3,
+const EXT_TO_CODE: Partial<Record<AnyQuillvibeOrLegacyExtension, number>> = {
+  '.qv': 7,
   '.qvbible': 4,
   '.qvscene': 5,
   '.qvstyle': 6,
+  '.quillvibe': 1,
+  '.qvibe': 2,
+  '.qvbook': 3,
 };
 
-const CODE_TO_EXT: Record<number, QuillvibeExtension> = {
+const CODE_TO_EXT: Record<number, AnyQuillvibeOrLegacyExtension> = {
   1: '.quillvibe',
   2: '.qvibe',
   3: '.qvbook',
   4: '.qvbible',
   5: '.qvscene',
   6: '.qvstyle',
+  7: '.qv',
 };
 
 // Internal format key seed used to keep non-password QVBX files opaque outside Quillvibe
@@ -182,7 +188,7 @@ export interface QvbxHeaderInfo {
   passwordProtected: boolean;
   authorKeyBound: boolean;
   restricted: boolean;
-  extension: QuillvibeExtension | null;
+  extension: AnyQuillvibeOrLegacyExtension | null;
   authorKeyId: string;
 }
 
@@ -343,11 +349,16 @@ export async function encodeQuillvibeBinary(
   envelope: QuillvibeEnvelope,
   options?: EncodeQvbxOptions,
 ): Promise<Uint8Array> {
-  const extCode = EXT_TO_CODE[envelope.extension as QuillvibeExtension];
+  const isOfficialOut =
+    envelope.extension === '.qv' ||
+    envelope.extension === '.qvbible' ||
+    envelope.extension === '.qvscene' ||
+    envelope.extension === '.qvstyle';
+  const extCode = isOfficialOut ? EXT_TO_CODE[envelope.extension as QuillvibeExtension] : undefined;
   if (!extCode) {
     throw new QuillvibeCodecError(
       'INVALID_FORMAT',
-      `Only official Quillvibe extensions (.quillvibe, .qv*) can be encoded to QVBX. Received "${envelope.extension}".`,
+      `Only official Quillvibe extensions (.qv, .qvbible, .qvscene, .qvstyle) can be encoded to QVBX. Received "${envelope.extension}".`,
     );
   }
 

@@ -4,46 +4,18 @@ Windows Registry Editor Version 5.00
 ; Replace C:\\Program Files\\Quillvibe\\quillvibe.exe with your Quillvibe executable path if installing manually.
 ; Quillvibe also writes these keys automatically under HKEY_CURRENT_USER on launch (no Administrator required).
 
-[HKEY_CURRENT_USER\Software\Classes\.quillvibe]
-@="Quillvibe.Project.2"
-"Content Type"="application/vnd.quillvibe.project"
+[HKEY_CURRENT_USER\Software\Classes\.qv]
+@="Quillvibe.Workspace.2"
+"Content Type"="application/vnd.quillvibe.workspace"
 "PerceivedType"="document"
 
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Project.2]
-@="Quillvibe Master Project"
+[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Workspace.2]
+@="Quillvibe Book Workspace"
 
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Project.2\DefaultIcon]
+[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Workspace.2\DefaultIcon]
 @="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\",0"
 
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Project.2\shell\open\command]
-@="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\" \"%1\""
-
-[HKEY_CURRENT_USER\Software\Classes\.qvibe]
-@="Quillvibe.CompactProject.2"
-"Content Type"="application/vnd.quillvibe.project"
-"PerceivedType"="document"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.CompactProject.2]
-@="Quillvibe Compact Project"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.CompactProject.2\DefaultIcon]
-@="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\",0"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.CompactProject.2\shell\open\command]
-@="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\" \"%1\""
-
-[HKEY_CURRENT_USER\Software\Classes\.qvbook]
-@="Quillvibe.Manuscript.2"
-"Content Type"="application/vnd.quillvibe.manuscript"
-"PerceivedType"="document"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Manuscript.2]
-@="Quillvibe Manuscript Package"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Manuscript.2\DefaultIcon]
-@="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\",0"
-
-[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Manuscript.2\shell\open\command]
+[HKEY_CURRENT_USER\Software\Classes\Quillvibe.Workspace.2\shell\open\command]
 @="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\" \"%1\""
 
 [HKEY_CURRENT_USER\Software\Classes\.qvbible]
@@ -80,7 +52,7 @@ Windows Registry Editor Version 5.00
 "PerceivedType"="document"
 
 [HKEY_CURRENT_USER\Software\Classes\Quillvibe.Style.2]
-@="Quillvibe Typeset and Print Preset"
+@="Quillvibe Typeset Preset"
 
 [HKEY_CURRENT_USER\Software\Classes\Quillvibe.Style.2\DefaultIcon]
 @="\"C:\\Program Files\\Quillvibe\\quillvibe.exe\",0"

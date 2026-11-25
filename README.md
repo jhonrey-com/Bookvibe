@@ -2,11 +2,11 @@
   <img src="assets/banners/quillvibe-header.svg" alt="Quillvibe — Open-source book writing, proofreading, worldbuilding, cover studio, and typesetting app" width="100%" />
 </p>
 
-**Quillvibe** is a cross-platform book writing app built so writers can draft notes, organize manuscripts, edit with right-click proofreading marks, manage story bibles and relationship graphs, install custom fonts, design layered print covers, and export release-ready books from one local workspace. It starts in **Ivory Light** with **Basic / Intermediate / Advanced** tool levels in Settings, runs offline with zero AI features and zero account sign-ins, stores work in protected `QVBX` binary files (`.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`), supports importing legacy `.bookvibe` files, and syncs drafts over Wi-Fi, Bluetooth, or self-hosted HTTPS servers.
+**Quillvibe** is a cross-platform book writing app built so writers can draft notes, organize manuscripts, edit with right-click proofreading marks, manage story bibles and relationship graphs, install custom fonts, design layered print covers, and export release-ready books from one local workspace. It starts in **Ivory Light** with **Basic / Intermediate / Advanced** tool levels in Settings, runs offline with zero AI features and zero account sign-ins, stores work in protected `QVBX` binary files (`.qv`, `.qvbible`, `.qvscene`, `.qvstyle`), supports importing legacy `.quillvibe` and `.bookvibe` files, and syncs drafts over Wi-Fi, Bluetooth, or self-hosted HTTPS servers. Published under **`jhonrey.com`**.
 
 > **Open Quillvibe in Your Browser (`/start` Welcome & `/course` Academy):** **[Launch `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)**  
-> *Browser tip:* Click **Save** anytime to export a `.quillvibe` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
-> **Desktop Releases (`v2.0.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
+> *Browser tip:* Click **Save** anytime to export a `.qv` file locally so your work stays backed up if browser site data is cleared. Installing a desktop release saves automatically to your computer.  
+> **Desktop Releases (`v2.2.0` — Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`):** **[Download From GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
 > **Project Wiki & Roadmap:** **[Quillvibe GitHub Wiki](https://github.com/jhonrey-com/Quillvibe/wiki)** · **Security Reporting:** **[SECURITY.md](SECURITY.md)** (`quillvibe@jhonrey.com`)
 
 <p align="center">
@@ -33,25 +33,25 @@
 
 Many writers split work across five programs: a text editor for Markdown notes, spreadsheets for outlines, whiteboard apps for plot graphs, image editors for covers, and conversion scripts for EPUB files. Quillvibe replaces that chain with integrated tools sharing one local project:
 
-- **Zero setup & zero accounts**: Open an example or blank project right away. Every `.quillvibe` file is saved in a protected `QVBX` binary container that only Quillvibe decodes, with optional password locking and tamper detection.
-- **Works cleanly for small notes or multi-volume books**: Treat it as a quiet Markdown scratchpad (`Ctrl+B`, `Ctrl+I`, `.md` export) or manage an entire catalog under separate pen names.
+- **Zero setup & zero accounts**: Open an example or blank project right away. Every `.qv` file is saved in a protected `QVBX` binary container that only Quillvibe decodes, with optional password locking and tamper detection.
+- **Works cleanly for small notes or multi-volume books**: Write freely with optional spellcheck off by default, use global `Ctrl+Z`/`Ctrl+Y` undo/redo across all studios, or manage a full catalog under separate pen names.
 - **Real proofreading workflow**: Instead of overwriting prose blindly, apply 15 copyediting marks on the page, toggle *Clean Preview*, and accept edits with automatic snapshot backups.
-- **Commercial publishing basics built in**: Configure publisher company, print and eBook ISBN-13, commercial rights, custom device fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), full jacket cover wraps (front, spine, back, and flaps), and permanent pen-name Author Keys.
+- **Commercial publishing basics built in**: Configure publisher company, print and eBook ISBN-13, commercial rights, custom device fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), full jacket cover wraps (front, spine, back, and flaps), Origin Author & Device Keys (`QVK-`/`QVD-`), Work Copyright Seals (`QVC-`), and Verified Multi-Device Co-Author tokens (`QVCA1.`).
 
 ---
 
 ## 2. How to Install, Run in Browser & Launch Quillvibe
 
 ### Option A: Open Immediately in Any Browser (No Login Required)
-Visit **[https://quillvibe.jhonrey.com/](https://quillvibe.jhonrey.com/)** to write, organize Story Bibles, proofread, design covers, and export `.quillvibe` / `.epub` / `.md` files right in your browser. Click **Save** locally whenever finishing a browser session so your `.quillvibe` file is stored safely outside browser cache.
+Visit **[https://quillvibe.jhonrey.com/](https://quillvibe.jhonrey.com/)** to write, organize Story Bibles, proofread, design covers, and export `.qv` / `.pdf` / `.epub` / `.md` files right in your browser. Click **Save** locally whenever finishing a browser session so your `.qv` file is stored safely outside browser cache.
 
 ### Option B: Desktop Installers (Frameless Native App with Local Auto-Save)
-Download from **[GitHub Releases (`v2.0.0`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (uses a custom frameless titlebar with drag/minimize/maximize/close and saves directly to disk):
+Download from **[GitHub Releases (`v2.2.0`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (signed under publisher **`jhonrey.com`**, opens maximized on first launch, and saves directly to disk):
 - **Windows:** `.msi` or `.exe`
 - **macOS:** Universal `.dmg` (Apple Silicon & Intel)
 - **Linux:** `.AppImage` or `.deb`
 
-Desktop builds also add `F11` Immersive Fullscreen mode, multi-window book editing, Same-Wi-Fi PIN sync, OS Bluetooth transfer, and double-click opening for `.quillvibe` / `.qv*` files.
+Desktop builds also add `F11` Immersive Fullscreen mode (with a movable, collapsible bar and top-edge screen hover menu), multi-window book editing, Same-Wi-Fi PIN sync, OS Bluetooth transfer, and double-click opening for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files.
 
 ### Option C: Terminal Installers
 
@@ -89,19 +89,19 @@ npm run tauri:build
 ## 3. Guides by Writing Level (Basic, Intermediate, Advanced)
 
 ### Level 1 — Basic: Quick Notes, Journal Scenes & Markdown Builder
-1. Open Quillvibe. The Welcome view lets you start a blank book, explore the sample book, open a `.quillvibe` file, or take the full Academy course at `/course`.
+1. Open Quillvibe. The Welcome view lets you start a blank book, explore the sample book, open a `.qv` file, or take the full Academy course at `/course`.
 2. Click inside **Manuscript** (`Draft` mode) and type directly on **Ivory**, **Parchment**, or **Obsidian** paper.
 3. Use `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `H2`, blockquote `❝`, `* * *`, or right-click directly on the page to format Markdown.
 4. Change the topbar Save format dropdown to **`.md` (Markdown)** or **`.qvscene` (Single Scene)** and click Save (`Ctrl+S` in non-editor views exports directly; in Editor `Ctrl+S` captures a revision snapshot).
 
 ### Level 2 — Intermediate: Series Worldbuilding, Proofing & Live Story Graph
-Change **Workspace Tool Level** in **Settings -> Workspace & Editor** to unlock Corkboard, Outline, Proofread Mode, and Interior Print Typesetting.
+Change **Workspace Tool Level** in **Settings -> Workspace & Editor** to enable Corkboard, Outline, Proofread Mode, and Interior Print Typesetting.
 - **Proofread Mode**: Highlight any sentence and right-click to apply 15 copyediting marks (`₰`, `∧`, `⇄`, `tr`, `stet`, `AQ`, and more), toggle **Clean Preview**, and accept edits with automatic snapshot backups.
 
 ### Level 3 — Advanced: Cover Studio, Permanent Author Keys, Permissions & Commercial Publishing
-1. **Multi-Book Library & Forever Pen-Name Author Keys**: Open **Library** to keep multiple manuscripts, draw ink signatures, and lock a permanent ECDSA P-256 **Author Key** (`QVK-...`) to each pen name.
-2. **Collaborator Restrictions**: Open **Collaborate** to assign Co-Author, Proofreader, Line Editor, Typesetter, Publisher, or Beta Reader roles with per-person edit/export restrictions. Nobody can alter the book's locked Author Key.
-3. **Migrate From Word, Google Docs & Legacy `.bookvibe`**: Open **Settings -> Publishing, Commercial & Migration** to import `.docx`, `.html`, `.rtf`, `.md`, `.txt`, or legacy `.bookvibe`/`.bv*` files.
+1. **Multi-Book Library, Origin Device Keys & Copyright Seals**: Open **Library** to keep multiple manuscripts, draw ink signatures, bind an **Origin Author & Device Key** (`QVK-`/`QVD-`) to each pen name, and register a **Work Copyright Seal** (`QVC-`).
+2. **Verified Multi-Device Co-Authoring & Restrictions**: Open **Collaborate** to verify co-authors using signed `QVCA1.` tokens generated on a separate device and assign per-role edit/export restrictions.
+3. **Migrate From `.docx`, Web HTML & Legacy Archives**: Open **Settings -> Publishing, Commercial & Migration** to import `.docx`, `.html`, `.rtf`, `.md`, `.txt`, or legacy `.quillvibe`/`.bookvibe` files.
 
 ---
 
@@ -120,18 +120,16 @@ Press `F1` or click **Help (`?`)** inside the app to search every slider, lever,
 
 ## 6. Protected File Formats, Password Locks & Author Keys
 
-Every native Quillvibe file uses the binary `QVBX` container with AES-GCM encryption, SHA-256 integrity sealing, Author Key verification, and active-content/malware scanning. You can also export a **Password-Locked `.quillvibe`** file for sensitive drafts.
+Every native Quillvibe file uses the binary `QVBX` container with AES-GCM encryption, SHA-256 integrity sealing, Author Key verification, and active-content/malware scanning. You can also export a **Password-Locked `.qv`** file for sensitive drafts.
 
 | Extension | Role | Double-Click Action (Desktop App) |
 | :--- | :--- | :--- |
-| **`.quillvibe`** | Complete Book Archive | Opens manuscript, Story Bible, Graph, cover wrap, marks, snapshots, and Author Key seal. |
-| **`.qvibe`** | Compact Project Alias | Short-extension alias equivalent to `.quillvibe`. |
-| **`.qvbook`** | Manuscript Package | Opens manuscript parts, chapters, scenes, front matter, credits, and cover. |
+| **`.qv`** | Complete Book Workspace | Opens manuscript, Story Bible, Graph, cover wrap, marks, snapshots, Origin Key, and Copyright Seal. |
 | **`.qvbible`** | Story Bible Database | Merges Characters, Locations, Lore, and Custom Categories into the active book. |
 | **`.qvscene`** | Single Scene Draft | Opens or imports one scene along with snapshots and proofreading marks. |
 | **`.qvstyle`** | Typeset & Paper Style | Applies trim size, font stack, drop caps, smart quotes, margins, and paper theme. |
 
-Legacy `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, and `.bvstyle` files are **not** registered for double-click opening; import them explicitly via **Settings -> Publishing, Commercial & Migration -> Import** or the Welcome screen import button.
+Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` archives are **not** registered for double-click opening; import them explicitly via **Settings -> Publishing, Commercial & Migration -> Import** or the Welcome screen import button.
 
 More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-REGISTRATION.md) and [docs/GUIDE.md](docs/GUIDE.md).
 
@@ -147,8 +145,9 @@ Quillvibe separates **Integrated** toolkits from external **`.qvext`** (and lega
 
 | Keys | Command |
 | :--- | :--- |
+| `Ctrl / Cmd + Z` / `Y` | Undo / Redo across Manuscript, Corkboard, Outline, Bible, Graph, and Cover Studio |
 | `Ctrl / Cmd + S` | Save Revision Snapshot in Manuscript view; export default format in other views |
-| `Ctrl / Cmd + O` | Open any `.quillvibe`, `.qv*`, or `.qvext` file |
+| `Ctrl / Cmd + O` | Open any `.qv`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` file |
 | `Ctrl / Cmd + B` / `I` | Bold / Italic Markdown wrapping around selection |
 | `Ctrl / Cmd + Shift + F` | Toggle Zen Focus mode |
 | `F11` *(Desktop App)* | Toggle Immersive Fullscreen HUD with live clock, sprint timer, word count, and alarm |

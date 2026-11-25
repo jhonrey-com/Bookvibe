@@ -94,7 +94,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Scale From Basic Document Sheet to Full Publishing Studio',
         durationMin: 4,
         instruction:
-          'Start in Basic mode for a distraction-free document sheet like Word or Google Docs, then move up to Intermediate or Advanced when you want outlining, Story Bible cross-linking, or Cover Studio.',
+          'Start in Basic mode for a distraction-free document sheet, then move up to Intermediate or Advanced when you want outlining, Story Bible cross-linking, or Cover Studio.',
         objective: 'Keep the interface calm while drafting and expose specialized tools only when needed.',
         concepts: [
           'Writing stalls when twenty unrelated panels compete for attention on chapter one. Basic tier intentionally hides multi-pane visualizers and cover tools so you see only your binder, clean sheet, and simple typography bar.',
@@ -222,7 +222,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         objective: 'Format prose rapidly with mouse or keyboard without cluttering the writing sheet.',
         concepts: [
           'Every primary workspace in Quillvibe—the Manuscript sheet, Binder rows, Corkboard index cards, Outline rows, Story Graph canvas, and Cover Studio artboard—provides a purpose-built right-click context menu instead of forcing long pointer trips to nested ribbons.',
-          'All inline emphasis uses lightweight plain-text Markdown (**bold**, *italic*, > blockquote, ## subheading), ensuring your prose exports cleanly to print typography, EPUB 3, Word-compatible HTML, and archival plain text.',
+          'All inline emphasis uses lightweight plain-text Markdown (**bold**, *italic*, > blockquote, ## subheading), ensuring your prose exports cleanly to print typography, EPUB 3, standalone HTML, and archival plain text.',
         ],
         steps: [
           'Select a sentence on the writing sheet and right-click anywhere inside the editor.',
@@ -632,7 +632,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         objective: 'Inspect pagination flow cleanly and produce press-grade PDF or validated EPUB 3 packages.',
         concepts: [
           'Interior Typeset compiles front matter (title page, dedication, copyright notice, co-author/proofreader credits, and Table of Contents) ahead of Part/Chapter spreads with running headers showing book title and chapter markers.',
-          'Clicking Print / Save PDF formats dedicated print stylesheets (`@media print`) without app chrome, while Export EPUB 3 packages standards-compliant XHTML chapters, NCX/OPF navigation, metadata, and your active Front Cover art into a single `.epub` archive ready for Kindle, Kobo, Apple Books, or Google Play Books.',
+          'Clicking Print / Save PDF formats dedicated print stylesheets (`@media print`) or generates a downloadable `.pdf` without app chrome, while Export EPUB 3 packages standards-compliant XHTML chapters, NCX/OPF navigation, metadata, and your active Front Cover art into a single `.epub` archive ready for e-readers and digital bookstores.',
         ],
         steps: [
           'Confirm Dedication and Copyright Notice fields in Interior Typeset settings.',
@@ -666,9 +666,9 @@ export const COURSE_MODULES: readonly CourseModule[] = [
   {
     id: 'mod-cover',
     number: 6,
-    title: 'Pro Book Cover Studio: Vector Shapes, Gradients & Wraps',
+    title: 'Cover Studio: Vector Shapes, Gradients & Wraps',
     summary:
-      'Design Canva & Illustrator-style covers across Front, Back, Spine, and Flaps using multi-layer text, geometric vector shapes, ornaments, snap guides, and high-resolution export.',
+      'Design covers across Front, Back, Spine, and Flaps using multi-layer text, geometric vector shapes, ornaments, corner resize handles, snap guides, and high-resolution PNG/PDF export.',
     audience: 'Authors designing eBook fronts and full print wraps',
     lessons: [
       {
@@ -762,20 +762,20 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Cryptographic ECDSA Author Sealing & Preflight Checklist',
         durationMin: 4,
         instruction:
-          'Open Studio -> Publish & Author Seal (or Library) to generate your local WebCrypto ECDSA P-256 key pair, record a verifiable signature digest, and verify every preflight check turns green.',
-        objective: 'Attach verifiable authorship provenance to your final `.quillvibe` release bundle.',
+          'Open Studio -> Publish & Author Seal (or Library) to generate your local WebCrypto ECDSA P-256 Origin Key (QVK-/QVD-), register a separate Work Copyright Seal (QVC-), and verify every preflight check turns green.',
+        objective: 'Distinguish original device & pen-name identity from work copyright ownership inside your `.qv` release bundle.',
         concepts: [
-          'When distributing final archives to co-authors, narrators, or independent imprints, proving a file came cleanly from your desk matters. Quillvibe generates an ECDSA P-256 key pair locally inside WebCrypto (never transmitted anywhere) and signs the SHA-256 digest of your manuscript.',
-          'The Publish Preflight Checklist audits common slip-ups automatically: book title & pen name filled, non-empty chapters, zero remaining open proofread marks, Cover Studio artwork populated, and valid Author Seal attached.',
+          'Quillvibe keeps two distinct seals: your permanent Author & Origin Device Key (`QVK-` + `QVD-`) identifies who created the manuscript and which device it originated on, while the Work Copyright Seal (`QVC-`) records copyright ownership, territory rights, and notice inside the finished book.',
+          'The Publish Preflight Checklist audits common slip-ups automatically: book title & pen name filled, non-empty chapters, zero remaining open proofread marks, Cover Studio artwork populated, Origin Device verification, and Work Copyright registration.',
         ],
         steps: [
           'Open Studio -> Publish & Author Seal (Advanced tier).',
-          'Click Generate Author Key if this book does not have one yet, draw your handwritten signature in Library if desired, then click Sign Manuscript.',
-          'Review every line in the Readiness Checklist before packaging final release files.',
+          'Click Create Permanent Author Key -> Sign & Seal Origin to bind your pen name and origin device ID (`QVD-`).',
+          'Click Seal Work Copyright to stamp a `QVC-` copyright ownership certificate alongside your release exports.',
         ],
         example: {
           heading: 'Imprint Archival Master',
-          body: 'Keep one sealed `.quillvibe` master bundle alongside your `.epub` and Print PDF inside a dated release folder for every edition print run.',
+          body: 'Keep one sealed `.qv` master bundle alongside your `.epub` and Print Interior `.pdf` inside a dated release folder for every edition print run.',
         },
         proTip:
           'Back up your Author Key fingerprint cleanly; generating a fresh key creates a new key ID for future releases.',
@@ -803,17 +803,17 @@ export const COURSE_MODULES: readonly CourseModule[] = [
           'Use Offline Collaboration -> Wi-Fi LAN for PIN-paired desk sync, Bluetooth with SHA-256 checksums for air-gapped handoffs, or Enterprise / Website Sync to connect your own TLS server.',
         objective: 'Exchange co-author edits safely without exposing drafts to third-party SaaS clouds.',
         concepts: [
-          'Teams sitting in the same studio can run Same-Wi-Fi LAN Sync directly between desktop executables, protected by a constant-time 6-digit PIN and private IPv4 checks that block unintended external traffic. Air-gapped rooms can share `.quillvibe` packages via OS Bluetooth wizards and compare displayed SHA-256 checksums.',
-          'Organizations or authors who operate their own domain can use the Enterprise / Website Sync tab to connect directly to a personal website or company HTTPS endpoint (`GET /books/:id` and `PUT /books/:id`) using Bearer or custom API key headers stored strictly in active session memory—never exported into book files. Conflicting scene versions always preserve the rival version as a clean snapshot rather than discarding work.',
+          'Teams sitting in the same studio can run Same-Wi-Fi LAN Sync directly between desktop executables, protected by a constant-time 6-digit PIN and private IPv4 checks that block unintended external traffic. Air-gapped rooms can share `.qv` packages via OS Bluetooth wizards and compare displayed SHA-256 checksums.',
+          'Organizations or authors who operate their own domain can use the Enterprise / Website Sync tab to connect directly to a personal website or company HTTPS endpoint (`GET /books/:id` and `PUT /books/:id`) using Bearer or custom API key headers stored strictly in active session memory—never exported into book files. Adding a Co-Author also requires a cryptographically signed `QVCA1.` token generated on the co-writer’s separate device.',
         ],
         steps: [
           'Open Collaboration from the topbar (Advanced tier) and inspect all four tabs: Credits, Same-Wi-Fi, Bluetooth, and Enterprise / Website Sync.',
-          'Assign Collaborator roles and pen names so proofread marks and conflict snapshots display clear attribution.',
+          'On a co-author’s second device, click Generate My Device Co-Author Key Token and paste that `QVCA1.` token on the primary device to verify separate-device co-writing.',
           'For teams using their own server, enter your https:// URL, book ID, and session token, test connection, and Push/Pull revisions with automatic snapshot conflict safety.',
         ],
         example: {
           heading: 'Editorial House Server Integration',
-          body: 'A boutique publisher configures `https://editorial.myhouse.com/qv-sync` with per-editor Bearer tokens; copyeditors pull `.quillvibe` drafts in Chrome or the desktop app, add proofread marks, and push back safely.',
+          body: 'A boutique publisher configures `https://editorial.myhouse.com/qv-sync` with per-editor Bearer tokens; copyeditors pull `.qv` drafts in a web browser or the desktop app, add proofread marks, and push back safely.',
         },
         proTip:
           'Plain unencrypted `http://` URLs are rejected automatically for public hostnames in Enterprise Sync; use `https://` everywhere outside localhost/LAN.',
@@ -835,32 +835,32 @@ export const COURSE_MODULES: readonly CourseModule[] = [
       },
       {
         id: 'm7-export',
-        title: 'Choose File Formats: .quillvibe, .qv*, .epub, Print PDF & Legacy Support',
+        title: 'Choose File Formats: .qv Workspace, .pdf, .epub, & Legacy Imports',
         durationMin: 4,
         instruction:
-          'Pick `.quillvibe` as your default master format in the top-right save selector for complete project backups, or export specialized `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`, `.epub`, `.md`, `.html`, and `.txt` packages.',
-        objective: 'Archive complete books reliably while remaining backwards-compatible with `.bookvibe` files.',
+          'Pick `.qv` as your default whole-book workspace format in the top-right save selector, or export `.pdf`, `.epub`, `.qvbible`, `.qvscene`, `.qvstyle`, `.md`, `.html`, and `.txt` packages.',
+        objective: 'Archive complete books cleanly in `.qv` while importing older `.quillvibe` and `.bookvibe` files.',
         concepts: [
-          'Quillvibe encodes all six official extensions (`.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`) in its own protected binary format (`QVBX`) so external text editors or third-party converters cannot decode, alter, or swap data inside them.',
-          'Legacy `.bookvibe` and `.bv*` archives do not open on double-click anymore, so older files are safe from confusion. Whenever you need an older book, import it explicitly through Settings -> Publishing & Archive -> Import Legacy Archive.',
+          'Quillvibe encodes all four official extensions (`.qv`, `.qvbible`, `.qvscene`, `.qvstyle`) in its protected binary container (`QVBX`) so external text editors or third-party converters cannot decode, alter, or swap data inside them.',
+          'Older `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` archives stay separated from OS double-click associations. Whenever you need an older file, import it explicitly through Settings -> Publishing & Archive -> Import Legacy Archive.',
         ],
         steps: [
-          'Click the extension selector beside the top-right Save icon and set `.quillvibe` as your default quick-export format.',
-          'Press Save/Export to save a protected `.quillvibe` archive onto external storage or a backup drive.',
-          'To bring in an older `.bookvibe` file, open Settings -> Publishing & Archive and click Import Legacy .bookvibe / .bv* Archive.',
+          'Click the extension selector beside the top-right Save icon and set `.qv` as your default quick-export format.',
+          'Press Save/Export to save a protected `.qv` book workspace onto your drive.',
+          'To bring in an older `.quillvibe` or `.bookvibe` file, open Settings -> Publishing & Archive and click Import Legacy Archive.',
         ],
         example: {
           heading: 'Sharing a World Bible Only',
           body: 'Export `.qvbible` when letting a beta-reader or illustrator browse character traits and reference portraits without sharing unfinished ending chapters.',
         },
         proTip:
-          'You can also import Microsoft Word `.docx`, Google Docs `.html`, `.rtf`, `.md`, or `.txt` manuscripts from Settings -> Publishing & Archive.',
+          'You can also import `.docx` documents, Web HTML `.html`, `.rtf`, `.md`, or `.txt` manuscripts from Settings -> Publishing & Archive.',
         checkpoint: {
-          question: 'Which extension preserves ALL book data—manuscript, Story Bible, Graph nodes, Cover Studio layers, and Typeset settings—in a single portable file?',
-          options: ['.quillvibe (or .qvibe)', '.txt only', '.qvstyle'],
+          question: 'Which extension preserves ALL book data—manuscript, Story Bible, Graph nodes, Cover Studio layers, Copyright Seal, and Typeset settings—in a single portable file?',
+          options: ['.qv', '.txt only', '.qvstyle'],
           correctIndex: 0,
           explanation:
-            '.quillvibe / .qvibe archives serialize the full QUILLVIBE_V2 bundle so restoring onto any computer recovers every piece of the project.',
+            '.qv archives serialize the full QUILLVIBE_V2 workspace so restoring onto any computer recovers every piece of the project.',
         },
         actionLabel: 'Open Publish Extensions',
         minTier: 'advanced',
@@ -882,25 +882,25 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'How Quillvibe Seals Your Book Inside Protected QVBX Files',
         durationMin: 4,
         instruction:
-          'Export any `.quillvibe`, `.qvbook`, `.qvbible`, `.qvscene`, or `.qvstyle` file from the Save menu. Quillvibe writes a sealed binary file that only Quillvibe can read.',
+          'Export any `.qv`, `.qvbible`, `.qvscene`, or `.qvstyle` file from the Save menu. Quillvibe writes a sealed binary file that only Quillvibe can read.',
         objective: 'Keep drafts private and unreadable to outside programs or plain-text viewers.',
         concepts: [
-          'Just like Microsoft Word or Adobe Illustrator store documents in their own binary structure rather than raw editable JSON, Quillvibe packs every exported file inside a sealed `QVBX` binary container using authenticated encryption (`AES-GCM`).',
-          'If someone opens a `.quillvibe` file in Notepad or feeds it into an outside decoder, the bytes look scrambled. Modifying even one character breaks the check tag, so Quillvibe warns you right away instead of loading broken chapters.',
+          'Just like desktop office suites store documents in their own binary container rather than raw editable JSON, Quillvibe packs every exported file inside a sealed `QVBX` binary container using authenticated encryption (`AES-GCM`).',
+          'If someone opens a `.qv` file in a plain-text viewer or feeds it into an outside decoder, the bytes look scrambled. Modifying even one character breaks the check tag, so Quillvibe warns you right away instead of loading broken chapters.',
         ],
         steps: [
-          'Pick `.quillvibe` (or any `.qv*` format) in the top-right Save dropdown.',
-          'Click Save/Export to save the sealed file to your disk.',
+          'Pick `.qv` (or `.qvbible`, `.qvscene`, `.qvstyle`, `.pdf`, `.epub`) in the top-right Save dropdown.',
+          'Click Save/Export to save the sealed file to your disk (a progress pill confirms loading during large exports).',
           'Open the file back in Quillvibe with Ctrl+O or by dropping it onto the workspace.',
         ],
         example: {
           heading: 'Sending a Clean Master Copy',
-          body: 'Send a sealed `.quillvibe` file to your co-author over USB or cloud storage knowing random viewers cannot open its chapters in a text editor.',
+          body: 'Send a sealed `.qv` file to your verified co-author over USB or LAN sync knowing random viewers cannot open its chapters in a plain text editor.',
         },
         proTip:
           'Your active workspace still saves quickly in your browser or desktop data folder so everyday typing stays fast.',
         checkpoint: {
-          question: 'What happens if an outside program edits bytes inside a sealed `.quillvibe` file?',
+          question: 'What happens if an outside program edits bytes inside a sealed `.qv` file?',
           options: [
             'Quillvibe catches the mismatch and refuses to open the damaged data',
             'Quillvibe guesses the missing words automatically',
@@ -920,14 +920,14 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Lock Exports With a Password & Spot Unsafe Content',
         durationMin: 5,
         instruction:
-          'Use Studio -> Publish -> Password-Locked .quillvibe (or turn on required export passwords in Settings) to lock exports with your own password. Quillvibe also scans incoming files for scripts or executable programs.',
+          'Use Studio -> Publish -> Password-Locked .qv (or turn on required export passwords in Settings) to lock exports with your own password. Quillvibe also scans incoming files for scripts or executable programs.',
         objective: 'Protect sensitive manuscripts with passwords and stop suspicious payloads on open.',
         concepts: [
-          'When you add a password at export time, Quillvibe turns that password into a strong encryption key using 120,000 PBKDF2 rounds. Anyone opening the file in Quillvibe must enter the exact password. Wrong passwords or broken bytes stay scrambled and cannot be restored.',
-          'Before a decoded book touches your library, Quillvibe checks for disguised Windows executables (`MZ`), script injection tags (`<script>`), event handlers, or altered Author Keys so untrusted files cannot sneak harmful data into your workspace.',
+          'When you add a password at export time, Quillvibe turns that password into a strong encryption key using 150,000 PBKDF2 rounds. Anyone opening the file in Quillvibe must enter the exact password. Wrong passwords or broken bytes stay scrambled and cannot be restored.',
+          'Before a decoded book touches your library, Quillvibe checks for disguised executables (`MZ`), script injection tags (`<script>`), event handlers, or altered Author Keys so untrusted files cannot sneak harmful data into your workspace.',
         ],
         steps: [
-          'Open Studio -> Publish & Author Seal (Intermediate/Advanced) and click Password-Locked .quillvibe.',
+          'Open Studio -> Publish & Author Seal (Intermediate/Advanced) and click Password-Locked .qv.',
           'Type a password you remember cleanly (there is no remote reset button).',
           'Test opening the saved file via Ctrl+O to verify the unlock prompt works.',
         ],
@@ -938,7 +938,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         proTip:
           'Never store your export password inside the book title or Synopsis card—share it with your team through a separate message.',
         checkpoint: {
-          question: 'Can Quillvibe recover a password-locked `.quillvibe` file if the password is lost?',
+          question: 'Can Quillvibe recover a password-locked `.qv` file if the password is lost?',
           options: [
             'No — there is no backdoor, so keep a safe note of any password you set',
             'Yes, email support resets every password',
@@ -955,36 +955,36 @@ export const COURSE_MODULES: readonly CourseModule[] = [
       },
       {
         id: 'm8-legacy',
-        title: 'Import Legacy .bookvibe & .bv* Archives Safely',
+        title: 'Import Legacy .quillvibe & .bookvibe Archives Safely',
         durationMin: 3,
         instruction:
-          'Older `.bookvibe`, `.bvibe`, `.bvbook`, `.bvbible`, `.bvscene`, and `.bvstyle` files no longer open on double-click. Open Settings -> Publishing & Archive and click Import Legacy .bookvibe Archive whenever you want to bring one forward.',
-        objective: 'Move older manuscripts cleanly into Quillvibe without letting legacy extensions register on your computer.',
+          'Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` files no longer open on double-click. Open Settings -> Publishing & Archive and click Import Legacy Archive whenever you want to bring one forward into `.qv`.',
+        objective: 'Upgrade older manuscripts cleanly while keeping modern OS file registration focused strictly on `.qv` and `.qv*`.',
         concepts: [
-          'Removing `.bookvibe` from double-click associations keeps Windows, macOS, and Linux focused cleanly on `.quillvibe` and `.qv*`.',
-          'At the same time, you never lose access to older books: the explicit importer in Settings -> Publishing & Archive reads old `.bookvibe` and `.bv*` files directly and upgrades them inside your library.',
+          'Consolidating double-click associations around `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` keeps Windows, macOS, and Linux clean without duplicate extensions.',
+          'At the same time, you never lose access to older books: the explicit importer in Settings -> Publishing & Archive reads old `.quillvibe`, `.qvbook`, `.bookvibe`, and `.bv*` files directly and upgrades them inside your library.',
         ],
         steps: [
           'Open Settings (gear icon) and select Publishing & Archive.',
-          'Scroll to the Import section and click Import Legacy .bookvibe / .bv* Archive.',
-          'Pick the old file, let Quillvibe load it, and save a new `.quillvibe` copy going forward.',
+          'Scroll to the Import section and click Import Legacy Archive.',
+          'Pick the old file, let Quillvibe load it, and save a new `.qv` copy going forward.',
         ],
         example: {
           heading: 'Archiving a Series Backlist',
-          body: 'Import Book 1 from an old `.bookvibe` backup, verify chapters and Story Bible items, then export `book-1.quillvibe` so all three books share the same modern format.',
+          body: 'Import Book 1 from an older `.bookvibe` or `.quillvibe` backup, verify chapters and Story Bible items, then export `book-1.qv` so all books share the same modern format.',
         },
         proTip:
-          'Keep your original `.bookvibe` file in an archive folder as a read-only backup after converting.',
+          'Keep your original legacy file in an archive folder as a read-only backup after converting.',
         checkpoint: {
-          question: 'Where do you open an old `.bookvibe` file in the current version of Quillvibe?',
+          question: 'Where do you open an old `.bookvibe` or `.quillvibe` archive in Quillvibe?',
           options: [
-            'Settings -> Publishing & Archive -> Import Legacy .bookvibe / .bv* Archive',
+            'Settings -> Publishing & Archive -> Import Legacy Archive',
             'Double-click it on the Desktop',
             'Rename it to .png first',
           ],
           correctIndex: 0,
           explanation:
-            'Legacy `.bookvibe` files only load through the explicit importer in Settings so old extensions stay detached from OS auto-open.',
+            'Legacy archives load through the explicit importer in Settings so modern OS double-click rules stay clean on `.qv`.',
         },
         actionLabel: 'Open Settings',
         minTier: 'basic',
@@ -1086,7 +1086,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         objective: 'Prepare professional publishing records, review-copy watermarks, and company release policies.',
         concepts: [
           'Commercial presses and studio teams track more than one print ISBN. Publishing & Archive lets you store your legal company name, separate Print and eBook ISBNs, territorial distribution rights (for example World All Languages), licensing terms, BISAC category codes, and embargo/street dates—exported cleanly inside your Editorial Handoff Sheet.',
-          'Adding an Advance Review Copy (ARC) watermark stamps a diagonal light label across Printable Typeset HTML pages, while turning on Require password on every QVBX file export enforces password entry on every `.quillvibe` export.',
+          'Adding an Advance Review Copy (ARC) watermark stamps a diagonal light label across Printable Typeset HTML pages, while turning on Require password on every QVBX file export enforces password entry on every `.qv` export.',
         ],
         steps: [
           'Open Settings -> Publishing & Archive.',
@@ -1168,33 +1168,33 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Local Wi-Fi LAN Sync, Bluetooth Transfer & File Double-Click',
         durationMin: 3,
         instruction:
-          'In the desktop app, open Collaborate for Same-Wi-Fi PIN Sync and Bluetooth Receive/Send, or open Extensions -> File Formats to register `.quillvibe` and `.qv*` with Explorer or Finder.',
+          'In the desktop app, open Collaborate for Same-Wi-Fi PIN Sync and Bluetooth Receive/Send, or open Extensions -> File Formats to register `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` with Explorer or Finder.',
         objective: 'Sync over local Wi-Fi without cloud accounts and launch books straight from your file manager.',
         concepts: [
           'Same-Wi-Fi LAN Sync starts a local HTTP server bound strictly to your private LAN subnet with a 6-digit PIN (`X-Quillvibe-Pin`), allowing two writers in the same room to exchange revisions without internet access. On web, Collaborate automatically switches to show Team Permissions and HTTPS Enterprise / Website Sync cleanly.',
-          'OS Shell registration lets Windows Explorer, macOS Finder, and Linux desktops launch Quillvibe when double-clicking `.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, or `.qvstyle` files.',
+          'OS Shell registration lets Windows Explorer, macOS Finder, and Linux desktops launch Quillvibe when double-clicking `.qv`, `.qvbible`, `.qvscene`, or `.qvstyle` files. In Fullscreen (`F11`), the movable Immersive HUD can also collapse or reveal from the top screen hover bar.',
         ],
         steps: [
           'In the desktop app, open Collaborate -> Same-Wi-Fi LAN Sync to start hosting with a 6-digit PIN.',
           'Share the local IP:port and PIN verbally with your co-author on the same Wi-Fi router.',
-          'Register `.quillvibe` file associations once under Extensions -> File Formats -> Register in OS Shell.',
+          'Register `.qv` file associations once under Extensions -> File Formats -> Register in OS Shell.',
         ],
         example: {
           heading: 'Air-Gapped Co-Writing Retreat',
           body: 'Turn off internet Wi-Fi, connect both laptops to a travel router, and merge scenes safely via 6-digit PIN LAN sync.',
         },
         proTip:
-          'On the web version, use signed/password-locked `.quillvibe` downloads or Enterprise HTTPS Website Sync to share files safely.',
+          'On the web version, use signed/password-locked `.qv` downloads or Enterprise HTTPS Website Sync to share files safely.',
         checkpoint: {
           question: 'Which collaboration methods work directly inside the web browser without installing the desktop app?',
           options: [
-            'Team roles & permissions, `.quillvibe` file merge, and HTTPS Enterprise / Website Sync',
+            'Team roles & permissions, `.qv` file merge, and HTTPS Enterprise / Website Sync',
             'Raw local TCP Wi-Fi server hosting',
-            'Windows Registry editing from Chrome',
+            'Windows Registry editing from a web tab',
           ],
           correctIndex: 0,
           explanation:
-            'Browser mode supports collaborator permissions, manual `.quillvibe` merges, and TLS Enterprise / Website Sync, while raw LAN sockets and OS shell hooks run in the desktop app.',
+            'Browser mode supports collaborator permissions, manual `.qv` merges, and TLS Enterprise / Website Sync, while raw LAN sockets and OS shell hooks run in the desktop app.',
         },
         actionLabel: 'Back to Course Overview',
         minTier: 'basic',

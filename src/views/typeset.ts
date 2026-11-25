@@ -8,8 +8,10 @@ import {
 import { getAllAvailableFontChoices, resolveEffectiveFontCss } from '../core/fonts';
 import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import {
+  checkBookOriginDevice,
   ensureAuthorIdentity,
   generateAuthorKeyPair,
+  sealWorkCopyright,
   signManuscript,
 } from '../core/identity';
 import { normalizeProjectDefaults } from '../core/library';
@@ -107,6 +109,16 @@ export function renderTypesetView(container: HTMLElement, actions: AppActions): 
         },
         icon('download', 14),
         'Export EPUB 3',
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          on: { click: () => void actions.exportPdf() },
+        },
+        icon('download', 14),
+        'Export PDF',
       ),
       el(
         'button',
@@ -636,6 +648,8 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
 
   const pubMeta: Partial<BookPublishingMeta> = project.publishing ?? {};
   const isKeyLocked = Boolean(identity.authorKeyId);
+  const originCheck = checkBookOriginDevice(project);
+  const copyrightRec = project.copyrightOwnership;
 
   const checks = [
     {
@@ -651,11 +665,18 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         : `Template: ${project.cover?.template}`,
     },
     {
-      label: 'Permanent Author Key & Manuscript Seal',
+      label: 'Origin Author & Device Key',
       ok: Boolean(identity.authorKeyId && identity.manuscriptDigest),
       detail: identity.manuscriptDigest
-        ? `${identity.authorKeyId} locked forever (Signed ${new Date(identity.lastSignedAt).toLocaleDateString()})`
-        : 'Create permanent pen-name key & sign to lock edition digest',
+        ? `${identity.authorKeyId} · ${originCheck.isOriginDevice ? `Origin Device (${originCheck.originDeviceId})` : `Copy opened on ${originCheck.localDeviceId}`}`
+        : 'Create Author Key & Sign to bind pen name + origin device',
+    },
+    {
+      label: 'Work Copyright Ownership Seal',
+      ok: Boolean(copyrightRec?.sealId),
+      detail: copyrightRec?.sealId
+        ? `${copyrightRec.sealId} · ${copyrightRec.ownerName} (${copyrightRec.rightsTerritory})`
+        : 'Register copyright ownership seal inside book metadata',
     },
     {
       label: 'Commercial / Publisher Release Info',
@@ -722,7 +743,7 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         actions.notify('Password cannot be empty.');
         return;
       }
-      void actions.exportAsExtension('.quillvibe', { password: pw });
+      void actions.exportAsExtension('.qv', { password: pw });
     };
     const bd = el(
       'div',
@@ -740,7 +761,7 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
         el(
           'div',
           { className: 'bv-panel-head' },
-          el('span', { className: 'bv-panel-title', text: 'Set Password for Protected .quillvibe' }),
+          el('span', { className: 'bv-panel-title', text: 'Set Password for Protected .qv' }),
           el('button', { className: 'bv-mini-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
         ),
         el(
@@ -757,7 +778,7 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
             el('button', { className: 'bv-btn', text: 'Cancel', attrs: { type: 'button' }, on: { click: close } }),
             el('button', {
               className: 'bv-btn bv-btn-primary',
-              text: 'Export Password-Locked .quillvibe',
+              text: 'Export Password-Locked .qv',
               attrs: { type: 'button' },
               on: { click: confirm },
             }),
@@ -788,7 +809,7 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
       el(
         'section',
         { className: 'bv-cork-card' },
-        el('span', { className: 'bv-panel-title', text: 'Pen Name & Author Key' }),
+        el('span', { className: 'bv-panel-title', text: 'Origin Author & Device Key' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Pen Name' }), penIn),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Signature Line' }), sigIn),
         el(
@@ -796,17 +817,21 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
           { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
           el('div', {
             className: 'bv-mono-tag',
-            text: `Key ID: ${identity.authorKeyId || 'Not generated'}`,
+            text: `Key: ${identity.authorKeyId || 'Not generated'} · Device: ${originCheck.originDeviceId || originCheck.localDeviceId}`,
           }),
           ...(isKeyLocked
-            ? [el('span', { className: 'qv-key-locked-pill', text: 'Locked Forever' })]
+            ? [el('span', { className: 'qv-key-locked-pill', text: originCheck.isOriginDevice ? 'Origin Device Match' : 'External Device Copy' })]
             : []),
         ),
-        ...(isKeyLocked
+        el('p', {
+          className: 'bv-label',
+          text: originCheck.summary,
+        }),
+        ...(copyrightRec
           ? [
-              el('p', {
-                className: 'bv-label',
-                text: `Author Key is permanently bound to “${identity.penName || 'Author'}” and cannot be replaced.`,
+              el('div', {
+                className: 'bv-mono-tag',
+                text: `Copyright Seal: ${copyrightRec.sealId} · ${copyrightRec.ownerName} · ${copyrightRec.copyrightNotice}`,
               }),
             ]
           : []),
@@ -853,7 +878,23 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
               },
             },
             icon('check', 14),
-            'Sign & Seal Manuscript',
+            'Sign & Seal Origin',
+          ),
+          el(
+            'button',
+            {
+              className: 'bv-btn',
+              attrs: { type: 'button' },
+              on: {
+                click: async () => {
+                  const sealed = await sealWorkCopyright(actions.getState().project);
+                  actions.mutateProject(() => sealed);
+                  actions.notify(`Registered Copyright Ownership Seal ${sealed.copyrightOwnership?.sealId ?? ''}`);
+                },
+              },
+            },
+            icon('seal', 14),
+            'Seal Work Copyright',
           ),
           el(
             'button',
@@ -911,10 +952,20 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
           {
             className: 'bv-btn',
             attrs: { type: 'button' },
+            on: { click: () => void actions.exportPdf() },
+          },
+          icon('download', 14),
+          'Export Interior PDF (.pdf)',
+        ),
+        el(
+          'button',
+          {
+            className: 'bv-btn',
+            attrs: { type: 'button' },
             on: { click: () => actions.printTypeset() },
           },
           icon('printer', 14),
-          'Print-Ready Typeset PDF',
+          'Print Typeset Sheet',
         ),
         el(
           'button',
@@ -941,10 +992,10 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
           {
             className: 'bv-btn',
             attrs: { type: 'button' },
-            on: { click: () => void actions.exportAsExtension('.quillvibe') },
+            on: { click: () => void actions.exportAsExtension('.qv') },
           },
           icon('save', 14),
-          'Signed .quillvibe Archive',
+          'Signed .qv Workspace',
         ),
         el(
           'button',
@@ -954,7 +1005,7 @@ function renderPublishReadinessTab(container: HTMLElement, actions: AppActions):
             on: { click: openPasswordExportPrompt },
           },
           icon('key', 14),
-          'Password-Locked .quillvibe…',
+          'Password-Locked .qv…',
         ),
       ),
     ),

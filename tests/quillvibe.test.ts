@@ -11,9 +11,12 @@ import {
 } from '../src/core/codec';
 import {
   addCollaborator,
+  addVerifiedCoAuthorFromToken,
+  generateLocalCoAuthorInviteToken,
   getActiveSessionPermissions,
   getCollaboratorPermissions,
   mergeBookRevisions,
+  parseAndVerifyCoAuthorToken,
   updateCollaboratorPermissions,
 } from '../src/core/collab';
 import {
@@ -28,6 +31,7 @@ import {
   buildPrintableBookHtml,
   computeBookPagination,
 } from '../src/core/export';
+import { ProjectHistoryStack } from '../src/core/history';
 import {
   LEGACY_IMPORT_EXTENSIONS,
   QUILLVIBE_EXTENSIONS,
@@ -41,12 +45,16 @@ import {
   serializeQuillvibeBinary,
 } from '../src/core/extensions';
 import {
+  checkBookOriginDevice,
   ensureAuthorIdentity,
   generateAuthorKeyPair,
+  getOrCreateLocalDeviceId,
   getOrCreatePermanentAuthorKey,
   getPermanentAuthorKeyForPenName,
+  sealWorkCopyright,
   signManuscript,
 } from '../src/core/identity';
+import { buildTypesetPdfBytes } from '../src/core/pdf-export';
 import { createEmptyBookProject, normalizeProjectDefaults } from '../src/core/library';
 import { countWords, getAllScenes, getProjectWordCount } from '../src/core/manuscript';
 import {
@@ -61,32 +69,35 @@ import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../src/core/settings';
 import { COURSE_MODULES, getCourseCompletionSummary } from '../src/ui/course';
 
 describe('Quillvibe Core Rebrand & Formats', () => {
-  it('registers all 6 official .quillvibe/.qv* formats and excludes .bookvibe from default export formats', () => {
-    expect(QUILLVIBE_EXTENSIONS).toHaveLength(6);
+  it('registers the 4 official .qv formats and moves legacy extensions to import-only', () => {
+    expect(QUILLVIBE_EXTENSIONS).toHaveLength(4);
     expect(QUILLVIBE_EXTENSIONS.map((e) => e.extension)).toEqual([
-      '.quillvibe',
-      '.qvibe',
-      '.qvbook',
+      '.qv',
       '.qvbible',
       '.qvscene',
       '.qvstyle',
     ]);
+    expect(EXPORT_FORMAT_OPTIONS.some((opt) => opt.id === '.pdf')).toBe(true);
     expect(EXPORT_FORMAT_OPTIONS.some((opt) => (opt.id as string) === '.bookvibe')).toBe(false);
+    expect(LEGACY_IMPORT_EXTENSIONS.map((e) => e.extension)).toContain('.quillvibe');
     expect(LEGACY_IMPORT_EXTENSIONS.map((e) => e.extension)).toContain('.bookvibe');
   });
 
-  it('extractExtensionFromFilename accepts only official Quillvibe extensions and rejects .bookvibe', () => {
-    expect(extractExtensionFromFilename('novel.quillvibe')).toBe('.quillvibe');
+  it('extractExtensionFromFilename accepts only official Quillvibe extensions and rejects legacy formats', () => {
+    expect(extractExtensionFromFilename('novel.qv')).toBe('.qv');
     expect(extractExtensionFromFilename('chapter.qvscene')).toBe('.qvscene');
+    expect(extractExtensionFromFilename('old.quillvibe')).toBeNull();
     expect(extractExtensionFromFilename('legacy.bookvibe')).toBeNull();
     expect(extractExtensionFromFilename('legacy.bvbook')).toBeNull();
 
+    expect(extractAnyImportableExtensionFromFilename('old.quillvibe')).toBe('.quillvibe');
     expect(extractAnyImportableExtensionFromFilename('legacy.bookvibe')).toBe('.bookvibe');
     expect(isLegacyImportExtension('.bookvibe')).toBe(true);
-    expect(isLegacyImportExtension('.quillvibe')).toBe(false);
+    expect(isLegacyImportExtension('.quillvibe')).toBe(true);
+    expect(isLegacyImportExtension('.qv')).toBe(false);
   });
 
-  it('uses QV provenance seal and Ivory Light as default theme', () => {
+  it('uses QV provenance seal, Ivory Light, Basic tier, and Spellcheck off by default', () => {
     const starter = createStarterBookProject();
     const prov = getPublisherProvenance(starter.id);
     expect(prov.publisher).toBe('jhonrey.com');
@@ -94,15 +105,16 @@ describe('Quillvibe Core Rebrand & Formats', () => {
     expect(verifyPublisherProvenance(prov.publisher, prov.mark, starter.id)).toBe(true);
     expect(DEFAULT_SETTINGS.appTheme).toBe('ivory');
     expect(DEFAULT_SETTINGS.toolTier).toBe('basic');
+    expect(DEFAULT_SETTINGS.enableSpellcheck).toBe(false);
   });
 });
 
 describe('Quillvibe Proprietary QVBX Container & Security', () => {
-  it('encodes and decodes .quillvibe, .qvbook, .qvbible, .qvscene, and .qvstyle as QVBX binary', async () => {
+  it('encodes and decodes .qv, .qvbible, .qvscene, and .qvstyle as QVBX binary', async () => {
     const project = normalizeProjectDefaults(createStarterBookProject());
     const sceneId = getAllScenes(project)[0]!.scene.id;
 
-    for (const ext of ['.quillvibe', '.qvibe', '.qvbook', '.qvbible', '.qvscene', '.qvstyle'] as const) {
+    for (const ext of ['.qv', '.qvbible', '.qvscene', '.qvstyle'] as const) {
       const bytes = await serializeQuillvibeBinary(ext, project, { sceneId });
       expect(isQvbxBinary(bytes)).toBe(true);
       const header = inspectQuillvibeBinary(bytes);
@@ -119,7 +131,7 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
 
   it('requires password on password-locked QVBX exports and rejects wrong passwords', async () => {
     const project = normalizeProjectDefaults(createStarterBookProject());
-    const lockedBytes = await serializeQuillvibeBinary('.quillvibe', project, {
+    const lockedBytes = await serializeQuillvibeBinary('.qv', project, {
       password: 'OakHarbor-Secret-2026',
     });
 
@@ -136,12 +148,12 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
     } satisfies Partial<QuillvibeCodecError>);
 
     const envelope = await decodeQuillvibeBinary(lockedBytes, 'OakHarbor-Secret-2026');
-    expect(envelope.extension).toBe('.quillvibe');
+    expect(envelope.extension).toBe('.qv');
   });
 
   it('detects damaged or externally tampered QVBX bytes and refuses recovery', async () => {
     const project = normalizeProjectDefaults(createStarterBookProject());
-    const bytes = await serializeQuillvibeBinary('.quillvibe', project);
+    const bytes = await serializeQuillvibeBinary('.qv', project);
     const corrupted = new Uint8Array(bytes);
     corrupted[corrupted.length - 5] ^= 0xff;
 
@@ -153,7 +165,7 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
   it('detects Author Key swapping/tampering between QVBX header and inner payload', async () => {
     const base = normalizeProjectDefaults(createStarterBookProject());
     const signed = await signManuscript(base);
-    const env = buildQuillvibeEnvelope('.quillvibe', signed);
+    const env = buildQuillvibeEnvelope('.qv', signed);
     const mismatched = await encodeQuillvibeBinary(env, {
       sealAuthorKeyId: 'QVK-DIFFERENTKEY1',
     });
@@ -165,7 +177,7 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
 
   it('rejects malware/script payloads and executable headers inside decoded QVBX containers', async () => {
     const scriptProject = normalizeProjectDefaults(createEmptyBookProject('<script>alert(1)</script>', 'Pen'));
-    const scriptEnv = buildQuillvibeEnvelope('.quillvibe', scriptProject);
+    const scriptEnv = buildQuillvibeEnvelope('.qv', scriptProject);
     const scriptEncoded = await encodeQuillvibeBinary(scriptEnv);
 
     await expect(decodeQuillvibeBinary(scriptEncoded)).rejects.toMatchObject({
@@ -174,7 +186,7 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
 
     const exeProject = normalizeProjectDefaults(createEmptyBookProject('Normal Title', 'Pen'));
     exeProject.cover!.backgroundImageDataUrl = 'data:image/png;base64,TVqQAAMAAAAEAAAA';
-    const exeEnv = buildQuillvibeEnvelope('.quillvibe', exeProject);
+    const exeEnv = buildQuillvibeEnvelope('.qv', exeProject);
     const exeEncoded = await encodeQuillvibeBinary(exeEnv);
 
     await expect(decodeQuillvibeBinary(exeEncoded)).rejects.toMatchObject({
@@ -184,9 +196,9 @@ describe('Quillvibe Proprietary QVBX Container & Security', () => {
 
   it('supports explicit importing from legacy .bookvibe JSON while decoding via parseQuillvibeInput', async () => {
     const starter = createStarterBookProject();
-    const legacyJson = serializeExtensionFile('.quillvibe', starter)
+    const legacyJson = serializeExtensionFile('.qv', starter)
       .replace('"QUILLVIBE_V2"', '"BOOKVIBE_V1"')
-      .replace('".quillvibe"', '".bookvibe"');
+      .replace('".qv"', '".bookvibe"');
 
     const res = await parseQuillvibeInput(legacyJson, { filenameHint: 'old-draft.bookvibe' });
     expect(res.isLegacyImport).toBe(true);
@@ -328,5 +340,57 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     expect(routeForState('course')).toBe('/course');
     expect(COURSE_MODULES).toHaveLength(10);
     expect(getCourseCompletionSummary().total).toBe(28);
+  });
+
+  it('verifies Origin Device ID, Copyright Seal, Verified Multi-Device Co-Author tokens, PDF 1.4 export, and History Stack', async () => {
+    const project = normalizeProjectDefaults(createStarterBookProject());
+    const signed = await signManuscript(project);
+    const localDevice = getOrCreateLocalDeviceId();
+    expect(localDevice.startsWith('QVD-')).toBe(true);
+    const originCheck = checkBookOriginDevice(signed);
+    expect(originCheck.isOriginDevice).toBe(true);
+    expect(originCheck.originDeviceId).toBe(localDevice);
+
+    const copyrighted = await sealWorkCopyright(signed, { ownerName: 'Mira Solis', rightsTerritory: 'Worldwide' });
+    expect(copyrighted.copyrightOwnership?.sealId.startsWith('QVC-')).toBe(true);
+    expect(copyrighted.copyrightOwnership?.ownerName).toBe('Mira Solis');
+
+    const coAuthToken = await generateLocalCoAuthorInviteToken({
+      name: 'Elena Vance',
+      penName: 'E. Vance',
+      role: 'co-author',
+    });
+    expect(coAuthToken.token.startsWith('QVCA1.')).toBe(true);
+    expect(coAuthToken.coAuthorKeyId.startsWith('QVCK-')).toBe(true);
+
+    // Reject same-device self-adding when requireDistinctDevice = true
+    await expect(
+      parseAndVerifyCoAuthorToken(coAuthToken.token, { hostDeviceId: localDevice, requireDistinctDevice: true }),
+    ).rejects.toThrow();
+
+    // Accept when verified against a different host device
+    const verifiedRemote = await parseAndVerifyCoAuthorToken(coAuthToken.token, {
+      hostDeviceId: 'QVD-OTHERDEVICE99',
+      requireDistinctDevice: true,
+    });
+    expect(verifiedRemote.sameDevice).toBe(false);
+
+    const paired = await addVerifiedCoAuthorFromToken(copyrighted, coAuthToken.token, {
+      requireDistinctDevice: false,
+    });
+    expect(paired.collaborator.coAuthorKeyId).toBe(coAuthToken.coAuthorKeyId);
+
+    const pdfBytes = buildTypesetPdfBytes(copyrighted);
+    const pdfText = new TextDecoder().decode(pdfBytes);
+    expect(pdfText.startsWith('%PDF-1.4')).toBe(true);
+    expect(pdfText).toContain('jhonrey.com');
+    expect(pdfText.trim().endsWith('%%EOF')).toBe(true);
+
+    const hist = new ProjectHistoryStack<string>(5);
+    hist.pushSnapshot('v1', 'edit');
+    hist.pushSnapshot('v2', 'edit');
+    expect(hist.canUndo()).toBe(true);
+    expect(hist.undo('v3')?.state).toBe('v2');
+    expect(hist.redo('v2')?.state).toBe('v3');
   });
 });

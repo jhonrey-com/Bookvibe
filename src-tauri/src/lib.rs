@@ -23,7 +23,8 @@ use tauri::{AppHandle, Manager, State};
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 const MAX_PROJECT_BYTES: u64 = 50 * 1024 * 1024;
-const DEFAULT_PROJECT_FILENAME: &str = "current-project.quillvibe";
+const DEFAULT_PROJECT_FILENAME: &str = "current-project.qv";
+const PREV_QUILLVIBE_PROJECT_FILENAME: &str = "current-project.quillvibe";
 const LEGACY_PROJECT_FILENAME: &str = "current-project.bookvibe";
 const LIBRARY_FILENAME: &str = "quillvibe-library.json";
 const LEGACY_LIBRARY_FILENAME: &str = "bookvibe-library.json";
@@ -121,7 +122,7 @@ fn read_validated_quillvibe_file(
     let supported_legacy = allow_legacy_import && is_importable_legacy_path(path);
     if !supported_native && !supported_legacy {
         return Err(String::from(
-            "Unsupported file extension. Only .quillvibe and .qv* files open directly in Quillvibe.",
+            "Unsupported file extension. Only .qv, .qvbible, .qvscene, and .qvstyle files open directly in Quillvibe.",
         ));
     }
 
@@ -134,13 +135,13 @@ fn read_validated_quillvibe_file(
     let filename = path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("untitled.quillvibe")
+        .unwrap_or("untitled.qv")
         .to_string();
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| format!(".{}", e.to_ascii_lowercase()))
-        .unwrap_or_else(|| String::from(".quillvibe"));
+        .unwrap_or_else(|| String::from(".qv"));
 
     let is_qvbx = bytes.starts_with(b"QVBX");
     if is_qvbx {
@@ -206,6 +207,8 @@ fn load_default_project(app: AppHandle) -> Result<Option<String>, String> {
     let primary = default_project_path(&app)?;
     let path = if primary.exists() {
         primary
+    } else if primary.with_file_name(PREV_QUILLVIBE_PROJECT_FILENAME).exists() {
+        primary.with_file_name(PREV_QUILLVIBE_PROJECT_FILENAME)
     } else {
         primary.with_file_name(LEGACY_PROJECT_FILENAME)
     };
@@ -263,9 +266,8 @@ fn open_quillvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
     let exts: Vec<&str> = QUILLVIBE_EXTENSION_SPECS.iter().map(|s| s.bare_ext).collect();
     let picked = rfd::FileDialog::new()
         .set_title("Open Quillvibe File")
-        .add_filter("All Quillvibe Formats (.quillvibe, .qv*)", &exts)
-        .add_filter("Quillvibe Master Project (.quillvibe, .qvibe)", &["quillvibe", "qvibe"])
-        .add_filter("Quillvibe Manuscript (.qvbook)", &["qvbook"])
+        .add_filter("All Quillvibe Formats (.qv, .qvbible, .qvscene, .qvstyle)", &exts)
+        .add_filter("Quillvibe Book Workspace (.qv)", &["qv"])
         .add_filter("Quillvibe Story Bible (.qvbible)", &["qvbible"])
         .add_filter("Quillvibe Scene Draft (.qvscene)", &["qvscene"])
         .add_filter("Quillvibe Typeset Style (.qvstyle)", &["qvstyle"])
@@ -280,8 +282,8 @@ fn open_quillvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
 #[tauri::command]
 fn import_legacy_book_dialog() -> Result<Option<OpenedFilePayload>, String> {
     let picked = rfd::FileDialog::new()
-        .set_title("Import Legacy Project Archive")
-        .add_filter("Legacy Book Archive (.bookvibe, .bv*)", LEGACY_IMPORT_EXTENSIONS)
+        .set_title("Import Previous / Legacy Book Archive")
+        .add_filter("Previous Book Archive (.quillvibe, .bookvibe, .bv*)", LEGACY_IMPORT_EXTENSIONS)
         .pick_file();
 
     match picked {
@@ -378,6 +380,53 @@ fn export_markdown_file(content: String, suggested_name: String) -> Result<Optio
 }
 
 #[tauri::command]
+fn export_generic_file(
+    payload_text: Option<String>,
+    payload_base64: Option<String>,
+    suggested_name: String,
+    extension: String,
+    description: String,
+) -> Result<Option<String>, String> {
+    let clean_ext = extension.trim().trim_start_matches('.').to_ascii_lowercase();
+    let allowed = ["pdf", "epub", "md", "html", "txt", "png", "svg", "json", "qvext"];
+    if !allowed.contains(&clean_ext.as_str()) {
+        return Err(format!("Unsupported export extension: .{clean_ext}"));
+    }
+
+    let bytes = if let Some(b64) = payload_base64 {
+        decode_base64(&b64)?
+    } else if let Some(txt) = payload_text {
+        txt.into_bytes()
+    } else {
+        return Err(String::from("Missing export data."));
+    };
+
+    let safe_base = sanitize_filename(&suggested_name, "quillvibe-export");
+    let label = if description.trim().is_empty() {
+        clean_ext.as_str()
+    } else {
+        description.trim()
+    };
+
+    let picked = rfd::FileDialog::new()
+        .set_title(&format!("Export {label}"))
+        .set_file_name(&format!("{safe_base}.{clean_ext}"))
+        .add_filter(label, &[clean_ext.as_str()])
+        .save_file();
+
+    match picked {
+        Some(mut path) => {
+            if path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() != Some(clean_ext.as_str()) {
+                path.set_extension(&clean_ext);
+            }
+            write_atomic_bytes(&path, &bytes)?;
+            Ok(Some(path.to_string_lossy().into_owned()))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
 fn register_file_associations() -> Result<AssociationReport, String> {
     register_os_file_associations()
 }
@@ -452,27 +501,30 @@ fn open_book_in_new_window(
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
         .take(80)
         .collect();
-    let app_url = if clean_book_id.is_empty() {
-        String::from("index.html")
-    } else {
-        format!("index.html?bookId={clean_book_id}")
-    };
     let clean_title = title
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or("Quillvibe");
+    let encoded_book = serde_json::to_string(&clean_book_id).unwrap_or_else(|_| String::from("\"\""));
+    let init_script = format!(
+        "window.__QUILLVIBE_INITIAL_BOOK_ID__ = {encoded_book}; window.__QUILLVIBE_SKIP_SPLASH__ = true;"
+    );
 
     let builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::App(app_url.into()),
+        tauri::WebviewUrl::App("index.html".into()),
     )
     .title(clean_title)
     .inner_size(1440.0, 900.0)
     .min_inner_size(640.0, 520.0)
+    .maximized(true)
     .resizable(true)
-    .decorations(false);
+    .decorations(false)
+    .focused(true)
+    .background_color(tauri::window::Color(246, 244, 239, 255))
+    .initialization_script(&init_script);
 
     builder
         .build()
@@ -517,6 +569,7 @@ pub fn run() {
             save_quillvibe_file_dialog,
             export_epub_file,
             export_markdown_file,
+            export_generic_file,
             register_file_associations,
             get_file_association_status,
             start_lan_sync_host_cmd,

@@ -1,4 +1,5 @@
 import type { AppActions } from '../core/app-context';
+import { exportGenericFile } from '../core/bridge';
 import {
   GRAPH_KIND_COLORS,
   GRAPH_KIND_LABELS,
@@ -64,12 +65,45 @@ function nodeCardBox(_node: StoryGraphNode, cardEl?: HTMLElement): { w: number; 
   return { w: 192, h: 92 };
 }
 
+function computeExactPortConnection(
+  src: StoryGraphNode,
+  sBox: { w: number; h: number },
+  dst: StoryGraphNode,
+  dBox: { w: number; h: number },
+): { sx: number; sy: number; tx: number; ty: number; outDir: 1 | -1; inDir: 1 | -1 } {
+  const srcMidX = src.x + sBox.w / 2;
+  const dstMidX = dst.x + dBox.w / 2;
+  const sy = src.y + sBox.h / 2;
+  const ty = dst.y + dBox.h / 2;
+
+  if (dstMidX >= srcMidX) {
+    return {
+      sx: src.x + sBox.w,
+      sy,
+      tx: dst.x,
+      ty,
+      outDir: 1,
+      inDir: -1,
+    };
+  }
+  return {
+    sx: src.x,
+    sy,
+    tx: dst.x + dBox.w,
+    ty,
+    outDir: -1,
+    inDir: 1,
+  };
+}
+
 function computeEdgeSvgPath(
   sx: number,
   sy: number,
   tx: number,
   ty: number,
   mode: GraphEdgeStyle,
+  outDir: 1 | -1 = 1,
+  inDir: 1 | -1 = -1,
 ): { d: string; labelX: number; labelY: number } {
   const dx = tx - sx;
   const dy = ty - sy;
@@ -77,20 +111,29 @@ function computeEdgeSvgPath(
     return { d: `M ${sx} ${sy} L ${tx} ${ty}`, labelX: (sx + tx) / 2, labelY: (sy + ty) / 2 - 7 };
   }
   if (mode === 'step') {
-    const midX = Math.round((sx + tx) / 2);
+    const exitX = sx + outDir * 24;
+    const enterX = tx + inDir * 24;
+    if ((outDir === 1 && enterX >= exitX) || (outDir === -1 && enterX <= exitX)) {
+      const midX = Math.round((sx + tx) / 2);
+      return {
+        d: `M ${sx} ${sy} H ${midX} V ${ty} H ${tx}`,
+        labelX: midX,
+        labelY: (sy + ty) / 2 - 7,
+      };
+    }
+    const midY = Math.round((sy + ty) / 2);
     return {
-      d: `M ${sx} ${sy} H ${midX} V ${ty} H ${tx}`,
-      labelX: midX,
-      labelY: (sy + ty) / 2 - 7,
+      d: `M ${sx} ${sy} H ${exitX} V ${midY} H ${enterX} V ${ty} H ${tx}`,
+      labelX: (exitX + enterX) / 2,
+      labelY: midY - 7,
     };
   }
-  // Curved cubic Bezier anchored gently along horizontal/major direction
-  const bend = Math.max(42, Math.min(180, Math.abs(dx) * 0.45));
-  const sign = dx >= 0 ? 1 : -1;
-  const c1x = sx + bend * sign;
-  const c1y = sy + dy * 0.08;
-  const c2x = tx - bend * sign;
-  const c2y = ty - dy * 0.08;
+  // Exit and enter strictly horizontally at the exact left/right side midpoint of each card
+  const bend = Math.max(46, Math.min(180, Math.abs(dx) * 0.48));
+  const c1x = sx + outDir * bend;
+  const c1y = sy + dy * 0.06;
+  const c2x = tx + inDir * bend;
+  const c2y = ty - dy * 0.06;
   const midX = 0.125 * sx + 0.375 * c1x + 0.375 * c2x + 0.125 * tx;
   const midY = 0.125 * sy + 0.375 * c1y + 0.375 * c2y + 0.125 * ty;
   return {
@@ -365,20 +408,35 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       }),
       el('button', {
         className: 'bv-mini-btn',
+        text: 'Undo',
+        tooltip: { title: 'Undo Graph Change (Ctrl+Z)', short: 'Revert the previous graph change.' },
+        attrs: { type: 'button', disabled: !actions.canUndo() },
+        on: { click: () => actions.undo() },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Redo',
+        tooltip: { title: 'Redo Graph Change (Ctrl+Y)', short: 'Re-apply the reverted graph change.' },
+        attrs: { type: 'button', disabled: !actions.canRedo() },
+        on: { click: () => actions.redo() },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
         text: 'SVG',
-        tooltip: { title: 'Export Graph as SVG', short: 'Download clean vector diagram of the story graph.' },
+        tooltip: { title: 'Export Graph as SVG', short: 'Save clean vector diagram of the story graph.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
             const svgOut = exportGraphAsSvgString(graph);
-            const blob = new Blob([svgOut], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${project.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'story'}-graph.svg`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 2500);
-            actions.notify('Exported Story Graph SVG');
+            void exportGenericFile({
+              suggestedName: `${project.title || 'story'}-graph`,
+              extension: 'svg',
+              description: 'Story Graph Vector SVG',
+              mimeType: 'image/svg+xml;charset=utf-8',
+              textContent: svgOut,
+            }).then((out) => {
+              if (out) actions.notify('Exported Story Graph SVG');
+            });
           },
         },
       }),
@@ -465,12 +523,15 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
 
     const sBox = nodeCardBox(src);
     const dBox = nodeCardBox(dst);
+    const ports = computeExactPortConnection(src, sBox, dst, dBox);
     const geom = computeEdgeSvgPath(
-      src.x + sBox.w / 2,
-      src.y + sBox.h / 2,
-      dst.x + dBox.w / 2,
-      dst.y + dBox.h / 2,
+      ports.sx,
+      ports.sy,
+      ports.tx,
+      ports.ty,
       edgeRouting,
+      ports.outDir,
+      ports.inDir,
     );
 
     const isEdgeSelected = edge.id === selectedEdgeId;
@@ -538,21 +599,24 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   svg.append(labelLayer, rubberLine);
   viewport.appendChild(svg);
 
-  // Real-time 60fps edge updater called on EVERY pointermove frame while dragging a node card!
+  // Real-time 60fps edge updater called on EVERY pointermove frame while dragging a node card (or '' for all edges)
   const updateConnectedEdgesLive = (movedNodeId: string) => {
     for (const ref of edgeRefs) {
-      if (ref.edge.sourceId !== movedNodeId && ref.edge.targetId !== movedNodeId) continue;
+      if (movedNodeId && ref.edge.sourceId !== movedNodeId && ref.edge.targetId !== movedNodeId) continue;
       const src = nodeMap.get(ref.edge.sourceId);
       const dst = nodeMap.get(ref.edge.targetId);
       if (!src || !dst) continue;
       const sBox = nodeCardBox(src, nodeCards.get(src.id));
       const dBox = nodeCardBox(dst, nodeCards.get(dst.id));
+      const ports = computeExactPortConnection(src, sBox, dst, dBox);
       const geom = computeEdgeSvgPath(
-        src.x + sBox.w / 2,
-        src.y + sBox.h / 2,
-        dst.x + dBox.w / 2,
-        dst.y + dBox.h / 2,
+        ports.sx,
+        ports.sy,
+        ports.tx,
+        ports.ty,
         edgeRouting,
+        ports.outDir,
+        ports.inDir,
       );
       ref.pathEl.setAttribute('d', geom.d);
       const pillW = Math.max(30, ref.edge.label.length * 6.4 + 12);
@@ -569,6 +633,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   let movedNode = false;
 
   let portDragSourceId: string | null = null;
+  let portDragSide: 'left' | 'right' = 'right';
 
   let panning = false;
   let panStartClientX = 0;
@@ -618,7 +683,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       const curX = (e.clientX - wrapRect.left - panX) / zoomScale;
       const curY = (e.clientY - wrapRect.top - panY) / zoomScale;
       const box = nodeCardBox(srcNode, nodeCards.get(srcNode.id));
-      const sx = srcNode.x + box.w / 2;
+      const sx = portDragSide === 'right' ? srcNode.x + box.w : srcNode.x;
       const sy = srcNode.y + box.h / 2;
       rubberLine.setAttribute('d', `M ${sx} ${sy} L ${curX.toFixed(1)} ${curY.toFixed(1)}`);
       return;
@@ -706,6 +771,7 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
             if (e.button !== 0) return;
             e.stopPropagation();
             portDragSourceId = node.id;
+            portDragSide = side;
             const box = nodeCardBox(node, nodeCards.get(node.id));
             const sx = side === 'right' ? node.x + box.w : node.x;
             const sy = node.y + box.h / 2;
@@ -726,20 +792,20 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
           text: GRAPH_KIND_LABELS[node.kind],
           style: { color: node.color || GRAPH_KIND_COLORS[node.kind] },
         }),
-        graphDensity === 'detailed'
-          ? el('span', { className: 'bv-mono-tag', text: `${countBadge} link${countBadge === 1 ? '' : 's'}` })
-          : null,
+        ...(graphDensity === 'detailed'
+          ? [el('span', { className: 'bv-mono-tag', text: `${countBadge} link${countBadge === 1 ? '' : 's'}` })]
+          : []),
       ),
       el('div', {
         text: node.label,
         style: { fontWeight: '600', fontSize: graphDensity === 'compact' ? '11.5px' : '12.5px' },
       }),
-      graphDensity !== 'compact' && node.subtitle
-        ? el('div', { className: 'bv-label', text: node.subtitle })
-        : null,
-      graphDensity === 'detailed' && node.notes
-        ? el('div', { className: 'bv-graph-note-excerpt', text: node.notes })
-        : null,
+      ...(graphDensity !== 'compact' && node.subtitle
+        ? [el('div', { className: 'bv-label', text: node.subtitle })]
+        : []),
+      ...(graphDensity === 'detailed' && node.notes
+        ? [el('div', { className: 'bv-graph-note-excerpt', text: node.notes })]
+        : []),
       makePort('left'),
       makePort('right'),
     ];
@@ -880,6 +946,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       ref.pathEl.setAttribute('stroke-opacity', q && !isIncidentToSelected ? '0.28' : '0.92');
     }
   };
+
+  requestAnimationFrame(() => updateConnectedEdgesLive(''));
 
   const syncCanvasGrid = () => {
     const step = Math.max(8, Math.round(24 * zoomScale));

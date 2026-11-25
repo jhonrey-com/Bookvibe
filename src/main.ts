@@ -7,6 +7,7 @@ import {
   exportBookAsEpub,
   exportBookAsHtml,
   exportBookAsMarkdown,
+  exportBookAsPdf,
   exportBookAsPlainText,
   exportCoverPngDownload,
   getStartupOpenedFile,
@@ -31,7 +32,12 @@ import {
 import { QuillvibeCodecError } from './core/codec';
 import { getActiveSessionPermissions } from './core/collab';
 import { renderCoverToPngDataUrl, renderFullWrapToPngDataUrl } from './core/cover';
-import { buildPrintableBookHtml, EXPORT_FORMAT_OPTIONS } from './core/export';
+import {
+  applySmartTypography,
+  computeBookPagination,
+  EXPORT_FORMAT_OPTIONS,
+  TRIM_SPECS,
+} from './core/export';
 import {
   applyOpenedExtensionFile,
   extractAnyImportableExtensionFromFilename,
@@ -42,7 +48,11 @@ import {
   serializeExtensionFile,
   serializeQuillvibeBinary,
 } from './core/extensions';
+import { ProjectHistoryStack } from './core/history';
 import { loadCustomFonts } from './core/fonts';
+import { COLLABORATOR_ROLE_LABELS } from './core/collab';
+import { resolveEffectiveFontCss } from './core/fonts';
+import { ensureAuthorIdentity } from './core/identity';
 import {
   createInitialLibrary,
   getActiveBookFromLibrary,
@@ -114,9 +124,48 @@ import { showLibraryModal } from './views/library-modal';
 import { renderOutlineView } from './views/outline';
 import { showSettingsModal } from './views/settings-modal';
 import { renderTypesetView } from './views/typeset';
+import { hasCoverHistory, performCoverRedo, performCoverUndo } from './views/cover';
 
 const starter = createStarterBookProject();
 const initialLibrary = createInitialLibrary(starter);
+
+const projectHistory = new ProjectHistoryStack<BookProject>(45);
+let isApplyingHistory = false;
+let activeExportLoaderEl: HTMLElement | null = null;
+
+function setExportLoading(label: string | null): void {
+  if (!label) {
+    activeExportLoaderEl?.remove();
+    activeExportLoaderEl = null;
+    return;
+  }
+  if (!activeExportLoaderEl) {
+    activeExportLoaderEl = el(
+      'div',
+      {
+        className: 'qv-export-loader',
+        id: 'qv-export-loader',
+        attrs: { role: 'status', 'aria-live': 'polite' },
+      },
+      el('span', { className: 'qv-export-spinner' }),
+      el('span', { className: 'qv-export-loader-text', text: label }),
+    );
+    document.body.appendChild(activeExportLoaderEl);
+  } else {
+    const txt = activeExportLoaderEl.querySelector('.qv-export-loader-text');
+    if (txt) txt.textContent = label;
+  }
+}
+
+async function runWithExportLoading<T>(label: string, task: () => Promise<T>): Promise<T> {
+  setExportLoading(label);
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  try {
+    return await task();
+  } finally {
+    setExportLoading(null);
+  }
+}
 
 const isWideDesktop = typeof window === 'undefined' || window.innerWidth > 1180;
 const isMediumOrLarger = typeof window === 'undefined' || window.innerWidth > 960;
@@ -127,7 +176,7 @@ const state: AppState = {
   settings: loadSettings(),
   activeView: 'editor',
   activeSceneId: getAllScenes(starter)[0]?.scene.id ?? '',
-  defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.quillvibe',
+  defaultExportFormat: typeof window !== 'undefined' ? loadDefaultExportFormat() : '.qv',
   editorSubMode: 'draft',
   splitTargetKind: 'character',
   splitTargetId: starter.bible.characters[0]?.id ?? '',
@@ -221,7 +270,7 @@ function schedulePersist(): void {
   if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
   if (persistTimer !== null) window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(async () => {
-    const serializedBook = serializeExtensionFile('.quillvibe', state.project);
+    const serializedBook = serializeExtensionFile('.qv', state.project);
     const serializedLib = JSON.stringify(state.library);
     await Promise.all([persistProject(serializedBook), persistLibrary(serializedLib)]);
     state.saveStatusLabel = 'Saved';
@@ -314,7 +363,7 @@ function rebuildHeaderNavControl(): void {
   lastRenderedTier = state.settings.toolTier;
 
   if (opts.length <= 1) {
-    // Basic mode keeps header clean like Word / Google Docs
+    // Basic mode keeps header clean and uncluttered
     headerNavGlass = null;
     headerNavHostEl.appendChild(
       el(
@@ -633,6 +682,9 @@ const actions: AppActions = {
   },
 
   mutateProject(updater: (prev: BookProject) => BookProject, rerender = true) {
+    if (!isApplyingHistory) {
+      projectHistory.pushSnapshot(state.project, `Edit ${state.activeView}`);
+    }
     state.project = normalizeProjectDefaults(updater(state.project));
     schedulePersist();
     syncWindowAndDocumentTitle();
@@ -644,6 +696,13 @@ const actions: AppActions = {
   },
 
   updateActiveSceneTextQuietly(field, value) {
+    if (!isApplyingHistory) {
+      projectHistory.pushSnapshot(
+        state.project,
+        field === 'content' ? `Scene ${state.activeSceneId} prose` : `Scene ${state.activeSceneId} title`,
+        900,
+      );
+    }
     if (field === 'content') {
       const ctx = findSceneContext(state.project, state.activeSceneId);
       const prevMarks = ctx?.scene.proofreadMarks;
@@ -658,6 +717,10 @@ const actions: AppActions = {
     }
     schedulePersist();
     updateWordCountersOnly();
+    const undoBtn = mainStageEl?.querySelector<HTMLButtonElement>('[aria-label="Undo edit"]');
+    if (undoBtn) undoBtn.disabled = !actions.canUndo();
+    const redoBtn = mainStageEl?.querySelector<HTMLButtonElement>('[aria-label="Redo edit"]');
+    if (redoBtn) redoBtn.disabled = !actions.canRedo();
   },
 
   selectScene(sceneId, switchToEditor = true) {
@@ -794,6 +857,7 @@ const actions: AppActions = {
 
   async exportDefaultFormat() {
     const fmt = state.defaultExportFormat;
+    if (fmt === '.pdf') return actions.exportPdf();
     if (fmt === '.epub') return actions.exportEpub();
     if (fmt === '.md') return actions.exportMarkdown();
     if (fmt === '.html') return actions.exportHtml();
@@ -844,10 +908,12 @@ const actions: AppActions = {
         }
         password = entered;
       }
-      const binary = await serializeQuillvibeBinary(ext, state.project, {
-        sceneId: options?.sceneId ?? state.activeSceneId,
-        password,
-      });
+      const binary = await runWithExportLoading(`Encrypting ${ext} package…`, () =>
+        serializeQuillvibeBinary(ext, state.project, {
+          sceneId: options?.sceneId ?? state.activeSceneId,
+          password,
+        }),
+      );
       const saved = await saveQuillvibeExtensionFile(ext, binary, state.project.title);
       if (saved) {
         actions.notify(
@@ -862,8 +928,10 @@ const actions: AppActions = {
 
   async exportEpub() {
     try {
-      const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
-      const out = await exportBookAsEpub(state.project, coverPng);
+      const out = await runWithExportLoading('Building EPUB 3 eBook…', async () => {
+        const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
+        return exportBookAsEpub(state.project, coverPng);
+      });
       if (out) actions.notify('Exported EPUB 3 eBook with Cover & Credits');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'EPUB export failed.';
@@ -871,9 +939,23 @@ const actions: AppActions = {
     }
   },
 
+  async exportPdf() {
+    try {
+      const out = await runWithExportLoading('Generating Print Interior PDF…', () =>
+        exportBookAsPdf(state.project),
+      );
+      if (out) actions.notify('Exported Print Interior PDF (.pdf)');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'PDF export failed.';
+      actions.notify(msg);
+    }
+  },
+
   async exportMarkdown() {
     try {
-      const out = await exportBookAsMarkdown(state.project);
+      const out = await runWithExportLoading('Exporting Markdown (.md)…', () =>
+        exportBookAsMarkdown(state.project),
+      );
       if (out) actions.notify('Exported Markdown manuscript');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Markdown export failed.';
@@ -883,7 +965,9 @@ const actions: AppActions = {
 
   async exportHtml() {
     try {
-      const out = await exportBookAsHtml(state.project);
+      const out = await runWithExportLoading('Exporting HTML Book (.html)…', () =>
+        exportBookAsHtml(state.project),
+      );
       if (out) actions.notify('Exported HTML web book');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'HTML export failed.';
@@ -893,7 +977,9 @@ const actions: AppActions = {
 
   async exportPlainText() {
     try {
-      const out = await exportBookAsPlainText(state.project);
+      const out = await runWithExportLoading('Exporting Plain Text (.txt)…', () =>
+        exportBookAsPlainText(state.project),
+      );
       if (out) actions.notify('Exported plain text manuscript');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Plain text export failed.';
@@ -903,10 +989,12 @@ const actions: AppActions = {
 
   async exportCoverPng() {
     try {
-      const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
-      if (!coverPng) throw new Error('Unable to render cover PNG.');
-      exportCoverPngDownload(coverPng, state.project.title);
-      actions.notify('Exported Cover PNG (1200×1920)');
+      const saved = await runWithExportLoading('Rendering Front Cover PNG…', async () => {
+        const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
+        if (!coverPng) throw new Error('Unable to render cover PNG.');
+        return exportCoverPngDownload(coverPng, state.project.title, 'front');
+      });
+      if (saved) actions.notify('Exported Cover PNG (1200×1920)');
     } catch (err) {
       actions.notify(err instanceof Error ? err.message : 'Cover export failed.');
     }
@@ -914,49 +1002,210 @@ const actions: AppActions = {
 
   async exportFullWrapPng() {
     try {
-      const wrapPng = await renderFullWrapToPngDataUrl(state.project, 960, 1500);
-      if (!wrapPng) throw new Error('Unable to render full cover wrap PNG.');
-      exportCoverPngDownload(wrapPng, `${state.project.title}-full-wrap`);
-      actions.notify('Exported Full Cover Wrap PNG (Back · Spine · Front)');
+      const saved = await runWithExportLoading('Rendering Full Cover Wrap PNG…', async () => {
+        const wrapPng = await renderFullWrapToPngDataUrl(state.project, 960, 1500);
+        if (!wrapPng) throw new Error('Unable to render full cover wrap PNG.');
+        return exportCoverPngDownload(wrapPng, state.project.title, 'wrap');
+      });
+      if (saved) actions.notify('Exported Full Cover Wrap PNG (Back · Spine · Front)');
     } catch (err) {
       actions.notify(err instanceof Error ? err.message : 'Full wrap export failed.');
     }
   },
 
   printTypeset() {
-    const html = buildPrintableBookHtml(state.project);
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const frame = document.createElement('iframe');
-    frame.style.position = 'fixed';
-    frame.style.right = '-9999px';
-    frame.style.bottom = '0';
-    frame.style.width = '0';
-    frame.style.height = '0';
-    frame.style.border = '0';
-    frame.setAttribute('aria-hidden', 'true');
+    const project = state.project;
+    const typo = project.typography;
+    const trim = TRIM_SPECS[typo.trimSize] ?? TRIM_SPECS['6x9'];
+    const identity = ensureAuthorIdentity(project);
+    const penName = identity.penName || project.author;
+    const font = resolveEffectiveFontCss(typo.fontFamily, typo.customFontFamily);
+    const showPageNumbers = typo.includePageNumbers !== false;
+    const { tocEntries, pages } = computeBookPagination(project);
+
+    document.getElementById('qv-print-mount')?.remove();
+    document.getElementById('qv-print-page-style')?.remove();
+
+    const pageStyle = document.createElement('style');
+    pageStyle.id = 'qv-print-page-style';
+    pageStyle.textContent = `@page { size: ${trim.cssPageSize}; margin: 0; }
+      #qv-print-mount { font-family: ${font}; font-size: ${typo.fontSizePt}pt; line-height: ${typo.lineHeight}; }
+      #qv-print-mount .qv-print-sheet { width: ${trim.widthIn}in; height: ${trim.heightIn}in; padding: ${typo.marginInches}in; }`;
+
+    const mount = el('div', { id: 'qv-print-mount', className: 'qv-print-mount' });
+    for (const sheet of pages) {
+      if (sheet.kind === 'front-matter') {
+        mount.appendChild(
+          el(
+            'section',
+            { className: 'qv-print-sheet qv-print-front' },
+            el(
+              'div',
+              { className: 'qv-print-front-top' },
+              el('h1', { className: 'qv-print-front-title', text: typo.smartTypography ? applySmartTypography(project.title) : project.title }),
+              ...(project.subtitle ? [el('p', { className: 'qv-print-front-sub', text: typo.smartTypography ? applySmartTypography(project.subtitle) : project.subtitle })] : []),
+              el('p', { className: 'qv-print-front-author', text: penName }),
+            ),
+            el(
+              'div',
+              { className: 'qv-print-front-bottom' },
+              ...(project.dedication ? [el('p', { className: 'qv-print-dedication', text: project.dedication })] : []),
+              el('p', { className: 'qv-print-copy', text: project.copyrightNotice }),
+              ...(project.collaborators ?? []).map((c) =>
+                el('p', { className: 'qv-print-credit', text: `${COLLABORATOR_ROLE_LABELS[c.role]}: ${c.creditLine}` }),
+              ),
+              el('div', { className: 'qv-print-footer', text: showPageNumbers ? String(sheet.pageNumber) : '' }),
+            ),
+          ),
+        );
+        continue;
+      }
+      if (sheet.kind === 'toc') {
+        mount.appendChild(
+          el(
+            'section',
+            { className: 'qv-print-sheet' },
+            el(
+              'div',
+              {},
+              el('p', { className: 'qv-print-kicker', text: 'Contents' }),
+              el('h2', { className: 'qv-print-chapter-title', text: 'Table of Contents' }),
+              el(
+                'div',
+                { className: 'qv-print-toc-list' },
+                ...tocEntries.map((entry) =>
+                  el(
+                    'div',
+                    { className: 'qv-print-toc-row' },
+                    el('span', { text: `${entry.chapterLabel} — ${entry.chapterTitle}` }),
+                    el('span', { className: 'qv-print-toc-dots' }),
+                    el('span', { text: String(entry.pageNumber) }),
+                  ),
+                ),
+              ),
+            ),
+            el('div', { className: 'qv-print-footer', text: showPageNumbers ? String(sheet.pageNumber) : '' }),
+          ),
+        );
+        continue;
+      }
+
+      const proseWrap = el('div', { className: 'qv-print-prose' });
+      for (const blk of sheet.blocks) {
+        if (blk.kind === 'scene-break') {
+          proseWrap.appendChild(el('p', { className: 'qv-print-scene-break', text: '* * *' }));
+        } else if (blk.kind === 'blockquote') {
+          proseWrap.appendChild(el('blockquote', { text: blk.text.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1') }));
+        } else {
+          const p = el('p', {
+            className: `${blk.dropCap ? 'drop-cap ' : ''}${!blk.indent ? 'no-indent' : ''}`.trim(),
+            text: blk.text.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1'),
+          });
+          proseWrap.appendChild(p);
+        }
+      }
+      mount.appendChild(
+        el(
+          'section',
+          { className: 'qv-print-sheet' },
+          el(
+            'div',
+            {},
+            ...(project.publishing?.arcWatermarkText?.trim()
+              ? [el('div', { className: 'qv-print-arc', text: project.publishing.arcWatermarkText.trim() })]
+              : []),
+            ...(typo.runningHeader
+              ? [el('div', { className: 'qv-print-head' }, el('span', { text: penName }), el('span', { text: project.title }))]
+              : []),
+            ...(sheet.isChapterStart
+              ? [
+                  el('p', { className: 'qv-print-kicker', text: sheet.chapterLabel ?? '' }),
+                  el('h2', { className: 'qv-print-chapter-title', text: sheet.chapterTitle ?? '' }),
+                ]
+              : []),
+            proseWrap,
+          ),
+          el('div', { className: 'qv-print-footer', text: showPageNumbers ? String(sheet.pageNumber) : '' }),
+        ),
+      );
+    }
+
+    document.head.appendChild(pageStyle);
+    document.body.appendChild(mount);
 
     const cleanup = () => {
-      frame.remove();
-      URL.revokeObjectURL(url);
+      document.getElementById('qv-print-mount')?.remove();
+      document.getElementById('qv-print-page-style')?.remove();
+      window.removeEventListener('afterprint', cleanup);
     };
-
-    frame.onload = () => {
+    window.addEventListener('afterprint', cleanup, { once: true });
+    requestAnimationFrame(() => {
       try {
-        const cw = frame.contentWindow;
-        if (!cw) {
-          cleanup();
-          return;
-        }
-        cw.focus();
-        cw.print();
-        window.setTimeout(cleanup, 120000);
+        window.print();
       } catch {
+        void actions.exportPdf();
         cleanup();
       }
-    };
-    frame.src = url;
-    document.body.appendChild(frame);
+    });
+    window.setTimeout(cleanup, 90000);
+  },
+
+  undo() {
+    if (state.activeView === 'typeset' && state.typesetSubTab === 'cover' && hasCoverHistory().undo) {
+      return performCoverUndo(actions);
+    }
+    const prev = projectHistory.undo(state.project);
+    if (!prev) return false;
+    isApplyingHistory = true;
+    try {
+      state.project = normalizeProjectDefaults(prev.state);
+      if (!findSceneContext(state.project, state.activeSceneId)) {
+        state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+      }
+      schedulePersist();
+      syncWindowAndDocumentTitle();
+      renderActiveView();
+      actions.notify(`Undid ${prev.label}`);
+      return true;
+    } finally {
+      isApplyingHistory = false;
+    }
+  },
+
+  redo() {
+    if (state.activeView === 'typeset' && state.typesetSubTab === 'cover' && hasCoverHistory().redo) {
+      return performCoverRedo(actions);
+    }
+    const next = projectHistory.redo(state.project);
+    if (!next) return false;
+    isApplyingHistory = true;
+    try {
+      state.project = normalizeProjectDefaults(next.state);
+      if (!findSceneContext(state.project, state.activeSceneId)) {
+        state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
+      }
+      schedulePersist();
+      syncWindowAndDocumentTitle();
+      renderActiveView();
+      actions.notify(`Redid ${next.label}`);
+      return true;
+    } finally {
+      isApplyingHistory = false;
+    }
+  },
+
+  canUndo() {
+    if (state.activeView === 'typeset' && state.typesetSubTab === 'cover') {
+      return hasCoverHistory().undo || projectHistory.canUndo();
+    }
+    return projectHistory.canUndo();
+  },
+
+  canRedo() {
+    if (state.activeView === 'typeset' && state.typesetSubTab === 'cover') {
+      return hasCoverHistory().redo || projectHistory.canRedo();
+    }
+    return projectHistory.canRedo();
   },
 
   createSnapshot(label?: string) {
@@ -1225,7 +1474,7 @@ function buildShell(root: HTMLElement): void {
             : {
                 ...TOOLTIP_CATALOG.collaborate,
                 short:
-                  'Credits, collaborator permissions, .quillvibe merge & Website Sync work here; Wi-Fi LAN & Bluetooth require the desktop app.',
+                  'Credits, verified co-author device keys, .qv merge & Website Sync work here; Wi-Fi LAN & Bluetooth require the desktop app.',
               },
           attrs: { type: 'button', 'aria-label': 'Collaborate Offline' },
           on: { click: () => actions.openCollabModal() },
@@ -1581,7 +1830,20 @@ function buildShell(root: HTMLElement): void {
 
 function wireGlobalShortcutsAndDrop(): void {
   window.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    const target = e.target as HTMLElement | null;
+    const isPlainInput =
+      target instanceof HTMLInputElement ||
+      (target instanceof HTMLTextAreaElement && !target.classList.contains('bv-prose-textarea'));
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+      if (isPlainInput) return;
+      e.preventDefault();
+      if (e.shiftKey) actions.redo();
+      else actions.undo();
+    } else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'y') {
+      if (isPlainInput) return;
+      e.preventDefault();
+      actions.redo();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       if (state.activeView === 'editor') {
         actions.createSnapshot();
@@ -1645,7 +1907,7 @@ function wireGlobalShortcutsAndDrop(): void {
     if (!dropOverlay) {
       dropOverlay = el('div', {
         className: 'bv-drop-overlay',
-        text: 'Drop .quillvibe, .qv*, .qvext, or .docx / .md file',
+        text: 'Drop .qv, .qvbible, .qvscene, .qvstyle, .qvext, or .docx / .md file',
       });
       document.body.appendChild(dropOverlay);
     }
@@ -1696,7 +1958,7 @@ function wireGlobalShortcutsAndDrop(): void {
         return;
       }
       actions.notify(
-        'Unsupported file. Drop a .quillvibe, .qvibe, .qvbook, .qvbible, .qvscene, .qvstyle, .qvext, .docx, .html, or .md file.',
+        'Unsupported file. Drop a .qv, .qvbible, .qvscene, .qvstyle, .qvext, .docx, .html, or .md file.',
       );
       return;
     }
@@ -1736,7 +1998,7 @@ async function bootstrap(): Promise<void> {
     const saved = await loadPersistedProject();
     if (saved) {
       try {
-        const decoded = await parseQuillvibeInput(saved, { filenameHint: 'saved.quillvibe' });
+        const decoded = await parseQuillvibeInput(saved, { filenameHint: 'saved.qv' });
         const applied = applyOpenedExtensionFile(decoded.parsed, state.project);
         state.project = applied.project;
         state.library = upsertBookInLibrary(state.library, state.project);
@@ -1746,11 +2008,17 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  // Multi-window support: ?bookId=... opens the requested book directly in this window
-  const requestedBookId =
+  // Multi-window support: Tauri initializationScript global or ?bookId=... opens the requested book directly
+  const winInit =
     typeof window !== 'undefined'
+      ? (window as unknown as { __QUILLVIBE_INITIAL_BOOK_ID__?: string; __QUILLVIBE_SKIP_SPLASH__?: boolean })
+      : {};
+  const requestedBookId =
+    winInit.__QUILLVIBE_INITIAL_BOOK_ID__?.trim() ||
+    (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('bookId')?.trim()
-      : null;
+      : null);
+  const skipSplashFromWindow = Boolean(winInit.__QUILLVIBE_SKIP_SPLASH__ || requestedBookId);
   if (requestedBookId && state.library.books.some((b) => b.id === requestedBookId)) {
     state.library = switchActiveBook(state.library, requestedBookId);
     state.project = getActiveBookFromLibrary(state.library);
@@ -1839,7 +2107,7 @@ async function bootstrap(): Promise<void> {
     window.setTimeout(() => bootSplash.remove(), 260);
   }
 
-  if (state.activeView !== 'course') {
+  if (state.activeView !== 'course' && !skipSplashFromWindow) {
     maybeRunFirstLaunchSplash(actions, forceSplashFromRoute);
   }
 }

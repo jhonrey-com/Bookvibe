@@ -550,12 +550,12 @@ pub fn launch_os_bluetooth_share(
                     .is_ok()
                 {
                     return Ok(String::from(
-                        "Opened macOS Bluetooth File Exchange with your saved .quillvibe file.",
+                        "Opened macOS Bluetooth File Exchange with your saved .qv file.",
                     ));
                 }
                 let _ = Command::new("open").arg("-R").arg(p).spawn();
                 return Ok(String::from(
-                    "Revealed sync file in Finder. Right-click -> Share -> AirDrop or Bluetooth.",
+                    "Revealed sync file in Finder. Right-click -> Share -> Nearby Share or Bluetooth.",
                 ));
             }
         }

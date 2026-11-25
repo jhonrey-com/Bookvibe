@@ -71,12 +71,17 @@ export interface AppActions {
     options?: { sceneId?: string; password?: string },
   ): Promise<void>;
   exportEpub(): Promise<void>;
+  exportPdf(): Promise<void>;
   exportMarkdown(): Promise<void>;
   exportHtml(): Promise<void>;
   exportPlainText(): Promise<void>;
   exportCoverPng(): Promise<void>;
   exportFullWrapPng(): Promise<void>;
   printTypeset(): void;
+  undo(): boolean;
+  redo(): boolean;
+  canUndo(): boolean;
+  canRedo(): boolean;
   createSnapshot(label?: string): void;
   notify(message: string): void;
   refreshWordCounters(): void;

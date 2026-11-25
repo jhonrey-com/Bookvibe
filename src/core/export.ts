@@ -18,13 +18,12 @@ export interface ExportFormatOption {
 }
 
 export const EXPORT_FORMAT_OPTIONS: readonly ExportFormatOption[] = [
-  { id: '.quillvibe', label: 'Master Project (.quillvibe)', shortLabel: '.quillvibe', description: 'Complete manuscript, story bible, graph, cover, snapshots, and author key seal.' },
+  { id: '.qv', label: 'Quillvibe Book Workspace (.qv)', shortLabel: '.qv', description: 'Complete protected archive: manuscript, story bible, graph, cover, copyright seal, and author key.' },
+  { id: '.pdf', label: 'Print Interior PDF (.pdf)', shortLabel: '.pdf', description: 'Trim-sized print-ready interior PDF with margins, running headers, credits, and page numbers.' },
   { id: '.epub', label: 'EPUB 3 eBook (.epub)', shortLabel: '.epub', description: 'Standard eBook archive with cover artwork, credits, and reflowable chapters.' },
   { id: '.md', label: 'Markdown Manuscript (.md)', shortLabel: '.md', description: 'Plain-text Markdown with YAML front matter and formatted scene breaks.' },
   { id: '.html', label: 'Standalone Web Book (.html)', shortLabel: '.html', description: 'Self-contained readable HTML manuscript with clean serif styling.' },
   { id: '.txt', label: 'Plain Text Manuscript (.txt)', shortLabel: '.txt', description: 'Clean unformatted UTF-8 prose manuscript.' },
-  { id: '.qvibe', label: 'Compact Project (.qvibe)', shortLabel: '.qvibe', description: 'Short-alias project file identical in structure to .quillvibe.' },
-  { id: '.qvbook', label: 'Manuscript Package (.qvbook)', shortLabel: '.qvbook', description: 'Portable manuscript parts, chapters, scenes, and credits without bible/graph.' },
   { id: '.qvbible', label: 'Story Bible DB (.qvbible)', shortLabel: '.qvbible', description: 'Shareable characters, locations, lore, and custom categories database.' },
   { id: '.qvscene', label: 'Active Scene Draft (.qvscene)', shortLabel: '.qvscene', description: 'Exports only the currently open scene draft, marks, and snapshots.' },
   { id: '.qvstyle', label: 'Typeset Preset (.qvstyle)', shortLabel: '.qvstyle', description: 'Reusable trim size, margins, drop caps, and paper preset.' },

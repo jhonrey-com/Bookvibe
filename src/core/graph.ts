@@ -378,26 +378,35 @@ export function exportGraphAsSvgString(graph: StoryGraph): string {
     const s = nodeMap.get(edge.sourceId);
     const d = nodeMap.get(edge.targetId);
     if (!s || !d) continue;
-    const x1 = s.x + 84;
-    const y1 = s.y + 30;
-    const x2 = d.x + 84;
-    const y2 = d.y + 30;
-    const mx = (x1 + x2) / 2;
+    const nodeW = 192;
+    const nodeH = 74;
+    const sMidX = s.x + nodeW / 2;
+    const dMidX = d.x + nodeW / 2;
+    const x1 = dMidX >= sMidX ? s.x + nodeW : s.x;
+    const y1 = s.y + nodeH / 2;
+    const x2 = dMidX >= sMidX ? d.x : d.x + nodeW;
+    const y2 = d.y + nodeH / 2;
+    const outDir = dMidX >= sMidX ? 1 : -1;
+    const inDir = dMidX >= sMidX ? -1 : 1;
+    const bend = Math.max(42, Math.min(160, Math.abs(x2 - x1) * 0.45));
+    const c1x = x1 + outDir * bend;
+    const c2x = x2 + inDir * bend;
+    const mx = 0.125 * x1 + 0.375 * c1x + 0.375 * c2x + 0.125 * x2;
     const my = (y1 + y2) / 2 - 8;
     const dash = edge.style === 'dashed' ? ' stroke-dasharray="5 4"' : '';
     edgeEls.push(
-      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${escSvg(edge.color || '#6e7684')}" stroke-width="1.6"${dash}/>`,
+      `<path d="M ${x1} ${y1} C ${c1x.toFixed(1)} ${y1}, ${c2x.toFixed(1)} ${y2}, ${x2} ${y2}" fill="none" stroke="${escSvg(edge.color || '#6e7684')}" stroke-width="1.6"${dash}/>`,
       `<text x="${mx}" y="${my}" fill="#a2a9b5" font-size="11" text-anchor="middle" font-family="Inter, sans-serif">${escSvg(edge.label)}</text>`,
     );
   }
 
   const nodeEls = graph.nodes.map(
     (n) => `<g transform="translate(${n.x}, ${n.y})">
-  <rect width="168" height="60" rx="7" fill="#101218" stroke="#323642" />
-  <rect width="168" height="3" rx="1.5" fill="${escSvg(n.color)}" />
-  <text x="12" y="21" fill="${escSvg(n.color)}" font-size="10" font-family="monospace">${escSvg(GRAPH_KIND_LABELS[n.kind])}</text>
-  <text x="12" y="39" fill="#eceef2" font-size="12.5" font-weight="600" font-family="Inter, sans-serif">${escSvg(n.label)}</text>
-  <text x="12" y="53" fill="#6e7684" font-size="10.5" font-family="Inter, sans-serif">${escSvg(n.subtitle)}</text>
+  <rect width="192" height="74" rx="7" fill="#101218" stroke="#323642" />
+  <rect width="192" height="3" rx="1.5" fill="${escSvg(n.color)}" />
+  <text x="12" y="22" fill="${escSvg(n.color)}" font-size="10" font-family="monospace">${escSvg(GRAPH_KIND_LABELS[n.kind])}</text>
+  <text x="12" y="42" fill="#eceef2" font-size="12.5" font-weight="600" font-family="Inter, sans-serif">${escSvg(n.label)}</text>
+  <text x="12" y="58" fill="#6e7684" font-size="10.5" font-family="Inter, sans-serif">${escSvg(n.subtitle)}</text>
 </g>`,
   );
 

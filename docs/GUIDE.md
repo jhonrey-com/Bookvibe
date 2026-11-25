@@ -19,7 +19,7 @@ Quillvibe uses minimalist icon buttons throughout the topbar, studio tabs, edito
 | Left sidebar frame | **Manuscript Binder** | Toggles the Parts, Chapters, and Scenes tree (slides in as a drawer on compact screens). |
 | Books on shelf | **Library & Author Identity** | Manage multiple books and set a per-book Pen Name, handwritten/typed Signature, and permanent ECDSA Author Key. |
 | Overlapping figures | **Collaborate & Permissions** | Manage co-authors, proofreaders, restrictions, Self-Hosted HTTPS sync (and Wi-Fi PIN / Bluetooth in the desktop app). |
-| Folder | **Open File** | Opens `.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` bundles. |
+| Folder | **Open File** | Opens `.qv`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` bundles. |
 | Disk + Format dropdown | **Save / Export Default** | Saves immediately using the extension selected in the dropdown beside it. |
 | Interlocking module | **Extensions & Formats** | Manages Integrated toolkits, External `.qvext` plugins with permission consent, and Data Audit Log. |
 | Gear cog | **Settings & Preferences** | Switch Workspace Tool Level (`Basic`/`Intermediate`/`Advanced`), install fonts, configure Commercial Metadata, and import `.docx`, `.html`, `.md`, or legacy `.bookvibe`. |
@@ -44,9 +44,8 @@ Every native Quillvibe file stores encrypted and authenticated `QVBX` binary dat
 
 | Format | Default Role | When to Choose It |
 | :--- | :--- | :--- |
-| `.quillvibe` | **Master Project** | Default format. Preserves manuscript, Story Bible, Story Graph, cover layout, snapshots, proofread marks, and Author Key seal. |
-| `.qvibe` | **Compact Project** | Short-alias equivalent of `.quillvibe`. |
-| `.qvbook` | **Manuscript Package** | Portable parts, chapters, scenes, front matter, cover, and credits without worldbuilding databases. |
+| `.qv` | **Book Workspace** | Default format. Preserves manuscript, Story Bible, Story Graph, cover layout, snapshots, proofread marks, Origin Key, and Copyright Seal. |
+| `.pdf` | **Print Interior PDF** | Trim-sized print interior PDF with margins, running headers, credits, and page numbers. |
 | `.qvbible` | **Story Bible DB** | Imports/merges shared Characters, Locations, Lore, and Custom Categories across sequels in a series. |
 | `.qvscene` | **Standalone Scene** | Shares or archives one single chapter scene, its annotations, proofread marks, and snapshots. |
 | `.qvstyle` | **Typeset Preset** | Applies book trim size, font family, drop caps, smart quotes, margins, and paper theme to another book. |
@@ -55,7 +54,7 @@ Every native Quillvibe file stores encrypted and authenticated `QVBX` binary dat
 | `.html` | **Standalone Web Book** | Self-contained HTML reading edition with serif styling for offline browsers. |
 | `.txt` | **Plain Text Manuscript** | Clean UTF-8 text without formatting markers. |
 
-Legacy `.bookvibe` / `.bv*` files are imported explicitly inside **Settings -> Publishing, Commercial & Migration -> Import**.
+Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` archives are imported explicitly inside **Settings -> Publishing, Commercial & Migration -> Import**.
 
 ---
 

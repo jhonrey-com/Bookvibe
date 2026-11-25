@@ -1,3 +1,8 @@
+import {
+  computeSha256Hex,
+  getLocalDeviceLabel,
+  getOrCreateLocalDeviceId,
+} from './identity';
 import { normalizeProjectDefaults } from './library';
 import { countWords, findSceneContext, newId } from './manuscript';
 import type {
@@ -134,6 +139,258 @@ export function updateCollaboratorPermissions(
 
 const COLLAB_COLORS = ['#c7a97b', '#6b9cd4', '#67b08c', '#c78c9c', '#989ec4'];
 
+export interface VerifiedCoAuthorTokenPayload {
+  v: 1;
+  name: string;
+  penName: string;
+  role: CollaboratorRole;
+  deviceId: string;
+  deviceLabel: string;
+  coAuthorKeyId: string;
+  publicKeyJwk: string;
+  issuedAt: string;
+  signature: string;
+}
+
+export interface VerifiedCoAuthorTokenResult {
+  payload: VerifiedCoAuthorTokenPayload;
+  sameDevice: boolean;
+}
+
+function bytesToHexLocal(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToBytesLocal(hex: string): Uint8Array {
+  const clean = hex.replace(/[^0-9a-f]/gi, '');
+  const out = new Uint8Array(Math.floor(clean.length / 2));
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function utf8ToBase64Url(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToUtf8(b64u: string): string {
+  const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  const bin = atob(pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Run on the collaborator's SECOND device to prove physical separate-device identity
+ * and generate a verifiable signed co-author token (`QVCA1.<payload>`).
+ */
+export async function generateLocalCoAuthorInviteToken(input: {
+  name: string;
+  penName?: string;
+  role?: CollaboratorRole;
+  deviceLabel?: string;
+}): Promise<{
+  token: string;
+  coAuthorKeyId: string;
+  deviceId: string;
+  deviceLabel: string;
+}> {
+  const cleanName = input.name.trim() || 'Co-Author';
+  const cleanPen = (input.penName ?? cleanName).trim() || cleanName;
+  const role: CollaboratorRole = input.role ?? 'co-author';
+  const deviceId = getOrCreateLocalDeviceId();
+  const deviceLabel = input.deviceLabel?.trim() || getLocalDeviceLabel();
+  const issuedAt = new Date().toISOString();
+
+  let publicKeyJwk = '';
+  let coAuthorKeyId = '';
+  let signature = '';
+  const signBase = `${cleanName}|${cleanPen}|${role}|${deviceId}|${issuedAt}`;
+
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const pair = await crypto.subtle.generateKey(
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        true,
+        ['sign', 'verify'],
+      );
+      const pubJwk = await crypto.subtle.exportKey('jwk', pair.publicKey);
+      publicKeyJwk = JSON.stringify(pubJwk);
+      const fp = await computeSha256Hex(`${publicKeyJwk}:${deviceId}`);
+      coAuthorKeyId = `QVCK-${fp.slice(0, 12).toUpperCase()}`;
+
+      const msgBytes = new TextEncoder().encode(signBase);
+      const copy = new Uint8Array(msgBytes.byteLength);
+      copy.set(msgBytes);
+      const sigBuf = await crypto.subtle.sign(
+        { name: 'ECDSA', hash: 'SHA-256' },
+        pair.privateKey,
+        copy.buffer,
+      );
+      signature = `ecdsa.${bytesToHexLocal(new Uint8Array(sigBuf))}`;
+    } catch {
+      // Fallback below
+    }
+  }
+
+  if (!coAuthorKeyId) {
+    const digest = await computeSha256Hex(`${signBase}:LOCAL`);
+    coAuthorKeyId = `QVCK-${digest.slice(0, 12).toUpperCase()}`;
+    publicKeyJwk = JSON.stringify({ kty: 'QV-COAUTH', deviceId, fp: digest.slice(0, 24) });
+    signature = `sha256.${digest}`;
+  }
+
+  const payload: VerifiedCoAuthorTokenPayload = {
+    v: 1,
+    name: cleanName,
+    penName: cleanPen,
+    role,
+    deviceId,
+    deviceLabel,
+    coAuthorKeyId,
+    publicKeyJwk,
+    issuedAt,
+    signature,
+  };
+
+  return {
+    token: `QVCA1.${utf8ToBase64Url(JSON.stringify(payload))}`,
+    coAuthorKeyId,
+    deviceId,
+    deviceLabel,
+  };
+}
+
+export async function parseAndVerifyCoAuthorToken(
+  tokenRaw: string,
+  options?: { hostDeviceId?: string; requireDistinctDevice?: boolean },
+): Promise<VerifiedCoAuthorTokenResult> {
+  const clean = tokenRaw.trim();
+  if (!clean.startsWith('QVCA1.')) {
+    throw new Error('Invalid co-author verification token format (expected QVCA1 prefix).');
+  }
+  const encoded = clean.slice('QVCA1.'.length);
+  let payload: VerifiedCoAuthorTokenPayload;
+  try {
+    payload = JSON.parse(base64UrlToUtf8(encoded)) as VerifiedCoAuthorTokenPayload;
+  } catch {
+    throw new Error('Corrupted co-author device verification token.');
+  }
+  if (
+    !payload ||
+    payload.v !== 1 ||
+    !payload.name ||
+    !payload.deviceId ||
+    !payload.coAuthorKeyId ||
+    !payload.publicKeyJwk ||
+    !payload.signature
+  ) {
+    throw new Error('Co-author token is missing required device identity fields.');
+  }
+
+  const signBase = `${payload.name}|${payload.penName}|${payload.role}|${payload.deviceId}|${payload.issuedAt}`;
+  if (payload.signature.startsWith('ecdsa.') && typeof crypto !== 'undefined' && crypto.subtle) {
+    const pubJwk = JSON.parse(payload.publicKeyJwk) as JsonWebKey;
+    const fp = await computeSha256Hex(`${payload.publicKeyJwk}:${payload.deviceId}`);
+    const expectedKeyId = `QVCK-${fp.slice(0, 12).toUpperCase()}`;
+    if (expectedKeyId !== payload.coAuthorKeyId) {
+      throw new Error('Co-author key fingerprint does not match device identity.');
+    }
+    const pubKey = await crypto.subtle.importKey(
+      'jwk',
+      pubJwk,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+    const sigBytes = hexToBytesLocal(payload.signature.slice('ecdsa.'.length));
+    const sigCopy = new Uint8Array(sigBytes.byteLength);
+    sigCopy.set(sigBytes);
+    const msgBytes = new TextEncoder().encode(signBase);
+    const msgCopy = new Uint8Array(msgBytes.byteLength);
+    msgCopy.set(msgBytes);
+    const ok = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      pubKey,
+      sigCopy.buffer,
+      msgCopy.buffer,
+    );
+    if (!ok) {
+      throw new Error('Co-author cryptographic device signature failed verification.');
+    }
+  } else if (payload.signature.startsWith('sha256.')) {
+    const expected = await computeSha256Hex(`${signBase}:LOCAL`);
+    if (`sha256.${expected}` !== payload.signature) {
+      throw new Error('Co-author token checksum mismatch.');
+    }
+  } else {
+    throw new Error('Unsupported co-author token signature scheme.');
+  }
+
+  const hostDevice = options?.hostDeviceId || getOrCreateLocalDeviceId();
+  const sameDevice = payload.deviceId === hostDevice;
+  const requireDistinct = options?.requireDistinctDevice ?? true;
+  if (requireDistinct && sameDevice) {
+    throw new Error(
+      `Verification blocked: this token was generated on this same device (${hostDevice}). Generate the Co-Author Key on your co-writer's separate device to prevent unverified self-adding.`,
+    );
+  }
+
+  return { payload, sameDevice };
+}
+
+export async function addVerifiedCoAuthorFromToken(
+  project: BookProject,
+  token: string,
+  options?: {
+    roleOverride?: CollaboratorRole;
+    creditLine?: string;
+    requireDistinctDevice?: boolean;
+  },
+): Promise<{ project: BookProject; collaborator: Collaborator }> {
+  const { payload, sameDevice } = await parseAndVerifyCoAuthorToken(token, {
+    requireDistinctDevice: options?.requireDistinctDevice ?? true,
+  });
+  const role = options?.roleOverride ?? payload.role;
+  const next = normalizeProjectDefaults(project);
+  const existing = (next.collaborators ?? []).find(
+    (c) => c.coAuthorKeyId && c.coAuthorKeyId === payload.coAuthorKeyId,
+  );
+  if (existing) {
+    throw new Error(`Co-Author Key ${payload.coAuthorKeyId} is already paired with this book.`);
+  }
+
+  const entry: Collaborator = {
+    id: newId('collab'),
+    name: payload.name,
+    penName: payload.penName,
+    role,
+    creditLine:
+      options?.creditLine?.trim() || `${COLLABORATOR_ROLE_LABELS[role]}: ${payload.penName}`,
+    authorKeyId: payload.coAuthorKeyId,
+    deviceId: payload.deviceId,
+    deviceLabel: payload.deviceLabel,
+    coAuthorKeyId: payload.coAuthorKeyId,
+    publicKeyJwk: payload.publicKeyJwk,
+    deviceSignature: payload.signature,
+    verifiedDevice: !sameDevice,
+    verifiedAt: new Date().toISOString(),
+    color: COLLAB_COLORS[(next.collaborators?.length ?? 0) % COLLAB_COLORS.length],
+    addedAt: new Date().toISOString(),
+    permissions: { ...DEFAULT_ROLE_PERMISSIONS[role] },
+  };
+  next.collaborators = [...(next.collaborators ?? []), entry];
+  return { project: next, collaborator: entry };
+}
+
 export function addCollaborator(
   project: BookProject,
   input: {
@@ -142,6 +399,10 @@ export function addCollaborator(
     role: CollaboratorRole;
     creditLine?: string;
     authorKeyId?: string;
+    deviceId?: string;
+    deviceLabel?: string;
+    coAuthorKeyId?: string;
+    verifiedDevice?: boolean;
     permissions?: Partial<CollaboratorPermissions>;
   },
 ): BookProject {
@@ -154,7 +415,11 @@ export function addCollaborator(
     creditLine:
       input.creditLine?.trim() ||
       `${COLLABORATOR_ROLE_LABELS[input.role]}: ${(input.penName || input.name).trim()}`,
-    authorKeyId: input.authorKeyId?.trim() || '',
+    authorKeyId: input.authorKeyId?.trim() || input.coAuthorKeyId?.trim() || '',
+    deviceId: input.deviceId,
+    deviceLabel: input.deviceLabel,
+    coAuthorKeyId: input.coAuthorKeyId,
+    verifiedDevice: input.verifiedDevice ?? false,
     color: COLLAB_COLORS[(next.collaborators?.length ?? 0) % COLLAB_COLORS.length],
     addedAt: new Date().toISOString(),
     permissions: {

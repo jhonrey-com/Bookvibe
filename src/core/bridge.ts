@@ -11,6 +11,7 @@ import {
   buildMarkdownExport,
   buildPlainTextExport,
 } from './export';
+import { buildTypesetPdfBytes } from './pdf-export';
 import type {
   AssociationReport,
   BookProject,
@@ -28,12 +29,11 @@ const DEFAULT_EXPORT_KEY = 'quillvibe.defaultExport.v2';
 const LEGACY_DEFAULT_EXPORT_KEY = 'bookvibe.defaultExport.v1';
 
 const VALID_EXPORT_FORMATS = new Set<string>([
-  '.quillvibe',
-  '.qvibe',
-  '.qvbook',
+  '.qv',
   '.qvbible',
   '.qvscene',
   '.qvstyle',
+  '.pdf',
   '.epub',
   '.md',
   '.html',
@@ -45,11 +45,12 @@ export function loadDefaultExportFormat(): ExportFormatId {
     const val =
       window.localStorage.getItem(DEFAULT_EXPORT_KEY) ??
       window.localStorage.getItem(LEGACY_DEFAULT_EXPORT_KEY);
+    if (val === '.quillvibe' || val === '.qvibe' || val === '.qvbook') return '.qv';
     if (val && VALID_EXPORT_FORMATS.has(val)) return val as ExportFormatId;
   } catch {
     // Fallback cleanly
   }
-  return '.quillvibe';
+  return '.qv';
 }
 
 export function saveDefaultExportFormat(fmt: ExportFormatId): void {
@@ -78,10 +79,12 @@ function triggerBrowserDownload(filename: string, data: BlobPart, mimeType: stri
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
 }
 
 export function sanitizeSlug(title: string): string {
@@ -173,7 +176,7 @@ async function readPickedBrowserFile(file: File): Promise<OpenedFileResult> {
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   const dotIdx = file.name.lastIndexOf('.');
-  const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.quillvibe';
+  const ext = dotIdx >= 0 ? file.name.slice(dotIdx).toLowerCase() : '.qv';
   const isBinary =
     bytes.length >= 4 &&
     bytes[0] === 0x51 &&
@@ -300,27 +303,88 @@ export async function exportBookAsMarkdown(project: BookProject): Promise<string
   return `${base}.md`;
 }
 
+export async function exportGenericFile(options: {
+  suggestedName: string;
+  extension: string;
+  description: string;
+  mimeType: string;
+  textContent?: string;
+  binaryBytes?: Uint8Array;
+}): Promise<string | null> {
+  const cleanExt = options.extension.replace(/^\./, '').toLowerCase();
+  const base = sanitizeSlug(options.suggestedName);
+  const fullName = `${base}.${cleanExt}`;
+
+  if (isTauriRuntime()) {
+    return tauriInvoke<string | null>('export_generic_file', {
+      payloadText: options.binaryBytes ? null : (options.textContent ?? ''),
+      payloadBase64: options.binaryBytes ? uint8ArrayToBase64(options.binaryBytes) : null,
+      suggestedName: base,
+      extension: cleanExt,
+      description: options.description,
+    });
+  }
+
+  if (options.binaryBytes) {
+    const copy = new Uint8Array(options.binaryBytes.byteLength);
+    copy.set(options.binaryBytes);
+    triggerBrowserDownload(fullName, copy.buffer, options.mimeType);
+  } else {
+    triggerBrowserDownload(fullName, options.textContent ?? '', options.mimeType);
+  }
+  return fullName;
+}
+
+export async function exportBookAsPdf(project: BookProject): Promise<string | null> {
+  const bytes = buildTypesetPdfBytes(project);
+  return exportGenericFile({
+    suggestedName: project.title,
+    extension: 'pdf',
+    description: 'Print-Ready Interior PDF',
+    mimeType: 'application/pdf',
+    binaryBytes: bytes,
+  });
+}
+
 export async function exportBookAsHtml(project: BookProject): Promise<string | null> {
-  const base = sanitizeSlug(project.title);
   const html = buildHtmlExport(project);
-  triggerBrowserDownload(`${base}.html`, html, 'text/html;charset=utf-8');
-  return `${base}.html`;
+  return exportGenericFile({
+    suggestedName: project.title,
+    extension: 'html',
+    description: 'Standalone Web Book (HTML)',
+    mimeType: 'text/html;charset=utf-8',
+    textContent: html,
+  });
 }
 
 export async function exportBookAsPlainText(project: BookProject): Promise<string | null> {
-  const base = sanitizeSlug(project.title);
   const txt = buildPlainTextExport(project);
-  triggerBrowserDownload(`${base}.txt`, txt, 'text/plain;charset=utf-8');
-  return `${base}.txt`;
+  return exportGenericFile({
+    suggestedName: project.title,
+    extension: 'txt',
+    description: 'Plain Text Manuscript',
+    mimeType: 'text/plain;charset=utf-8',
+    textContent: txt,
+  });
 }
 
-export function exportCoverPngDownload(pngDataUrl: string, bookTitle: string): void {
+export async function exportCoverPngDownload(
+  pngDataUrl: string,
+  bookTitle: string,
+  variant: 'front' | 'wrap' = 'front',
+): Promise<string | null> {
   const base = sanitizeSlug(bookTitle);
   const b64 = pngDataUrl.replace(/^data:image\/png;base64,/, '');
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  triggerBrowserDownload(`${base}-cover.png`, bytes.buffer, 'image/png');
+  return exportGenericFile({
+    suggestedName: variant === 'wrap' ? `${base}-full-wrap` : `${base}-cover`,
+    extension: 'png',
+    description: variant === 'wrap' ? 'Print Full Cover Wrap PNG' : 'Front Book Cover PNG',
+    mimeType: 'image/png',
+    binaryBytes: bytes,
+  });
 }
 
 export async function registerOsExtensions(): Promise<AssociationReport> {
@@ -432,17 +496,17 @@ export async function launchBluetoothShare(options?: BluetoothShareOptions): Pro
   }
 
   if (mode === 'receive') {
-    return 'Receive the .quillvibe file via device Bluetooth or Nearby Share, then pick it with Open File.';
+    return 'Receive the .qv file via device Bluetooth or Nearby Share, then pick it with Open File.';
   }
 
   if (options?.payloadBytes && options?.filename) {
     const copy = new Uint8Array(options.payloadBytes.byteLength);
     copy.set(options.payloadBytes);
     triggerBrowserDownload(options.filename, copy.buffer, 'application/octet-stream');
-    return 'Downloaded .quillvibe package.';
+    return 'Downloaded .qv package.';
   }
 
-  return 'Save the .quillvibe package and share it via Bluetooth, AirDrop, or Nearby Share.';
+  return 'Save the .qv package and share it via Bluetooth or OS Nearby Share.';
 }
 
 export async function minimizeDesktopWindow(): Promise<void> {

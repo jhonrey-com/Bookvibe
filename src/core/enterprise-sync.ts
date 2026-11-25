@@ -39,12 +39,12 @@ export const ENTERPRISE_SERVER_CONTRACT_DOC = `Quillvibe Self-Hosted / Website S
 
 2. Pull Latest Book Snapshot
    GET <baseUrl>/books/<bookSyncId>
-   Response 200 OK: Raw .quillvibe JSON envelope OR { "content": "<serialized .quillvibe JSON>", "sha256": "..." }
+   Response 200 OK: Raw .qv JSON envelope OR { "content": "<serialized .qv JSON>", "sha256": "..." }
 
 3. Push Book Revision
    PUT <baseUrl>/books/<bookSyncId>
    Headers: Content-Type: application/json, X-Quillvibe-Book-Id, X-Quillvibe-SHA256
-   Body: Serialized .quillvibe JSON envelope
+   Body: Serialized .qv JSON envelope
    Response 200/201/204 OK`;
 
 function isPrivateOrLocalHostname(hostname: string): boolean {
@@ -270,7 +270,7 @@ export async function pullBookFromEnterpriseServer(
   const candidateRaw =
     typeof parsedJson.content === 'string' && !parsedJson.magic ? parsedJson.content : text;
   // Validate envelope structure before returning to caller
-  parseExtensionFile(candidateRaw, 'enterprise-sync.quillvibe');
+  parseExtensionFile(candidateRaw, 'enterprise-sync.qv');
   const sha256 = await computeSha256Hex(candidateRaw);
   return { rawJson: candidateRaw, sha256 };
 }

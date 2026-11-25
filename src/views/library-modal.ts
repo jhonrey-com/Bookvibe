@@ -1,8 +1,10 @@
 import type { AppActions } from '../core/app-context';
 import { isTauriRuntime } from '../core/bridge';
 import {
+  checkBookOriginDevice,
   ensureAuthorIdentity,
   generateAuthorKeyPair,
+  sealWorkCopyright,
   signManuscript,
 } from '../core/identity';
 import {
@@ -297,19 +299,33 @@ export function showLibraryModal(actions: AppActions): void {
           el(
             'div',
             { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
-            el('div', {
-              className: 'bv-mono-tag',
-              text: `Author Key ID: ${identity.authorKeyId || 'Not created yet'} · ${identity.manuscriptDigest ? `Seal ${identity.manuscriptDigest.slice(0, 14)}…` : 'Not sealed yet'}`,
-            }),
+            (() => {
+              const origin = checkBookOriginDevice(activeBook);
+              return el('div', {
+                className: 'bv-mono-tag',
+                text: `Author Key: ${identity.authorKeyId || 'Not created'} · Origin Device: ${origin.originDeviceId || origin.localDeviceId}`,
+              });
+            })(),
             ...(isKeyLocked
-              ? [el('span', { className: 'qv-key-locked-pill', text: 'Locked Forever to Pen Name' })]
+              ? [
+                  el('span', {
+                    className: 'qv-key-locked-pill',
+                    text: checkBookOriginDevice(activeBook).isOriginDevice
+                      ? 'Origin Device Match'
+                      : 'External Copy',
+                  }),
+                ]
               : []),
           ),
-          ...(isKeyLocked
+          el('p', {
+            className: 'bv-label',
+            text: checkBookOriginDevice(activeBook).summary,
+          }),
+          ...(activeBook.copyrightOwnership
             ? [
-                el('p', {
-                  className: 'bv-label',
-                  text: `This permanent Author Key is bound forever to “${identity.penName || 'Author'}” and cannot be swapped or replaced. Create a new book for another pen name.`,
+                el('div', {
+                  className: 'bv-mono-tag',
+                  text: `Copyright Seal: ${activeBook.copyrightOwnership.sealId} · ${activeBook.copyrightOwnership.ownerName} · ${activeBook.copyrightOwnership.rightsTerritory}`,
                 }),
               ]
             : []),
@@ -357,12 +373,29 @@ export function showLibraryModal(actions: AppActions): void {
                     const signed = await signManuscript(actions.getState().project);
                     actions.mutateProject(() => signed);
                     renderBody(modalBody);
-                    actions.notify('Signed & sealed active book');
+                    actions.notify('Signed & sealed active book origin');
                   },
                 },
               },
               icon('check', 14),
-              'Sign & Seal Book',
+              'Sign & Seal Origin',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
+                    const sealed = await sealWorkCopyright(actions.getState().project);
+                    actions.mutateProject(() => sealed);
+                    renderBody(modalBody);
+                    actions.notify(`Registered Copyright Ownership Seal ${sealed.copyrightOwnership?.sealId ?? ''}`);
+                  },
+                },
+              },
+              icon('seal', 14),
+              'Seal Work Copyright',
             ),
           ),
         ),

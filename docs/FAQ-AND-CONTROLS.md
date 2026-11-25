@@ -7,18 +7,18 @@ Plain guide to every button, dropdown, slider, lever switch, section, and workfl
 ## 1. Frequently Asked Questions
 
 ### How do I run Quillvibe without installing anything?
-Open the live web studio at **`https://quillvibe.jhonrey.com/`**. No account or login is needed—everything runs directly in your browser. Click **Save** before closing so your `.quillvibe` file is saved safely on your computer rather than only inside temporary browser storage.
+Open the live web studio at **`https://quillvibe.jhonrey.com/`**. No account or login is needed—everything runs directly in your browser. Click **Save** before closing so your `.qv` file is saved safely on your computer rather than only inside temporary browser storage.
 
 ### How do I install Quillvibe as a desktop app?
-Download the installer for your OS from **`https://github.com/jhonrey-com/Quillvibe/releases/latest`**:
+Download the installer for your OS from **`https://github.com/jhonrey-com/Quillvibe/releases/latest`** (published under **`jhonrey.com`**):
 - **Windows:** `.msi` installer or NSIS `.exe`
 - **macOS:** Universal `.dmg` (Apple Silicon & Intel)
 - **Linux:** `.AppImage` or `.deb`
 
-Desktop installers automatically save projects to disk on your device, use a custom frameless titlebar, and register `.quillvibe`, `.qvibe`, `.qvbook`, `.qvbible`, `.qvscene`, and `.qvstyle` double-click associations plus local Wi-Fi PIN sync, Bluetooth transfer, multi-window book editing, and `F11` Immersive Fullscreen mode.
+Desktop installers open maximized on first launch, include enterprise Minimize/Maximize/Close controls on the Welcome screen, automatically save projects to disk on your device, and register `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` double-click associations plus local Wi-Fi PIN sync, Bluetooth transfer, multi-window book editing, and `F11` Immersive Fullscreen mode (with movable/collapsible HUD and top-edge screen hover strip).
 
 ### What works in the browser (`https://quillvibe.jhonrey.com/`) vs. desktop executables?
-Writing, proofreading, Corkboard, Outline, Story Bible, Story Graph, Typeset & Cover Studio, mobile layout, EPUB/Markdown/HTML/Print PDF export, co-author credits & restrictions, Self-Hosted HTTPS sync, `/course` Academy lessons, and importing/exporting protected `.quillvibe` files all work directly in desktop and mobile browsers.
+Writing (with strict word spellcheck off by default and toggleable in Settings), global `Ctrl+Z` / `Ctrl+Y` undo/redo, proofreading, Corkboard, Outline, Story Bible, Story Graph, Typeset & Cover Studio, mobile layout, real PDF 1.4 export + EPUB/Markdown/HTML, Origin Author & Device Keys (`QVK-`/`QVD-`), Work Copyright Seals (`QVC-`), Verified Multi-Device Co-Author tokens (`QVCA1.`), Self-Hosted HTTPS sync, `/course` Academy lessons, and importing/exporting protected `.qv` files all work directly in desktop and mobile browsers.
 
 Features that require direct operating-system APIs — **Immersive Fullscreen HUD (`F11`)**, **Multi-Window parallel book windows**, **Same-Wi-Fi LAN TCP Sync**, launching **OS Bluetooth File Transfer**, **OS double-click file-type registration**, and **automatic background saving to disk** — are shown only in the native desktop executable and documented in Help and `/course`.
 

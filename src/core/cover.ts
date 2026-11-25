@@ -443,7 +443,8 @@ async function drawGraphicLayersOnRect(
   boxW: number,
   boxH: number,
 ): Promise<void> {
-  for (const layer of layers) {
+  const ordered = [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  for (const layer of ordered) {
     if (layer.visible === false) continue;
     const img = await loadImage(layer.dataUrl);
     if (!img) continue;
@@ -476,7 +477,8 @@ function drawShapeLayersOnRect(
   boxW: number,
   boxH: number,
 ): void {
-  for (const s of shapes) {
+  const ordered = [...shapes].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  for (const s of ordered) {
     if (s.visible === false) continue;
     const w = (s.widthPct / 100) * boxW;
     const h = s.shape === 'line' ? Math.max(2, s.strokeWidth || 2) : (s.heightPct / 100) * boxH;
@@ -530,7 +532,8 @@ function drawCustomTextLayersOnRect(
   boxH: number,
 ): void {
   const scaleFactor = boxW / 400;
-  for (const tl of textLayers) {
+  const ordered = [...textLayers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  for (const tl of ordered) {
     if (tl.visible === false || !tl.text.trim()) continue;
     const pxSize = Math.round(tl.fontSize * scaleFactor);
     const fontStack = tl.fontFamily ? resolveEffectiveFontCss('garamond', tl.fontFamily) : defaultFontStack;

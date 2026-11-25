@@ -2,9 +2,8 @@
 *.bat text eol=crlf
 
 # Binary identification for official Quillvibe QVBX containers
-*.quillvibe binary
-*.qvibe binary
-*.qvbook binary
+*.qv binary
 *.qvbible binary
 *.qvscene binary
 *.qvstyle binary
+*.quillvibe binary

@@ -1,7 +1,8 @@
 {
   "name": "quillvibe",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
+  "author": "jhonrey.com",
   "description": "Open-source cross-platform book writing, worldbuilding, proofreading, cover studio, and EPUB/PDF typesetting app.",
   "type": "module",
   "license": "MIT",

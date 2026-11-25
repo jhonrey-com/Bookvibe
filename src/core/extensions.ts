@@ -41,34 +41,14 @@ export const QUILLVIBE_FORMAT_VERSION = '2.0.0' as const;
 
 export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
   {
-    extension: '.quillvibe',
-    bareExtension: 'quillvibe',
-    name: 'Quillvibe Master Project',
-    shortLabel: 'Master Project',
-    mimeType: 'application/vnd.quillvibe.project',
-    uti: 'app.quillvibe.project',
-    progId: 'Quillvibe.Project.2',
-    purpose: 'Protected QVBX archive: manuscript, snapshots, story bible, graph, cover, and typography.',
-  },
-  {
-    extension: '.qvibe',
-    bareExtension: 'qvibe',
-    name: 'Quillvibe Compact Project',
-    shortLabel: 'Compact Project',
-    mimeType: 'application/vnd.quillvibe.project',
-    uti: 'app.quillvibe.compact-project',
-    progId: 'Quillvibe.CompactProject.2',
-    purpose: 'Short-alias protected QVBX project container equivalent to .quillvibe.',
-  },
-  {
-    extension: '.qvbook',
-    bareExtension: 'qvbook',
-    name: 'Quillvibe Manuscript Package',
-    shortLabel: 'Manuscript',
-    mimeType: 'application/vnd.quillvibe.manuscript',
-    uti: 'app.quillvibe.manuscript',
-    progId: 'Quillvibe.Manuscript.2',
-    purpose: 'Portable manuscript hierarchy (Parts, Chapters, Scenes), credits, and front matter.',
+    extension: '.qv',
+    bareExtension: 'qv',
+    name: 'Quillvibe Workspace Book',
+    shortLabel: 'Book Workspace',
+    mimeType: 'application/vnd.quillvibe.workspace',
+    uti: 'app.quillvibe.workspace',
+    progId: 'Quillvibe.Workspace.2',
+    purpose: 'Protected QVBX whole-book archive: manuscript, snapshots, story bible, graph, cover, copyright seal, and typography.',
   },
   {
     extension: '.qvbible',
@@ -106,6 +86,36 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
  * Legacy import-only definitions. These extensions are never exported or opened via double-click.
  */
 export const LEGACY_IMPORT_EXTENSIONS: readonly ExtensionDefinition[] = [
+  {
+    extension: '.quillvibe',
+    bareExtension: 'quillvibe',
+    name: 'Legacy Quillvibe v2.0 Archive',
+    shortLabel: 'Legacy .quillvibe',
+    mimeType: 'application/vnd.quillvibe.project',
+    uti: 'app.quillvibe.legacy-project',
+    progId: 'Legacy.Quillvibe.2',
+    purpose: 'Legacy import-only full project archive.',
+  },
+  {
+    extension: '.qvibe',
+    bareExtension: 'qvibe',
+    name: 'Legacy Compact Archive',
+    shortLabel: 'Legacy .qvibe',
+    mimeType: 'application/vnd.quillvibe.project',
+    uti: 'app.quillvibe.legacy-compact',
+    progId: 'Legacy.Qvibe.2',
+    purpose: 'Legacy import-only compact project archive.',
+  },
+  {
+    extension: '.qvbook',
+    bareExtension: 'qvbook',
+    name: 'Legacy Manuscript Package',
+    shortLabel: 'Legacy .qvbook',
+    mimeType: 'application/vnd.quillvibe.manuscript',
+    uti: 'app.quillvibe.legacy-manuscript',
+    progId: 'Legacy.Qvbook.2',
+    purpose: 'Legacy import-only manuscript package.',
+  },
   {
     extension: '.bookvibe',
     bareExtension: 'bookvibe',
@@ -234,27 +244,8 @@ export function buildQuillvibeEnvelope(
   let payload: unknown;
 
   switch (extension) {
-    case '.quillvibe':
-    case '.qvibe': {
+    case '.qv': {
       payload = project;
-      break;
-    }
-    case '.qvbook': {
-      const manuscriptPayload: QuillvibeManuscriptPayload = {
-        title: project.title,
-        subtitle: project.subtitle,
-        author: project.author,
-        dedication: project.dedication,
-        copyrightNotice: project.copyrightNotice,
-        language: project.language,
-        wordTarget: project.wordTarget,
-        parts: project.parts,
-        authorIdentity: project.authorIdentity,
-        collaborators: project.collaborators,
-        cover: project.cover,
-        publishing: project.publishing,
-      };
-      payload = manuscriptPayload;
       break;
     }
     case '.qvbible': {
@@ -331,8 +322,7 @@ export async function serializeQuillvibeBinary(
   },
 ): Promise<Uint8Array> {
   const envelope = buildQuillvibeEnvelope(extension, rawProject, options);
-  const includesAuthorIdentity =
-    extension === '.quillvibe' || extension === '.qvibe' || extension === '.qvbook';
+  const includesAuthorIdentity = extension === '.qv';
   const encodeOpts: EncodeQvbxOptions = {
     password: options?.password,
     sealAuthorKeyId: includesAuthorIdentity ? rawProject.authorIdentity?.authorKeyId : undefined,
@@ -342,7 +332,7 @@ export async function serializeQuillvibeBinary(
 }
 
 export type ParsedQuillvibeFile =
-  | { extension: '.quillvibe' | '.qvibe' | '.bookvibe' | '.bvibe'; payload: BookProject }
+  | { extension: '.qv' | '.quillvibe' | '.qvibe' | '.bookvibe' | '.bvibe'; payload: BookProject }
   | { extension: '.qvbook' | '.bvbook'; payload: QuillvibeManuscriptPayload }
   | { extension: '.qvbible' | '.bvbible'; payload: QuillvibeBiblePayload }
   | { extension: '.qvscene' | '.bvscene'; payload: QuillvibeScenePayload }
@@ -361,7 +351,7 @@ function validateDecodedEnvelope(
   if (parsed.magic !== QUILLVIBE_MAGIC && parsed.magic !== LEGACY_BOOKVIBE_MAGIC) {
     if (Array.isArray(parsed.parts) && isRecord(parsed.bible) && typeof parsed.title === 'string') {
       return {
-        extension: '.quillvibe',
+        extension: '.qv',
         payload: normalizeProjectDefaults(parsed as unknown as BookProject),
       };
     }
@@ -387,6 +377,7 @@ function validateDecodedEnvelope(
   const payload = parsed.payload;
 
   switch (extension) {
+    case '.qv':
     case '.quillvibe':
     case '.qvibe':
     case '.bookvibe':
@@ -491,6 +482,7 @@ export async function parseQuillvibeInput(
   }
 
   if (
+    parsed.extension === '.qv' ||
     parsed.extension === '.quillvibe' ||
     parsed.extension === '.qvibe' ||
     parsed.extension === '.bookvibe' ||
@@ -535,6 +527,7 @@ export function applyOpenedExtensionFile(
   currentProject: BookProject,
 ): AppliedExtensionResult {
   switch (parsed.extension) {
+    case '.qv':
     case '.quillvibe':
     case '.qvibe':
     case '.bookvibe':

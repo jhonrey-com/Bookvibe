@@ -58,20 +58,20 @@ export const TOOLTIP_CATALOG = {
   },
   openFile: {
     title: 'Open File',
-    short: 'Open .quillvibe, .qv* or .qvext files.',
+    short: 'Open .qv, .qv* or .qvext files.',
     shortcut: 'Ctrl+O',
-    details: 'Decodes protected QVBX Quillvibe files directly into the matching workspace view. Import legacy .bookvibe files from Settings -> Migration.',
+    details: 'Decodes protected QVBX Quillvibe files directly into the matching workspace view. Import legacy .quillvibe or .bookvibe files from Settings -> Migration.',
   },
   saveDefault: {
     title: 'Export Using Selected Format',
     short: 'Saves or exports using the active dropdown format.',
     shortcut: 'Ctrl+S',
-    details: 'Exports immediately in the format chosen beside this button (.quillvibe, .epub, .md, .html, .txt, or .qv*).',
+    details: 'Exports immediately in the format chosen beside this button (.qv, .pdf, .epub, .md, .html, .txt, or .qv*).',
   },
   defaultFormatSelect: {
     title: 'Default Export Format',
     short: 'Choose which format Save/Export outputs by default.',
-    details: 'Persists your preferred export extension across sessions. Master .quillvibe preserves everything; .epub builds an eBook with cover.',
+    details: 'Persists your preferred export extension across sessions. .qv preserves everything; .pdf builds trim-sized pages; .epub builds an eBook with cover.',
   },
   extensionsManager: {
     title: 'Extensions & Formats',
@@ -90,7 +90,7 @@ export const TOOLTIP_CATALOG = {
   tierSwitch: {
     title: 'Workspace Tool Tier',
     short: 'Change between Basic, Intermediate, and Advanced tools.',
-    details: 'Basic keeps the screen clean like Word or Google Docs; Intermediate adds Corkboard, Outline & Proofread; Advanced unlocks Cover Studio, Story Bible & Graph.',
+    details: 'Basic keeps the screen clean and focused; Intermediate adds Corkboard, Outline & Proofread; Advanced opens Cover Studio, Story Bible & Graph.',
   },
   themeSwitch: {
     title: 'Application Theme',
@@ -227,6 +227,6 @@ export const TOOLTIP_CATALOG = {
   },
   extFormats: {
     title: 'Official Formats & Registration',
-    short: 'Inspect protected Quillvibe extensions (.quillvibe, .qv*).',
+    short: 'Inspect protected Quillvibe extensions (.qv, .qv*).',
   },
 } satisfies Record<string, TooltipSpec>;

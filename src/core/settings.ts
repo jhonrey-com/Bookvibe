@@ -39,6 +39,10 @@ export const DEFAULT_SETTINGS: QuillvibeSettings = {
   immersiveShowAlarm: true,
   alarmRingtone: 'warm-chime',
   alarmVolume: 0.65,
+  enableSpellcheck: false,
+  immersiveHudX: -1,
+  immersiveHudY: 12,
+  immersiveHudCollapsed: false,
 };
 
 let memorySettings: QuillvibeSettings = { ...DEFAULT_SETTINGS };
@@ -112,6 +116,10 @@ export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSett
     immersiveShowAlarm: raw.immersiveShowAlarm !== undefined ? Boolean(raw.immersiveShowAlarm) : true,
     alarmRingtone: normalizeAlarmRingtone(raw.alarmRingtone),
     alarmVolume: cleanVol,
+    enableSpellcheck: raw.enableSpellcheck !== undefined ? Boolean(raw.enableSpellcheck) : false,
+    immersiveHudX: Number.isFinite(Number(raw.immersiveHudX)) ? Math.round(Number(raw.immersiveHudX)) : -1,
+    immersiveHudY: Number.isFinite(Number(raw.immersiveHudY)) ? clampInt(raw.immersiveHudY, 0, 2400, 12) : 12,
+    immersiveHudCollapsed: Boolean(raw.immersiveHudCollapsed),
   };
 }
 

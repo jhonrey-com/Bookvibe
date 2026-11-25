@@ -13,28 +13,12 @@ pub struct ExtensionSpec {
 
 pub const QUILLVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
     ExtensionSpec {
-        dot_ext: ".quillvibe",
-        bare_ext: "quillvibe",
-        prog_id: "Quillvibe.Project.2",
-        name: "Quillvibe Master Project",
-        mime_type: "application/vnd.quillvibe.project",
-        uti: "app.quillvibe.project",
-    },
-    ExtensionSpec {
-        dot_ext: ".qvibe",
-        bare_ext: "qvibe",
-        prog_id: "Quillvibe.CompactProject.2",
-        name: "Quillvibe Compact Project",
-        mime_type: "application/vnd.quillvibe.project",
-        uti: "app.quillvibe.compact-project",
-    },
-    ExtensionSpec {
-        dot_ext: ".qvbook",
-        bare_ext: "qvbook",
-        prog_id: "Quillvibe.Manuscript.2",
-        name: "Quillvibe Manuscript Package",
-        mime_type: "application/vnd.quillvibe.manuscript",
-        uti: "app.quillvibe.manuscript",
+        dot_ext: ".qv",
+        bare_ext: "qv",
+        prog_id: "Quillvibe.Workspace.2",
+        name: "Quillvibe Book Workspace",
+        mime_type: "application/vnd.quillvibe.workspace",
+        uti: "app.quillvibe.workspace",
     },
     ExtensionSpec {
         dot_ext: ".qvbible",
@@ -63,7 +47,7 @@ pub const QUILLVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
 ];
 
 pub const LEGACY_IMPORT_EXTENSIONS: &[&str] = &[
-    "bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle",
+    "quillvibe", "qvibe", "qvbook", "bookvibe", "bvibe", "bvbook", "bvbible", "bvscene", "bvstyle",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -407,20 +391,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_only_six_official_quillvibe_extensions() {
-        assert_eq!(QUILLVIBE_EXTENSION_SPECS.len(), 6);
-        for ext in [
-            "quillvibe", ".qvibe", "QVBOOK", ".qvbible", "qvscene", ".qvstyle",
-        ] {
+    fn validates_only_four_official_quillvibe_extensions() {
+        assert_eq!(QUILLVIBE_EXTENSION_SPECS.len(), 4);
+        for ext in ["qv", ".qvbible", "QVSCENE", ".qvstyle"] {
             assert!(find_spec_by_extension(ext).is_some(), "missing spec for {ext}");
         }
-        // Legacy extensions must NOT register as supported double-click paths
-        for legacy in ["bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle"] {
+        // Consolidated / legacy extensions must NOT register as supported double-click paths
+        for legacy in [
+            "quillvibe", ".qvibe", "qvbook", "bookvibe", ".bvibe", "BVBOOK", ".bvbible", "bvscene", ".bvstyle",
+        ] {
             assert!(find_spec_by_extension(legacy).is_none(), "legacy spec should not auto-open: {legacy}");
         }
         assert!(find_spec_by_extension(".txt").is_none());
+        assert!(is_supported_quillvibe_path(Path::new("novel.qv")));
         assert!(is_supported_quillvibe_path(Path::new("draft.qvscene")));
+        assert!(!is_supported_quillvibe_path(Path::new("draft.quillvibe")));
         assert!(!is_supported_quillvibe_path(Path::new("draft.bvscene")));
+        assert!(is_importable_legacy_path(Path::new("draft.quillvibe")));
         assert!(is_importable_legacy_path(Path::new("draft.bvscene")));
         assert!(!is_supported_quillvibe_path(Path::new("notes.md")));
     }
@@ -428,9 +415,10 @@ mod tests {
     #[test]
     fn generates_valid_freedesktop_mime_xml_and_desktop_entry() {
         let xml = generate_freedesktop_mime_xml();
-        assert!(xml.contains("application/vnd.quillvibe.project"));
+        assert!(xml.contains("application/vnd.quillvibe.workspace"));
         assert!(!xml.contains("bookvibe"));
         assert!(xml.contains("QVBX"));
+        assert!(xml.contains("*.qv"));
         assert!(xml.contains("*.qvstyle"));
 
         let desktop = generate_linux_desktop_entry("/opt/quillvibe/quillvibe");

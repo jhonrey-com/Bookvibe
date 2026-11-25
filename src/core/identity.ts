@@ -1,7 +1,61 @@
 import { getPublisherProvenance } from './provenance';
-import type { AuthorIdentity, BookProject } from './types';
+import type { AuthorIdentity, BookProject, CopyrightOwnershipRecord } from './types';
 
 const PERMANENT_KEYS_STORAGE_KEY = 'quillvibe.permanentAuthorKeys.v1';
+const LOCAL_DEVICE_ID_KEY = 'quillvibe.localDeviceId.v1';
+const LOCAL_DEVICE_NAME_KEY = 'quillvibe.localDeviceName.v1';
+let memoryDeviceId = '';
+
+export function getOrCreateLocalDeviceId(): string {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const existing = window.localStorage.getItem(LOCAL_DEVICE_ID_KEY);
+      if (existing && /^QVD-[0-9A-F]{12}$/.test(existing)) {
+        return existing;
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+  if (memoryDeviceId) return memoryDeviceId;
+
+  let hex = '';
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    hex = bytesToHex(crypto.getRandomValues(new Uint8Array(6))).toUpperCase();
+  } else {
+    hex = Math.random().toString(16).slice(2, 14).padEnd(12, '0').slice(0, 12).toUpperCase();
+  }
+  const id = `QVD-${hex}`;
+  memoryDeviceId = id;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(LOCAL_DEVICE_ID_KEY, id);
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return id;
+}
+
+export function getLocalDeviceLabel(): string {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const custom = window.localStorage.getItem(LOCAL_DEVICE_NAME_KEY);
+      if (custom && custom.trim()) return custom.trim();
+    } catch {
+      // Ignore
+    }
+  }
+  const plat = typeof navigator !== 'undefined' ? navigator.platform || navigator.userAgent : 'Desktop';
+  const shortHost = /win/i.test(plat)
+    ? 'Windows Workstation'
+    : /mac/i.test(plat)
+      ? 'Mac Workstation'
+      : /linux/i.test(plat)
+        ? 'Linux Workstation'
+        : 'Quillvibe Device';
+  return `${shortHost} (${getOrCreateLocalDeviceId()})`;
+}
 
 export interface PermanentAuthorKeyRecord {
   penName: string;
@@ -246,6 +300,10 @@ export async function signManuscript(project: BookProject): Promise<BookProject>
     );
   }
 
+  const localDeviceId = getOrCreateLocalDeviceId();
+  const localDeviceLabel = getLocalDeviceLabel();
+  const nowIso = new Date().toISOString();
+
   identity = {
     ...identity,
     penName: targetPen,
@@ -254,6 +312,9 @@ export async function signManuscript(project: BookProject): Promise<BookProject>
     privateKeyJwk: identity.privateKeyJwk || permanent.privateKeyJwk,
     keyCreatedAt: identity.keyCreatedAt || permanent.createdAt,
     keyFingerprint: identity.keyFingerprint || permanent.keyFingerprint,
+    originDeviceId: identity.originDeviceId || localDeviceId,
+    originDeviceName: identity.originDeviceName || localDeviceLabel,
+    originVerifiedAt: identity.originVerifiedAt || nowIso,
     keyLockedForever: true,
   };
 
@@ -381,7 +442,7 @@ export async function verifyProjectAuthorKeyIntegrity(
 }
 
 /**
- * Removes private signing keys before saving portable `.quillvibe` / `.qvbook` files or syncing.
+ * Removes private signing keys before saving portable `.qv` files or syncing.
  */
 export function stripPrivateAuthorSecrets(project: BookProject): BookProject {
   const clean = structuredClone(project);
@@ -390,4 +451,137 @@ export function stripPrivateAuthorSecrets(project: BookProject): BookProject {
     clean.authorIdentity = safeIdentity;
   }
   return clean;
+}
+
+export interface OriginDeviceCheckResult {
+  isOriginDevice: boolean;
+  hasOriginRecord: boolean;
+  originDeviceId: string;
+  originDeviceName: string;
+  localDeviceId: string;
+  penName: string;
+  authorKeyId: string;
+  summary: string;
+}
+
+export function checkBookOriginDevice(project: BookProject): OriginDeviceCheckResult {
+  const localDeviceId = getOrCreateLocalDeviceId();
+  const id = project.authorIdentity;
+  const originDeviceId = id?.originDeviceId || '';
+  const originDeviceName = id?.originDeviceName || '';
+  const penName = id?.penName || project.author || 'Primary Author';
+  const authorKeyId = id?.authorKeyId || '';
+
+  if (!originDeviceId) {
+    return {
+      isOriginDevice: false,
+      hasOriginRecord: false,
+      originDeviceId: '',
+      originDeviceName: '',
+      localDeviceId,
+      penName,
+      authorKeyId,
+      summary: `Unbound origin device. Sign manuscript on this device (${localDeviceId}) to record where it originated.`,
+    };
+  }
+
+  const isOriginDevice = originDeviceId === localDeviceId;
+  return {
+    isOriginDevice,
+    hasOriginRecord: true,
+    originDeviceId,
+    originDeviceName,
+    localDeviceId,
+    penName,
+    authorKeyId,
+    summary: isOriginDevice
+      ? `Origin Match: Created and sealed on this device (${originDeviceId}) by ${penName}.`
+      : `External Device Copy: Originated on ${originDeviceName || originDeviceId}; currently opened on ${localDeviceId}.`,
+  };
+}
+
+/**
+ * Registers and cryptographically seals a Work Copyright & Ownership record (`QVC-`)
+ * inside the book project (separate from the permanent Author & Origin Device Key).
+ */
+export async function sealWorkCopyright(
+  project: BookProject,
+  options?: {
+    ownerName?: string;
+    rightsTerritory?: string;
+    editionNumber?: string;
+  },
+): Promise<BookProject> {
+  const signed = await signManuscript(project);
+  const ownerName =
+    options?.ownerName?.trim() ||
+    signed.copyrightOwnership?.ownerName ||
+    signed.authorIdentity?.penName ||
+    signed.author ||
+    'Author';
+  const rightsTerritory =
+    options?.rightsTerritory?.trim() ||
+    signed.publishing?.rightsTerritory ||
+    signed.copyrightOwnership?.rightsTerritory ||
+    'Worldwide';
+  const editionNumber =
+    options?.editionNumber?.trim() ||
+    signed.publishing?.editionNumber ||
+    signed.copyrightOwnership?.editionNumber ||
+    '1st Edition';
+
+  const noticeYear = new Date().getFullYear();
+  const copyrightNotice =
+    signed.copyrightNotice?.trim() ||
+    `Copyright © ${noticeYear} ${ownerName}. All rights reserved.`;
+
+  const canonicalWork = buildCanonicalManuscriptText(signed);
+  const workDigestSha256 = await computeSha256Hex(
+    `${canonicalWork}\nCOPYRIGHT:${ownerName}|${rightsTerritory}|${copyrightNotice}`,
+  );
+  const sealId = `QVC-${workDigestSha256.slice(0, 12).toUpperCase()}`;
+
+  let certificateSignature = workDigestSha256;
+  const privJson = signed.authorIdentity?.privateKeyJwk;
+  if (privJson && typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const parsedPriv = JSON.parse(privJson) as JsonWebKey;
+      if (parsedPriv.kty === 'EC') {
+        const key = await crypto.subtle.importKey(
+          'jwk',
+          parsedPriv,
+          { name: 'ECDSA', namedCurve: 'P-256' },
+          false,
+          ['sign'],
+        );
+        const raw = new TextEncoder().encode(`${sealId}:${workDigestSha256}`);
+        const copy = new Uint8Array(raw.byteLength);
+        copy.set(raw);
+        const sigBuf = await crypto.subtle.sign(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          key,
+          copy.buffer,
+        );
+        certificateSignature = `${workDigestSha256}.${bytesToHex(new Uint8Array(sigBuf))}`;
+      }
+    } catch {
+      // Keep SHA-256 certificate digest
+    }
+  }
+
+  const record: CopyrightOwnershipRecord = {
+    sealId,
+    ownerName,
+    copyrightNotice,
+    workTitle: signed.title,
+    registeredAt: new Date().toISOString(),
+    workDigestSha256,
+    certificateSignature,
+    rightsTerritory,
+    editionNumber,
+  };
+
+  signed.copyrightNotice = copyrightNotice;
+  signed.copyrightOwnership = record;
+  return signed;
 }

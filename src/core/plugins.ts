@@ -218,7 +218,7 @@ export const INTEGRATED_EXTENSIONS: readonly QuillvibePluginManifest[] = [
       {
         id: 'f-caslon',
         family: 'Archival Caslon',
-        cssStack: '"Libre Caslon Text", "Adobe Caslon Pro", Georgia, serif',
+        cssStack: '"Libre Caslon Text", "Caslon Old Face", Georgia, serif',
         category: 'serif',
       },
       {

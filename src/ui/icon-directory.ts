@@ -38,7 +38,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     name: 'Open Quillvibe File',
     location: 'Topbar',
     shortcut: 'Ctrl+O',
-    meaning: 'Loads protected .quillvibe, .qv* files and .qvext extension bundles.',
+    meaning: 'Loads protected .qv, .qvbible, .qvscene, .qvstyle files and .qvext extension bundles.',
   },
   {
     icon: 'save',
@@ -57,7 +57,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'settings',
     name: 'Settings, Levels & Appearance',
     location: 'Topbar',
-    meaning: 'Switch Basic/Intermediate/Advanced tool levels, Ivory/Parchment/Obsidian themes, custom fonts, and Word/Google Docs/legacy .bookvibe import.',
+    meaning: 'Switch Basic/Intermediate/Advanced tool levels, Ivory/Parchment/Obsidian themes, spellcheck toggle, custom fonts, and .docx/.html/legacy archive import.',
   },
   {
     icon: 'sliders-tier',
@@ -124,7 +124,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'typeset',
     name: 'Typeset & Cover Studio',
     location: 'Workspace Switcher',
-    meaning: 'Book interior page preview, Canva-grade front/back/spine cover studio, release checklist, and EPUB/PDF export.',
+    meaning: 'Book interior page preview, layered front/back/spine cover studio, release checklist, and EPUB/PDF export.',
   },
   {
     icon: 'draft-sheet',
@@ -296,7 +296,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'bluetooth',
     name: 'Bluetooth / Nearby Share',
     location: 'Publishing & Sync',
-    meaning: 'Save and merge signed .quillvibe files over OS Bluetooth or Nearby Share offline (Desktop App).',
+    meaning: 'Save and merge signed .qv files over OS Bluetooth or Nearby Share offline (Desktop App).',
   },
   {
     icon: 'layers',
@@ -314,7 +314,7 @@ export const ICON_DIRECTORY: readonly IconDirectoryEntry[] = [
     icon: 'file-code',
     name: 'Official Document Formats',
     location: 'Publishing & Sync',
-    meaning: 'Overview and OS association status for protected QVBX Quillvibe formats (.quillvibe, .qv*).',
+    meaning: 'Overview and OS association status for protected QVBX Quillvibe formats (.qv, .qvbible, .qvscene, .qvstyle).',
   },
   {
     icon: 'server',

@@ -154,7 +154,8 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
     attrs: {
       placeholder: 'Begin writing this scene…',
-      spellcheck: 'true',
+      spellcheck: state.settings.enableSpellcheck ? 'true' : 'false',
+      autocorrect: state.settings.enableSpellcheck ? 'on' : 'off',
       'aria-label': 'Scene prose editor',
       ...(sessionPerms.canEditProse ? {} : { readonly: '' }),
     },
@@ -407,6 +408,26 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     el(
       'div',
       { className: 'bv-subbar-group' },
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: { title: 'Undo (Ctrl+Z)', short: 'Undo the previous edit across this book.' },
+          attrs: { type: 'button', 'aria-label': 'Undo edit', disabled: !actions.canUndo() },
+          on: { click: () => actions.undo() },
+        },
+        icon('undo', 14),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: { title: 'Redo (Ctrl+Y)', short: 'Re-apply the reverted edit.' },
+          attrs: { type: 'button', 'aria-label': 'Redo edit', disabled: !actions.canRedo() },
+          on: { click: () => actions.redo() },
+        },
+        icon('redo', 14),
+      ),
       el('button', {
         className: 'bv-fmt-btn',
         text: 'B',

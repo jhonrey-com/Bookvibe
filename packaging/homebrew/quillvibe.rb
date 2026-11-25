@@ -1,10 +1,10 @@
 cask "quillvibe" do
-  version "2.1.0"
+  version "2.2.0"
   sha256 :no_check
 
   url "https://github.com/jhonrey-com/Quillvibe/releases/download/v#{version}/Quillvibe_#{version}_universal.dmg"
   name "Quillvibe"
-  desc "Desktop book writing, proofreading, worldbuilding, cover studio, and typesetting app"
+  desc "Desktop book writing, proofreading, story bible, cover studio, and typesetting app"
   homepage "https://github.com/jhonrey-com/Quillvibe"
 
   app "Quillvibe.app"

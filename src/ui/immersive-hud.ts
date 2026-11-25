@@ -36,6 +36,99 @@ export function mountImmersiveHud(
   });
   document.body.appendChild(hudEl);
 
+  // Top-edge mouse hover dropdown bar (Windows Virtual Desktop style)
+  let topDropPinned = false;
+  let hudHiddenByUser = false;
+  const topStripHoverZone = el('div', {
+    className: 'qv-imm-top-sensor',
+    attrs: { 'aria-hidden': 'true' },
+  });
+  const topStripDrawer = el('div', {
+    className: 'qv-imm-top-dropdown',
+    attrs: { role: 'toolbar', 'aria-label': 'Immersive Screen Top Controls' },
+  });
+  document.body.append(topStripHoverZone, topStripDrawer);
+
+  const showTopDropdown = () => {
+    if (!actions.getState().immersiveMode) return;
+    topStripDrawer.classList.add('is-open');
+  };
+  let topHideTimer: number | null = null;
+  const scheduleHideTopDropdown = () => {
+    if (topDropPinned) return;
+    if (topHideTimer) window.clearTimeout(topHideTimer);
+    topHideTimer = window.setTimeout(() => {
+      if (!topStripDrawer.matches(':hover') && !topStripHoverZone.matches(':hover')) {
+        topStripDrawer.classList.remove('is-open');
+      }
+    }, 240);
+  };
+  topStripHoverZone.addEventListener('mouseenter', showTopDropdown);
+  topStripDrawer.addEventListener('mouseenter', () => {
+    if (topHideTimer) window.clearTimeout(topHideTimer);
+    showTopDropdown();
+  });
+  topStripHoverZone.addEventListener('mouseleave', scheduleHideTopDropdown);
+  topStripDrawer.addEventListener('mouseleave', scheduleHideTopDropdown);
+
+  const onWindowMouseMove = (e: MouseEvent) => {
+    if (!actions.getState().immersiveMode) return;
+    if (e.clientY <= 12) {
+      if (topHideTimer) window.clearTimeout(topHideTimer);
+      showTopDropdown();
+    }
+  };
+  window.addEventListener('mousemove', onWindowMouseMove, { passive: true });
+
+  const applyHudPosition = () => {
+    const s = actions.getState().settings;
+    if (s.immersiveHudX >= 0) {
+      const maxX = Math.max(8, window.innerWidth - Math.max(180, hudEl.offsetWidth) - 8);
+      const maxY = Math.max(8, window.innerHeight - Math.max(48, hudEl.offsetHeight) - 8);
+      hudEl.style.left = `${Math.min(maxX, Math.max(8, s.immersiveHudX))}px`;
+      hudEl.style.top = `${Math.min(maxY, Math.max(8, s.immersiveHudY))}px`;
+      hudEl.style.transform = 'none';
+    } else {
+      hudEl.style.left = '50%';
+      hudEl.style.top = `${Math.max(10, Math.min(200, s.immersiveHudY || 12))}px`;
+      hudEl.style.transform = 'translateX(-50%)';
+    }
+  };
+
+  let draggingHud = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  const startHudDrag = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    draggingHud = true;
+    const rect = hudEl.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    hudEl.classList.add('is-dragging');
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  window.addEventListener('pointermove', (e) => {
+    if (!draggingHud) return;
+    const maxX = Math.max(8, window.innerWidth - Math.max(160, hudEl.offsetWidth) - 8);
+    const maxY = Math.max(8, window.innerHeight - Math.max(40, hudEl.offsetHeight) - 8);
+    const nextX = Math.round(Math.min(maxX, Math.max(8, e.clientX - dragOffsetX)));
+    const nextY = Math.round(Math.min(maxY, Math.max(8, e.clientY - dragOffsetY)));
+    hudEl.style.left = `${nextX}px`;
+    hudEl.style.top = `${nextY}px`;
+    hudEl.style.transform = 'none';
+  });
+  window.addEventListener('pointerup', () => {
+    if (!draggingHud) return;
+    draggingHud = false;
+    hudEl.classList.remove('is-dragging');
+    const rect = hudEl.getBoundingClientRect();
+    actions.updateSettings({
+      immersiveHudX: Math.round(rect.left),
+      immersiveHudY: Math.round(rect.top),
+    });
+  });
+
   const wallClockEl = el('span', { className: 'qv-imm-clock', text: formatWallClock() });
   const sprintTextEl = el('span', { className: 'qv-imm-metric', text: '' });
   const sprintBtnEl = el('button', {
@@ -57,14 +150,114 @@ export function mountImmersiveHud(
     alarmBtnLabel,
   );
 
+  const renderTopStripControls = () => {
+    const state = actions.getState();
+    topStripDrawer.replaceChildren(
+      el('span', { className: 'qv-imm-top-label', text: state.project.title || 'Quillvibe Immersive' }),
+      el('button', {
+        className: `bv-mini-btn${!hudHiddenByUser ? ' is-active' : ''}`,
+        text: hudHiddenByUser ? 'Show Focus Bar' : 'Hide Focus Bar',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            hudHiddenByUser = !hudHiddenByUser;
+            syncHudContents();
+          },
+        },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: state.settings.immersiveHudCollapsed ? 'Expand Bar' : 'Collapse Bar',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            actions.updateSettings({ immersiveHudCollapsed: !state.settings.immersiveHudCollapsed });
+            syncHudContents();
+          },
+        },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Center Bar',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            hudHiddenByUser = false;
+            actions.updateSettings({ immersiveHudX: -1, immersiveHudY: 12 });
+            syncHudContents();
+          },
+        },
+      }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Alarm',
+        attrs: { type: 'button' },
+        on: { click: () => openAlarmPopover() },
+      }),
+      el('button', {
+        className: 'bv-mini-btn is-active',
+        text: 'Exit Fullscreen (F11)',
+        attrs: { type: 'button' },
+        on: { click: () => void actions.toggleImmersiveMode(false) },
+      }),
+    );
+  };
+
   const syncHudContents = () => {
     const state = actions.getState();
     const { settings, immersiveMode, project } = state;
-    hudEl.classList.toggle('is-visible', immersiveMode);
-    if (!immersiveMode) return;
+    topStripHoverZone.classList.toggle('is-visible', immersiveMode);
+    if (!immersiveMode) {
+      topStripDrawer.classList.remove('is-open');
+      hudEl.classList.remove('is-visible');
+      return;
+    }
+
+    renderTopStripControls();
+    hudEl.classList.toggle('is-visible', !hudHiddenByUser);
+    hudEl.classList.toggle('is-collapsed', settings.immersiveHudCollapsed);
+    if (hudHiddenByUser) return;
 
     hudEl.replaceChildren();
     wallClockEl.textContent = formatWallClock();
+
+    const dragHandle = el(
+      'div',
+      {
+        className: 'qv-imm-drag-handle',
+        attrs: { title: 'Drag to move Immersive Bar' },
+        on: { pointerdown: startHudDrag },
+      },
+      el('span', { text: '⋮⋮', style: { fontSize: '12px', fontWeight: '700', lineHeight: '1' } }),
+    );
+
+    const collapseBtn = el('button', {
+      className: 'bv-mini-btn',
+      text: settings.immersiveHudCollapsed ? '+' : '−',
+      attrs: { type: 'button', 'aria-label': settings.immersiveHudCollapsed ? 'Expand focus bar' : 'Collapse focus bar', title: settings.immersiveHudCollapsed ? 'Expand Bar' : 'Collapse Bar' },
+      on: {
+        click: () => {
+          actions.updateSettings({ immersiveHudCollapsed: !settings.immersiveHudCollapsed });
+          syncHudContents();
+        },
+      },
+    });
+
+    hudEl.appendChild(dragHandle);
+
+    if (settings.immersiveHudCollapsed) {
+      hudEl.append(
+        el('div', { className: 'qv-imm-item' }, icon('clock', 13), wallClockEl),
+        collapseBtn,
+        el('button', {
+          className: 'bv-mini-btn is-active',
+          attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)' },
+          on: { click: () => void actions.toggleImmersiveMode(false) },
+        }, icon('fullscreen-exit', 13)),
+      );
+      requestAnimationFrame(applyHudPosition);
+      return;
+    }
 
     if (settings.immersiveShowClock) {
       hudEl.appendChild(
@@ -128,15 +321,31 @@ export function mountImmersiveHud(
         el(
           'button',
           {
+            className: 'bv-mini-btn',
+            text: 'Hide',
+            attrs: { type: 'button', title: 'Hide bar (move mouse to top edge of screen to restore)' },
+            on: {
+              click: () => {
+                hudHiddenByUser = true;
+                syncHudContents();
+              },
+            },
+          },
+        ),
+        collapseBtn,
+        el(
+          'button',
+          {
             className: 'bv-mini-btn is-active',
             attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)' },
             on: { click: () => void actions.toggleImmersiveMode(false) },
           },
           icon('fullscreen-exit', 13),
-          'Exit Fullscreen',
+          'Exit',
         ),
       ),
     );
+    requestAnimationFrame(applyHudPosition);
   };
 
   const clockInterval = window.setInterval(() => {
@@ -405,8 +614,11 @@ export function mountImmersiveHud(
     showRingingModal,
     destroy: () => {
       window.clearInterval(clockInterval);
+      window.removeEventListener('mousemove', onWindowMouseMove);
       unsub();
       hudEl.remove();
+      topStripHoverZone.remove();
+      topStripDrawer.remove();
     },
   };
 }

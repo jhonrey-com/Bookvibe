@@ -156,11 +156,11 @@ function domNodeToInlineMarkdown(node: Node): string {
   return inner;
 }
 
-export function importGoogleDocsHtmlToBookProject(
+export function importWebHtmlToBookProject(
   rawHtml: string,
-  filename = 'Google Docs Import.html',
+  filename = 'Web Document Import.html',
 ): BookProject {
-  const fallbackTitle = filename.replace(/\.html?$/i, '') || 'Google Docs Import';
+  const fallbackTitle = filename.replace(/\.html?$/i, '') || 'Web Document Import';
   if (typeof DOMParser !== 'undefined') {
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
     const titleEl = doc.querySelector('h1, .title, title');
@@ -327,12 +327,12 @@ export async function importDocxBytesToBookProject(
   }
 
   if (!documentXml) {
-    throw new Error('Selected file is not a valid Word (.docx) document with word/document.xml.');
+    throw new Error('Selected file is not a valid .docx document containing word/document.xml.');
   }
 
   const paras = extractDocxParagraphsFromXml(documentXml);
   const lines: string[] = [];
-  let title = filename.replace(/\.docx$/i, '') || 'Word Import';
+  let title = filename.replace(/\.docx$/i, '') || 'DOCX Import';
 
   paras.forEach((p, idx) => {
     if (idx === 0 && p.headingLevel === 1) {
@@ -358,7 +358,7 @@ export async function importAnyExternalDocumentFile(file: File): Promise<BookPro
   }
   const text = await file.text();
   if (name.endsWith('.html') || name.endsWith('.htm')) {
-    return importGoogleDocsHtmlToBookProject(text, file.name);
+    return importWebHtmlToBookProject(text, file.name);
   }
   if (name.endsWith('.rtf')) {
     return importRtfToBookProject(text, file.name);

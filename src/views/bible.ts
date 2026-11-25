@@ -426,7 +426,7 @@ function renderCustomImageAndFields(
         text: imageDataUrl ? 'Reference Image Attached' : 'Drop or Click to Attach Portrait / Map Image',
         style: { fontWeight: '500', fontSize: '12.5px' },
       }),
-      el('div', { className: 'bv-label', text: 'PNG, JPEG, or WebP stored locally inside .quillvibe / .qvbible' }),
+      el('div', { className: 'bv-label', text: 'PNG, JPEG, or WebP stored locally inside .qv / .qvbible' }),
     ),
     imageDataUrl
       ? el('button', {

@@ -666,7 +666,7 @@ export async function showExtensionsModal(
             {},
             el('div', {
               text: osReport.allRegistered
-                ? 'All 6 Quillvibe extensions are active in your OS file shell'
+                ? 'All 4 Quillvibe extensions are active in your OS file shell'
                 : `Platform: ${osReport.platform} · Scope: ${osReport.scope}`,
               style: { fontWeight: '600' },
             }),
@@ -682,7 +682,7 @@ export async function showExtensionsModal(
                   osReport = await registerOsExtensions();
                   actions.notify(
                     osReport.allRegistered
-                      ? 'Registered all 6 Quillvibe extensions in OS shell.'
+                      ? 'Registered all 4 Quillvibe extensions in OS shell.'
                       : 'OS registration requires launching the compiled desktop binary.',
                   );
                   renderContent();
@@ -696,7 +696,7 @@ export async function showExtensionsModal(
       : el('p', {
           className: 'bv-label',
           style: { margin: '0' },
-          text: 'All 6 official Quillvibe file formats use QVBX binary protection so external tools cannot read or alter manuscripts or Author Keys. Legacy .bookvibe archives can still be imported from Settings -> Publishing & Archive.',
+          text: 'All 4 official Quillvibe file formats (.qv, .qvbible, .qvscene, .qvstyle) use QVBX binary protection so external tools cannot read or alter manuscripts or Author Keys. Legacy .quillvibe and .bookvibe archives can still be imported from Settings -> Publishing & Archive.',
         });
 
     const tbody = el('tbody');

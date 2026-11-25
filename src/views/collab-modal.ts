@@ -16,11 +16,14 @@ import {
 import {
   COLLABORATOR_ROLE_LABELS,
   addCollaborator,
+  addVerifiedCoAuthorFromToken,
+  generateLocalCoAuthorInviteToken,
   getCollaboratorPermissions,
   mergeBookRevisions,
   removeCollaborator,
   updateCollaboratorPermissions,
 } from '../core/collab';
+import { getOrCreateLocalDeviceId } from '../core/identity';
 import {
   ENTERPRISE_SERVER_CONTRACT_DOC,
   computeSha256Hex,
@@ -83,12 +86,13 @@ export function showCollabModal(actions: AppActions): void {
       const decoded = await parseQuillvibeInput(rawInput, { filenameHint, base64Encoded });
       const { parsed } = decoded;
       const valid =
+        parsed.extension === '.qv' ||
         parsed.extension === '.quillvibe' ||
         parsed.extension === '.qvibe' ||
         parsed.extension === '.bookvibe' ||
         parsed.extension === '.bvibe';
       if (!valid) {
-        actions.notify('Peer file must be a .quillvibe, .qvibe, or imported .bookvibe/.bvibe book package.');
+        actions.notify('Peer file must be a .qv (or legacy .quillvibe / .bookvibe) book package.');
         return;
       }
       const summary = mergeBookRevisions(actions.getState().project, parsed.payload, peerLabel);
@@ -204,7 +208,7 @@ export function showCollabModal(actions: AppActions): void {
                   }),
                   el('div', {
                     className: 'bv-label',
-                    text: `${c.creditLine}${c.authorKeyId ? ` · Key ${c.authorKeyId}` : ''}`,
+                    text: `${c.creditLine}${c.coAuthorKeyId || c.authorKeyId ? ` · Key ${c.coAuthorKeyId || c.authorKeyId}` : ''}`,
                   }),
                 ),
                 el(
@@ -223,13 +227,19 @@ export function showCollabModal(actions: AppActions): void {
                   icon('trash', 12),
                 ),
               ),
-              el('span', { className: 'qv-key-locked-pill', text: 'Owner Author Key: Protected (Never Changeable by Peers)' }),
+              el('span', {
+                className: 'qv-key-locked-pill',
+                text: c.verifiedDevice
+                  ? `Verified Separate Device (${c.deviceId})`
+                  : 'Owner Author Key: Protected (Never Changeable by Peers)',
+              }),
               permGrid,
             ),
           );
         }
       }
 
+      const localDeviceId = getOrCreateLocalDeviceId();
       const nameIn = el('input', {
         className: 'bv-input',
         attrs: { type: 'text', placeholder: 'Name / Pen name' },
@@ -243,11 +253,22 @@ export function showCollabModal(actions: AppActions): void {
       );
       const creditIn = el('input', {
         className: 'bv-input',
-        attrs: { type: 'text', placeholder: 'Credit line (e.g. Copyediting & Proofreading)' },
+        attrs: { type: 'text', placeholder: 'Credit line (e.g. Co-Author / Copyediting)' },
       });
-      const keyIn = el('input', {
+      const coTokenIn = el('textarea', {
+        className: 'bv-textarea',
+        attrs: {
+          rows: 2,
+          placeholder: 'Paste QVCA1... Co-Author Device Key token generated on the second device',
+        },
+      });
+      const myTokenOut = el('input', {
         className: 'bv-input',
-        attrs: { type: 'text', placeholder: 'Author Key ID (optional)' },
+        attrs: {
+          type: 'text',
+          readonly: '',
+          placeholder: `Device ${localDeviceId} — click below to generate your co-author token`,
+        },
       });
 
       contentArea.append(
@@ -269,18 +290,43 @@ export function showCollabModal(actions: AppActions): void {
           el(
             'div',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Add Credit & Collaborator' }),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Name' }), nameIn),
+            el('span', { className: 'bv-panel-title', text: 'Verified Multi-Device Co-Author & Team' }),
+            el('p', {
+              className: 'bv-label',
+              text: 'Adding a Co-Author requires a cryptographically signed QVCA1 token generated on their separate Quillvibe device.',
+            }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Role' }), roleSel),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Published Credit Line' }), creditIn),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Peer Author Key ID' }), keyIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Co-Author Device Token (Required for Co-Author)' }), coTokenIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Name (for reviewer roles without token)' }), nameIn),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Published Credit Line (Optional)' }), creditIn),
             el(
               'button',
               {
                 className: 'bv-btn bv-btn-primary',
                 attrs: { type: 'button' },
                 on: {
-                  click: () => {
+                  click: async () => {
+                    const role = roleSel.value as CollaboratorRole;
+                    const token = coTokenIn.value.trim();
+                    if (token) {
+                      try {
+                        const res = await addVerifiedCoAuthorFromToken(actions.getState().project, token, {
+                          roleOverride: role,
+                          creditLine: creditIn.value,
+                          requireDistinctDevice: true,
+                        });
+                        actions.mutateProject(() => res.project);
+                        void renderTabContent();
+                        actions.notify(`Verified & paired ${res.collaborator.penName} (${res.collaborator.coAuthorKeyId})`);
+                      } catch (err) {
+                        actions.notify(err instanceof Error ? err.message : 'Invalid Co-Author Device Token.');
+                      }
+                      return;
+                    }
+                    if (role === 'co-author') {
+                      actions.notify('Co-Authors require a signed QVCA1 device token generated on another device.');
+                      return;
+                    }
                     if (!nameIn.value.trim()) {
                       actions.notify('Enter a collaborator name.');
                       return;
@@ -288,18 +334,44 @@ export function showCollabModal(actions: AppActions): void {
                     actions.mutateProject((prev) =>
                       addCollaborator(prev, {
                         name: nameIn.value,
-                        role: roleSel.value as CollaboratorRole,
+                        role,
                         creditLine: creditIn.value,
-                        authorKeyId: keyIn.value,
                       }),
                     );
                     void renderTabContent();
-                    actions.notify('Added collaborator credit');
+                    actions.notify('Added reviewer credit');
                   },
                 },
               },
               icon('plus', 14),
-              'Add Collaborator',
+              'Verify & Add Collaborator',
+            ),
+            el('hr', { style: { border: '0', borderTop: '1px solid var(--border-subtle)', margin: '8px 0' } }),
+            el('span', { className: 'bv-label', text: `On a 2nd device (${localDeviceId}): generate a token to send to the primary author:` }),
+            myTokenOut,
+            el(
+              'button',
+              {
+                className: 'bv-mini-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
+                    const res = await generateLocalCoAuthorInviteToken({
+                      name: nameIn.value.trim() || actions.getState().project.activeAuthorLabel || 'Co-Author',
+                      role: 'co-author',
+                    });
+                    myTokenOut.value = res.token;
+                    try {
+                      await navigator.clipboard?.writeText(res.token);
+                      actions.notify(`Generated Co-Author Key ${res.coAuthorKeyId} (${res.deviceId}) and copied to clipboard.`);
+                    } catch {
+                      actions.notify(`Generated Co-Author Key ${res.coAuthorKeyId} (${res.deviceId}).`);
+                    }
+                  },
+                },
+              },
+              icon('key', 13),
+              'Generate My Device Co-Author Key Token',
             ),
           ),
         ),
@@ -346,10 +418,10 @@ export function showCollabModal(actions: AppActions): void {
               while (true) {
                 const incoming = await pollLanIncomingSync();
                 if (!incoming) break;
-                await mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
+                await mergeIncomingRaw(incoming, 'peer.qv', 'Wi-Fi Peer');
               }
               await updateLanSyncHostBook(
-                serializeExtensionFile('.quillvibe', actions.getState().project),
+                serializeExtensionFile('.qv', actions.getState().project),
               );
             }
           });
@@ -424,7 +496,7 @@ export function showCollabModal(actions: AppActions): void {
                         click: async () => {
                           try {
                             const latest = actions.getState().project;
-                            const json = serializeExtensionFile('.quillvibe', latest);
+                            const json = serializeExtensionFile('.qv', latest);
                             lanSession = await startLanSyncHost(
                               json,
                               latest.activeAuthorLabel || 'Quillvibe Host',
@@ -481,7 +553,7 @@ export function showCollabModal(actions: AppActions): void {
                     attrs: { type: 'button' },
                     on: {
                       click: async () => {
-                        const json = serializeExtensionFile('.quillvibe', actions.getState().project);
+                        const json = serializeExtensionFile('.qv', actions.getState().project);
                         const ok = await updateLanSyncHostBook(json);
                         actions.notify(
                           ok
@@ -503,7 +575,7 @@ export function showCollabModal(actions: AppActions): void {
                         while (true) {
                           const incoming = await pollLanIncomingSync();
                           if (!incoming) break;
-                          mergeIncomingRaw(incoming, 'peer.quillvibe', 'Wi-Fi Peer');
+                          mergeIncomingRaw(incoming, 'peer.qv', 'Wi-Fi Peer');
                           mergedCount++;
                         }
                         if (mergedCount === 0) {
@@ -511,7 +583,7 @@ export function showCollabModal(actions: AppActions): void {
                           return;
                         }
                         await updateLanSyncHostBook(
-                          serializeExtensionFile('.quillvibe', actions.getState().project),
+                          serializeExtensionFile('.qv', actions.getState().project),
                         );
                         void renderTabContent();
                       },
@@ -537,7 +609,7 @@ export function showCollabModal(actions: AppActions): void {
                   click: async () => {
                     try {
                       const raw = await pullFromLanPeer(peerAddrIn.value, peerPinIn.value);
-                      mergeIncomingRaw(raw, 'lan-peer.quillvibe', peerAddrIn.value.trim());
+                      mergeIncomingRaw(raw, 'lan-peer.qv', peerAddrIn.value.trim());
                     } catch (err) {
                       actions.notify(err instanceof Error ? err.message : 'LAN pull failed.');
                     }
@@ -551,7 +623,7 @@ export function showCollabModal(actions: AppActions): void {
                 on: {
                   click: async () => {
                     try {
-                      const json = serializeExtensionFile('.quillvibe', actions.getState().project);
+                      const json = serializeExtensionFile('.qv', actions.getState().project);
                       await pushToLanPeer(peerAddrIn.value, peerPinIn.value, json);
                       actions.notify('Sent book edits to LAN host');
                     } catch (err) {
@@ -572,7 +644,7 @@ export function showCollabModal(actions: AppActions): void {
         className: 'bv-mono-tag',
         text: 'Computing package SHA-256 checksum…',
       });
-      const currentPayload = serializeExtensionFile('.quillvibe', project);
+      const currentPayload = serializeExtensionFile('.qv', project);
       void computeSha256Hex(currentPayload).then((hex) => {
         if (fingerprintEl.isConnected) {
           fingerprintEl.textContent = `Package SHA-256: ${hex.slice(0, 16).toUpperCase()} · ${Math.round(currentPayload.length / 1024)} KB`;
@@ -583,7 +655,7 @@ export function showCollabModal(actions: AppActions): void {
         contentArea.appendChild(
           buildDesktopBanner(
             'Native OS Bluetooth Wizard — Desktop App Only',
-            'Direct launching of Windows Bluetooth File Transfer (fsquirt.exe), macOS Bluetooth File Exchange, or Linux bluetooth-sendto requires the desktop app. In browser mode you can share/download a .quillvibe file and merge received peer files below.',
+            'Direct launching of Windows Bluetooth File Transfer (fsquirt.exe), macOS Bluetooth File Exchange, or Linux bluetooth-sendto requires the desktop app. In browser mode you can share/download a .qv file and merge received peer files below.',
           ),
         );
       }
@@ -599,8 +671,8 @@ export function showCollabModal(actions: AppActions): void {
             el('p', {
               className: 'bv-label',
               text: desktopMode
-                ? 'Save a .quillvibe revision package and immediately launch your OS Bluetooth File Transfer wizard to send it without internet.'
-                : 'Share a .quillvibe revision package through your system share sheet (Bluetooth / Nearby Share / AirDrop when supported) or download for transfer.',
+                ? 'Save a .qv revision package and immediately launch your OS Bluetooth File Transfer wizard to send it without internet.'
+                : 'Share a .qv revision package through your system share sheet or Bluetooth / Nearby Share, or download for transfer.',
             }),
             fingerprintEl,
             el(
@@ -614,10 +686,10 @@ export function showCollabModal(actions: AppActions): void {
                   on: {
                     click: async () => {
                       const current = actions.getState().project;
-                      const binary = await serializeQuillvibeBinary('.quillvibe', current);
-                      const filename = `${sanitizeSlug(current.title)}.quillvibe`;
+                      const binary = await serializeQuillvibeBinary('.qv', current);
+                      const filename = `${sanitizeSlug(current.title)}.qv`;
                       if (desktopMode) {
-                        const savedPath = await saveQuillvibeExtensionFile('.quillvibe', binary, current.title);
+                        const savedPath = await saveQuillvibeExtensionFile('.qv', binary, current.title);
                         if (!savedPath) {
                           actions.notify('Bluetooth export cancelled.');
                           return;
@@ -665,10 +737,10 @@ export function showCollabModal(actions: AppActions): void {
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Merge Received Bluetooth / AirDrop File' }),
+            el('span', { className: 'bv-panel-title', text: 'Merge Received Bluetooth / Local File' }),
             el('p', {
               className: 'bv-label',
-              text: 'Import a co-author or proofreader’s .quillvibe or legacy .bookvibe file received over Bluetooth or USB. Conflicting scene edits are preserved as snapshots.',
+              text: 'Import a co-author or proofreader’s .qv or legacy .quillvibe / .bookvibe file received over Bluetooth or USB. Conflicting scene edits are preserved as snapshots.',
             }),
             el(
               'div',
@@ -833,7 +905,7 @@ export function showCollabModal(actions: AppActions): void {
       lanPollTimer = window.setInterval(() => {
         void pullBookFromEnterpriseServer(serverCfg, serverToken, actions.getState().project)
           .then(({ rawJson }) => {
-            mergeIncomingRaw(rawJson, 'remote.quillvibe', 'Enterprise Server');
+            mergeIncomingRaw(rawJson, 'remote.qv', 'Enterprise Server');
           })
           .catch(() => {
             // Silent retry on background poll
@@ -889,7 +961,7 @@ export function showCollabModal(actions: AppActions): void {
                     serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
                     saveEnterpriseSyncConfig(serverCfg);
                     const { rawJson, sha256 } = await pullBookFromEnterpriseServer(serverCfg, tokenIn.value, project);
-                    await mergeIncomingRaw(rawJson, 'enterprise.quillvibe', 'Enterprise Sync Server');
+                    await mergeIncomingRaw(rawJson, 'enterprise.qv', 'Enterprise Sync Server');
                     serverStatusOk = true;
                     serverStatusMessage = `Pulled SHA-256 ${sha256.slice(0, 12).toUpperCase()}`;
                     statusTag.textContent = serverStatusMessage;
@@ -914,7 +986,7 @@ export function showCollabModal(actions: AppActions): void {
                   try {
                     serverCfg = { ...serverCfg, baseUrl: urlIn.value.trim(), bookSyncId: bookSyncIdIn.value.trim() || project.id };
                     saveEnterpriseSyncConfig(serverCfg);
-                    const json = serializeExtensionFile('.quillvibe', actions.getState().project);
+                    const json = serializeExtensionFile('.qv', actions.getState().project);
                     const res = await pushBookToEnterpriseServer(serverCfg, tokenIn.value, project, json);
                     serverStatusOk = true;
                     serverStatusMessage = `Pushed revision (HTTP ${res.status} · ${res.sha256.slice(0, 12).toUpperCase()})`;
@@ -940,7 +1012,7 @@ export function showCollabModal(actions: AppActions): void {
           el('span', { className: 'bv-panel-title', text: 'Self-Hosted Server / Website API Contract' }),
           el('p', {
             className: 'bv-label',
-            text: 'Implement these three lightweight HTTP routes on your company backend, Node/Cloudflare Worker, or static-site companion server to host live collaborative writing rooms:',
+            text: 'Implement these three lightweight HTTP routes on your company backend, serverless edge worker, or static-site companion server to host live collaborative writing rooms:',
           }),
           el('pre', {
             className: 'qv-code-contract',
