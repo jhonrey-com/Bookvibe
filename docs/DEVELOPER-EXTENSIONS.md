@@ -83,7 +83,7 @@ Save any valid extension with a `.qvext` suffix (UTF-8 JSON):
 
 ## Local Testing & Verification
 
-1. Open Quillvibe -> click the **Extensions** button in the top bar (ensure Tool Level is **Advanced** in Settings).
+1. Open Quillvibe -> click the **Extensions** button in the top bar (ensure Workspace Layout is **Full Studio** in Settings).
 2. Switch to **External Sandbox** and click **Install .qvext File…**, or drag your `.qvext` file directly onto the Quillvibe window.
 3. Review the calculated **SHA-256 checksum** and permission toggles in the consent panel.
 4. Trigger your rule, transform, preset, or font pack installer and verify events in the **Extension Data Access Audit Log**.

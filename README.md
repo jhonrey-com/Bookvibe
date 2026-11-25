@@ -43,9 +43,20 @@
 Many writers end up juggling several separate programs—one for writing chapters, another for outlines, another for character notes, another for cover design, and another to turn drafts into an eBook or print PDF. Quillvibe keeps all of those steps together in one local book file:
 
 - **No account and no setup**: Open a blank book or sample project right away. Your `.qv` file stays on your own device and can be locked with a password.
-- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and can be turned on in Settings), use `Ctrl+Z` / `Ctrl+Y` undo and redo across every screen, and keep multiple books under different pen names.
+- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and toggleable in Settings), pick **Match Device (System)**, **Ivory Light**, **Parchment**, or **Obsidian Dark** themes, toggle **Smooth Animations** for Binder, Inspector, and menus, and use `Ctrl+Z` / `Ctrl+Y` undo and redo across every studio.
+- **Images right inside your book**: Drag and drop or insert photos and illustrations into any scene, wrap text around them (**Wrap Left**, **Wrap Right**, **Top & Bottom**, **Inline**, **Behind Text**), snap to grid or alignment guides, and remove solid backgrounds offline with one click.
 - **Built-in proofreading marks**: Mark up drafts with 15 traditional proofreading symbols right on the page, preview the clean result, and accept changes with automatic backup snapshots.
-- **Ready for publishing**: Add your publisher name, ISBN, copyright seal, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, and verified co-author access.
+- **Ready for publishing & easy migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and one-click **Migrate to Another Writing Tool** exports (`.md`, `.rtf`, `.json`).
+
+### Live Screenshots (`v2.3.0`)
+
+<p align="center">
+  <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, centered navigation bar, and Inspector" width="100%" />
+</p>
+
+| Story Graph | Book Cover Studio |
+| :---: | :---: |
+| <img src="public/screenshots/story-graph.png" alt="Quillvibe Story Graph with exact node connections" width="100%" /> | <img src="public/screenshots/cover-studio.png" alt="Quillvibe Book Cover Studio with layered shapes and properties" width="100%" /> |
 
 ---
 
@@ -64,7 +75,7 @@ Download the latest installer from <a href="https://github.com/jhonrey-com/Quill
 
 Because Quillvibe is a new open-source app still being actively updated and improved, Windows, Mac, or Linux may show a warning before opening the installer. If you prefer to avoid that prompt, you can use the website version above instead.
 
-Desktop builds add automatic saving to your computer, stacked book tabs for working on a series in one window, unlimited separate windows, `F11` fullscreen focus mode with a clock/timer bar, Wi-Fi and Bluetooth book sharing, and double-click opening for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files.
+Desktop builds add automatic saving to your computer, stacked book tabs with drag-and-drop reordering and window combining, an empty **New Tab** book picker for new windows (`Ctrl+Shift+N`), conflict-safe live multi-window sync, single-instance double-click opening into a new tab for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files, `F11` fullscreen focus mode with a clock/timer bar, and Wi-Fi/Bluetooth book sharing.
 
 ### Option C: Terminal Installers
 

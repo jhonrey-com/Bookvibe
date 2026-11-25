@@ -1,95 +1,94 @@
-# Quillvibe Reference Guide
+# Quillvibe Reference Guide (`v2.3.0`)
 
-This guide explains every icon, file extension, proofreading symbol, and extension permission in Quillvibe using direct definitions.
+A clear guide to every workspace, toolbar icon, image layout control, file format, proofreading mark, and desktop feature in Quillvibe.
+
+> For interactive search, screenshots, and error code lookup (`QV-101`–`QV-504`), visit <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/help</strong></a> or press `F1` inside the app.
 
 ---
 
-## 1. Icons & Tooltips
+## 1. Icons, Tooltips & Top Navigation Bar
 
-Quillvibe uses minimalist icon buttons throughout the topbar, studio tabs, editor toolbar, and modal tabs to keep writing surfaces clear.
+Quillvibe uses a centered 3-column top navigation bar so the active workspace switcher stays balanced on both website and desktop windows.
 
 ### Custom Hover & Click-to-Expand Help
-- **Hover or focus** any button to open a compact tooltip showing its name, shortcut, and 1-line summary.
-- **Click inside the tooltip card** (or press `?` while a button has keyboard focus) to expand full step-by-step details and notes.
-- Click outside or press `Escape` to close an expanded help card.
+- **Hover or focus** any button to see its name, shortcut, and 1-line summary.
+- **Click inside the tooltip card** (or press `?` while focused) to expand step-by-step instructions.
+- Click outside or press `Escape` to close an expanded tooltip.
 
-### Topbar Icons (All Unique)
+### Topbar Icons
 | Icon | Name | Action |
 | :--- | :--- | :--- |
-| Left sidebar frame | **Manuscript Binder** | Toggles the Parts, Chapters, and Scenes tree (slides in as a drawer on compact screens). |
-| Books on shelf | **Library & Author Identity** | Manage multiple books and set a per-book Pen Name, handwritten/typed Signature, and permanent ECDSA Author Key. |
-| Overlapping figures | **Collaborate & Permissions** | Manage co-authors, proofreaders, restrictions, Self-Hosted HTTPS sync (and Wi-Fi PIN / Bluetooth in the desktop app). |
-| Folder | **Open File** | Opens `.qv`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` bundles. |
-| Disk + Format dropdown | **Save / Export Default** | Saves immediately using the extension selected in the dropdown beside it. |
-| Interlocking module | **Extensions & Formats** | Manages Integrated toolkits, External `.qvext` plugins with permission consent, and Data Audit Log. |
-| Gear cog | **Settings & Preferences** | Switch Workspace Tool Level (`Basic`/`Intermediate`/`Advanced`), install fonts, configure Commercial Metadata, and import `.docx`, `.html`, `.md`, or legacy `.bookvibe`. |
-| Lifebuoy / Question | **Help & Guided Tour** | Opens the built-in manual, unique Icon Directory legend, keyboard reference, and section walkthrough replay. |
-| Right sidebar frame | **Scene Inspector** | Toggles active scene metadata, proofread marks summary, Story Bible mentions, snapshots, and proofreader notes. |
-
-### Main Workspace Switcher Icons
-| Icon | Workspace | Purpose |
-| :--- | :--- | :--- |
-| Ink quill nib & line | **Manuscript** | Draft prose, proofread with editorial marks, read Split Reference, or compare Revision Diffs. |
-| 2×2 card grid | **Corkboard** | Arrange scene synopsis index cards and drag scenes between chapters. |
-| Bulleted lines | **Outline** | Filterable tabular ledger showing timeline, POV, location, status, word targets, and reading time. |
-| Open codex + ribbon | **Story Bible** | Characters, locations, lore, custom categories, custom fields, and reference images. |
-| Linked nodes | **Story Graph** | Live interactive map linking characters, plot beats, scenes, locations, and custom nodes. |
-| Serif `T` | **Studio (Typeset & Cover)** | Interior page preview with custom fonts, Front/Back/Spine/Flaps Cover Studio, and EPUB/PDF/QVBX export. |
+| Left sidebar frame | **Manuscript Binder** | Smoothly expands or collapses Parts, Chapters, and Scenes (with animated Part/Chapter accordions). |
+| Center switcher | **Workspace Switcher** | Switches between **Manuscript**, **Corkboard**, **Outline**, **Story Bible**, **Story Graph**, and **Studio** according to your Workspace Layout (**Focused**, **Editorial**, or **Full Studio**). |
+| Moon / Sun | **Theme Switcher** | Cycles **Match Device (System)**, **Ivory Light**, **Warm Parchment**, and **Obsidian Dark**. |
+| Books on shelf | **Library & Author Identity** | Manage multiple books, open in tab/window, delete safely with exact-name confirmation, and manage Pen Name, Signature, Origin Device Key (`QVK-`/`QVD-`), and Work Copyright Seal (`QVC-`). |
+| Overlapping figures | **Collaborate & Permissions** | Pair verified co-authors (`QVCA1.`), set role permissions, and sync over Self-Hosted HTTPS (plus Wi-Fi PIN & Bluetooth on desktop). |
+| Folder | **Open File** | Opens `.qv`, `.qvbible`, `.qvscene`, `.qvstyle`, or `.qvext` files (in a new tab on desktop). |
+| Disk + Format dropdown | **Save / Export Default** | Exports using the selected format (`.qv`, `.pdf`, `.epub`, `.md`, `.html`, `.txt`, `.qvbible`, `.qvscene`, `.qvstyle`) with a live progress pill. |
+| Interlocking module | **Extensions & Formats** | Manages built-in toolkits, sandboxed `.qvext` add-ons, and the data access audit log. |
+| Sliders | **Settings & Preferences** | Configure Theme (including Match Device), Workspace Layout, Smooth Animations, Spellcheck, Custom Fonts, Commercial Metadata, Legacy Imports, and **Migrate to Another Writing Tool** exports. |
+| Question mark (`?`) | **Help, Course & Manual** | Opens the full in-app manual plus quick buttons for **Open Full Course Page** and **Open Help & FAQ Page** (opens in a new browser tab on web, or a dedicated tab on desktop). |
+| Right sidebar frame | **Scene Inspector** | Smoothly toggles scene metadata, proofreading summary, Story Bible mentions, snapshots, and reviewer notes. |
 
 ---
 
-## 2. File Extensions & Protected `QVBX` Format
+## 2. Manuscript Image Studio (Text Wrap, Snap-to-Grid & Background Remover)
 
-Every native Quillvibe file stores encrypted and authenticated `QVBX` binary data so external tools cannot tamper with contents or swap a locked pen-name Author Key.
+Writers can place illustrations and photos directly inside any book scene:
 
-| Format | Default Role | When to Choose It |
+- **Add Images:** Drag and drop PNG, JPEG, WebP, or GIF files directly onto the paper sheet, or click the **Insert Image** button in the editor bar (or right-click -> **Insert Image into Scene**).
+- **Automatic Text Wrap Reflow:** Pick **Wrap Left**, **Wrap Right**, **Top & Bottom**, **Inline Center**, or **Behind Text**, or drag an image across paragraphs to automatically relocate and reflow surrounding prose.
+- **Snap-to-Grid & Alignment Guides:** Resize from the corner handle or drag to position with a `12px` snap grid and magnetic alignment hairlines to margins, page center, and other placed images.
+- **Offline Background Remover:** Click **Remove Background** to remove solid or light backgrounds locally on your device, fine-tune the **Edge** tolerance slider, or click **Restore Original** anytime.
+- **Mobile Support:** Touch sliders and wrap controls work on mobile screens (desktop web or the installed desktop app is recommended for finer drag-and-snap placement).
+
+---
+
+## 3. File Extensions, Protected `QVBX` Container & Migrating Out
+
+Every native Quillvibe file stores encrypted and authenticated `QVBX` binary data so external tools cannot silently alter contents or swap a locked pen-name Author Key.
+
+| Format | Role | Notes |
 | :--- | :--- | :--- |
-| `.qv` | **Book Workspace** | Default format. Preserves manuscript, Story Bible, Story Graph, cover layout, snapshots, proofread marks, Origin Key, and Copyright Seal. |
+| `.qv` | **Book Workspace** | Default whole-book format containing manuscript, images, Story Bible, Story Graph, cover wrap, snapshots, proofread marks, Origin Key, and Copyright Seal. |
 | `.pdf` | **Print Interior PDF** | Trim-sized print interior PDF with margins, running headers, credits, and page numbers. |
-| `.qvbible` | **Story Bible DB** | Imports/merges shared Characters, Locations, Lore, and Custom Categories across sequels in a series. |
-| `.qvscene` | **Standalone Scene** | Shares or archives one single chapter scene, its annotations, proofread marks, and snapshots. |
-| `.qvstyle` | **Typeset Preset** | Applies book trim size, font family, drop caps, smart quotes, margins, and paper theme to another book. |
-| `.epub` | **EPUB 3 eBook** | Release eBook archive embedding the cover PNG, copyright/credits page, and reflowable XHTML chapters. |
-| `.md` | **Markdown Manuscript** | YAML front matter + clean Markdown headings and `* * *` scene breaks. |
-| `.html` | **Standalone Web Book** | Self-contained HTML reading edition with serif styling for offline browsers. |
-| `.txt` | **Plain Text Manuscript** | Clean UTF-8 text without formatting markers. |
+| `.qvbible` | **Story Bible Database** | Merges Characters, Locations, Lore, and Custom Categories across sequels in a series. |
+| `.qvscene` | **Standalone Scene** | Opens or shares one single scene with its images, snapshots, and proofreading marks. |
+| `.qvstyle` | **Typeset Preset** | Applies book trim size, font family, drop caps, smart quotes, margins, and paper theme. |
+| `.epub` | **EPUB 3 eBook** | Release eBook archive embedding the cover PNG, copyright/credits, and reflowable chapters. |
+| `.md` / `.rtf` / `.json` | **Portable Migration Exports** | Export from **Settings -> Publishing & Archive -> Migrate to Another Writing Tool** when moving a project to another writing program. |
 
-Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` archives are imported explicitly inside **Settings -> Publishing, Commercial & Migration -> Import**.
+Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` archives are imported explicitly inside **Settings -> Publishing & Archive -> Import Legacy Archive**.
 
 ---
 
-## 3. Proofreading Marks Reference
+## 4. Proofreading Marks Reference
 
-In **Proofread** mode, select any word, phrase, or sentence on the page and right-click to apply one of the 15 standard editorial marks:
+In **Editorial** or **Full Studio** layout, switch to **Proofread** mode, select any word or sentence, and right-click to apply any of 15 standard editorial marks:
 
-| Symbol | Name | Editorial Meaning |
+| Symbol | Name | Meaning |
 | :--- | :--- | :--- |
-| `₰` | **Cross Out / Delete** | Removes unnecessary words or sentences (*deleatur*). |
-| `∧` | **Caret Insert** | Proposes inserted words or punctuation at cursor position. |
+| `₰` | **Cross Out / Delete** | Removes unnecessary words or sentences. |
+| `∧` | **Caret Insert** | Proposes inserted words or punctuation at the cursor. |
 | `⇄` | **Replace / Substitute** | Crosses out selected phrasing and shows proposed wording beside it. |
-| `AQ` | **Margin Comment** | Author query or copyeditor note anchored to text without changing words. |
+| `AQ` | **Margin Comment** | Author query or copyeditor note without changing text. |
 | `★` | **Highlight Passage** | Shades a sentence for pacing, fact-checking, or continuity review. |
-| `tr` | **Transpose** | Swaps the order of two adjacent words or two letters. |
+| `tr` | **Transpose** | Swaps the order of adjacent words or letters. |
 | `¶` | **New Paragraph** | Splits continuous text into a fresh paragraph. |
-| `no ¶` | **Run-In Paragraph** | Joins separated paragraphs into one continuous block. |
-| `⏝` | **Close Up Space** | Deletes extra whitespace inside the selection. |
+| `no ¶` | **Run-In Paragraph** | Joins separated paragraphs into one block. |
+| `⏝` | **Close Up Space** | Removes extra whitespace inside the selection. |
 | `#` | **Insert Space** | Inserts a missing space between words. |
 | `≡` | **Capitalize (CAPS)** | Proposes uppercase letters. |
 | `lc` | **Lowercase (lc)** | Converts uppercase letters back to lowercase. |
 | `ital` | **Set Italic** | Wraps selection in `*italic*` emphasis. |
 | `bf` | **Set Bold** | Wraps selection in `**bold**` weight. |
-| `stet` | **Stet (Let Stand)** | Dotted underline keeping original text unchanged over prior edits. |
+| `stet` | **Stet (Let Stand)** | Keeps original text unchanged over prior edits. |
 
 ---
 
-## 4. Extensions, Permissions & Data Sandbox
+## 5. Desktop Stacked Tabs, Multi-Window Sync & Single-Instance Opening
 
-Quillvibe separates extensions into **Integrated** toolkits and **External (`.qvext` / `.bvext`)** community plugins. External extensions contain declarative JSON rules and presets—never executable JavaScript—and cannot access the internet, filesystem, or private Author Keys.
-
----
-
-## 5. Permanent Author Keys, Permissions & Collaboration
-
-- **Forever Pen-Name Author Keys**: Each pen name receives one permanent local ECDSA P-256 Author Key (`QVK-...`). Once created, it cannot be replaced or rotated for that pen name.
-- **Collaborator Restrictions**: Assign permissions per collaborator (edit prose, proofread-only, edit Story Bible/Graph, edit Cover/Typeset, export files, manage team).
-- **Offline Desktop Sync**: Same-Wi-Fi LAN PIN sync and OS Bluetooth File Transfer are available in the native desktop app; Self-Hosted HTTPS sync works on both desktop and web.
+- **Empty New Tab & New Window:** Clicking **`+`** on the top tab strip or pressing `Ctrl+Shift+N` opens a clean **New Tab** book picker showing recent local books instead of pre-selecting an open book.
+- **Pointer-Driven Tab Drag & Combine:** Drag tabs left or right to reorder, drag a tab downward out of the bar to tear it off into its own stacked taskbar window, drop a tab over another Quillvibe window to combine them, or click **`▾` -> Combine All Windows Here**.
+- **Conflict-Safe Live Sync:** Opening the same book in two windows displays a notice dialog and syncs edits automatically across open copies using monotonic revision checks and atomic per-book disk saves.
+- **Single-Instance File Tabs:** Double-clicking a `.qv`, `.qvbible`, `.qvscene`, or `.qvstyle` file while Quillvibe is already running focuses the window and opens the file in a new tab.

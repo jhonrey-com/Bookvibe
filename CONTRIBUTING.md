@@ -1,22 +1,22 @@
 # Contributing to Quillvibe
 
-Thank you for helping improve Quillvibe. Quillvibe is maintained in the open under `jhonrey-com/Quillvibe` so authors keep a dependable, offline-first studio without broken releases or surprise changes.
+Thank you for helping improve Quillvibe. Quillvibe is developed in the open under <a href="https://github.com/jhonrey-com/Quillvibe" target="_blank" rel="noopener noreferrer"><code>jhonrey-com/Quillvibe</code></a> so writers keep a dependable, offline-first book writing studio.
 
-## Repository Branching & Protection Model
+## Repository Workflow
 
-The `main` branch reflects the tested source baseline. To keep the primary codebase clean and prevent accidental breakage:
+The `main` branch reflects the tested baseline. To keep releases clean:
 
-1. **Fork the repository** into your own GitHub account (`https://github.com/jhonrey-com/Quillvibe`).
+1. **Fork the repository** into your own GitHub account (<a href="https://github.com/jhonrey-com/Quillvibe" target="_blank" rel="noopener noreferrer">https://github.com/jhonrey-com/Quillvibe</a>).
 2. **Create a focused feature or fix branch** from `main`:
    ```bash
    git checkout -b fix/story-graph-edge-snapping
    ```
-3. **Keep changes modular and local to the issue.** Avoid bundling unrelated style rewrites, unsolicited dependencies, or config alterations into the same pull request.
-4. **Preserve author privacy and build provenance.** Do not insert personal real names, credentials, API keys, or remote telemetry calls anywhere in source, documentation, or manifests.
+3. **Keep changes focused and modular.** Avoid mixing unrelated style rewrites, unnecessary dependencies, or config edits into the same pull request.
+4. **Preserve author privacy and neutral naming.** Never add personal private details, credentials, API keys, remote telemetry, or third-party product/company names anywhere in source, UI copy, or documentation.
 
 ## Required Checks Before Opening a Pull Request
 
-Run every workspace verification step locally after your final edit:
+Run every verification step locally after your final edit:
 
 ```bash
 npm run typecheck
@@ -24,21 +24,21 @@ npm test
 npm run build
 ```
 
-When changing desktop Rust commands (`src-tauri/src/`), also run:
+When changing desktop Rust code (`src-tauri/src/`), also run:
 
 ```bash
-cd src-tauri && cargo test
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Coding Conventions
 
-- Keep all user-facing strings, documentation, tooltips, and comments direct and factual.
-- Avoid DOM string injection APIs (`innerHTML`, `outerHTML`) and dynamic code evaluation (`eval`, `new Function`). Build DOM nodes with `el()` / `svgEl()` from `src/ui/dom.ts`.
-- Keep every tool icon unique per switcher or toolbar button, and add matching documentation to `src/ui/icon-directory.ts`.
-- Respect `prefers-reduced-motion: reduce` and responsive layouts down to `768×700`.
+- Keep all user-facing strings, error messages, tooltips, and documentation plain, direct, and easy for writers to understand.
+- Avoid DOM string injection (`innerHTML`, `outerHTML`) and dynamic evaluation (`eval`, `new Function`). Build DOM elements with `el()` and `svgEl()` from `src/ui/dom.ts`.
+- Keep every tool icon distinct per toolbar or switcher, and document additions in `src/ui/icon-directory.ts` and `src/views/help-page.ts`.
+- Respect `prefers-reduced-motion: reduce`, the **Smooth Animations** preference, and responsive layouts from mobile (`360px`) through wide desktop screens.
 
 ## Submitting Your Pull Request
 
 - Summarize what changed and why in 2–4 plain sentences.
-- List the commands you ran (`typecheck`, `test`, `build`) and confirm visual checks in Chrome DevTools / Tauri.
-- Wait for maintainer review before merging.
+- List the checks you ran (`typecheck`, `test`, `build`, and `cargo test` if applicable).
+- For questions or security issues, email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer">quillvibe@jhonrey.com</a>.

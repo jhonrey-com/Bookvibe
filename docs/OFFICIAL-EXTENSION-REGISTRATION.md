@@ -12,7 +12,9 @@ When you run the native Quillvibe desktop executable (`quillvibe.exe`, `Quillvib
 - **macOS**: Declared directly in `Info.plist` via `CFBundleDocumentTypes` and `UTExportedTypeDeclarations` (`app.quillvibe.*`).
 - **Linux**: Installs `packaging/quillvibe-mime.xml` to `~/.local/share/mime/packages/quillvibe.xml` and `~/.local/share/applications/quillvibe.desktop`, then refreshes the XDG MIME database.
 
-Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` extensions are **not** registered for OS double-click opening; users can import legacy archives inside **Settings -> Publishing, Commercial & Migration -> Import**.
+Legacy `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` extensions are **not** registered for OS double-click opening; users can import legacy archives inside **Settings -> Publishing & Archive -> Import Legacy Archive**.
+
+When Quillvibe Desktop is already open, double-clicking a `.qv`, `.qvbible`, `.qvscene`, or `.qvstyle` file forwards the path to the running instance over loopback authentication and opens the file directly in a new tab inside the active window.
 
 ---
 
