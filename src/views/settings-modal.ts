@@ -1034,7 +1034,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v2.2.2', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.2.3', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -1053,7 +1053,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '2.2.2',
+                    version: '2.2.3',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,

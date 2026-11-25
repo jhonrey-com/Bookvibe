@@ -54,7 +54,6 @@ import { COLLABORATOR_ROLE_LABELS } from './core/collab';
 import { resolveEffectiveFontCss } from './core/fonts';
 import { ensureAuthorIdentity } from './core/identity';
 import {
-  addBookToLibrary,
   createInitialLibrary,
   getActiveBookFromLibrary,
   normalizeProjectDefaults,
@@ -89,6 +88,12 @@ import {
   saveSettings,
 } from './core/settings';
 import { createSnapshotForScene } from './core/snapshots';
+import {
+  EMPTY_TAB_PREFIX,
+  WorkspaceWindowSync,
+  createEmptyTabId,
+  isEmptyTabId,
+} from './core/window-sync';
 import type {
   AppThemeId,
   BookLibraryState,
@@ -123,6 +128,7 @@ import { renderGraphView } from './views/graph';
 import { showHelpModal } from './views/help-modal';
 import { renderInspector } from './views/inspector';
 import { showLibraryModal } from './views/library-modal';
+import { createBookForNewTab, renderNewTabView } from './views/new-tab';
 import { renderOutlineView } from './views/outline';
 import { showSettingsModal } from './views/settings-modal';
 import { renderTypesetView } from './views/typeset';
@@ -199,6 +205,7 @@ const state: AppState = {
   sprintStartWords: getProjectWordCount(starter),
   immersiveMode: false,
   openBookTabIds: [starter.id],
+  activeTabId: starter.id,
   saveStatusLabel: 'Saved',
 };
 
@@ -212,6 +219,9 @@ let desktopTabBarEl: HTMLElement | null = null;
 let topbarLogoEl: HTMLElement | null = null;
 let topbarWinControlsEl: HTMLElement | null = null;
 let topbarNewWinBtnEl: HTMLButtonElement | null = null;
+let windowSync: WorkspaceWindowSync | null = null;
+let isApplyingRemoteSync = false;
+const alertedSharedBookIds = new Set<string>();
 
 let headerNavGlass: LiquidGlassControl<StudioViewId> | null = null;
 let headerNavHostEl: HTMLDivElement;
@@ -235,20 +245,113 @@ let sprintStatusEl: HTMLSpanElement;
 let sprintToggleBtnEl: HTMLButtonElement;
 
 function syncWindowAndDocumentTitle(): void {
-  const title = formatAppWindowTitle(
-    state.settings,
-    state.project,
-    state.activeView,
-    state.typesetSubTab,
-    isTauriRuntime(),
-  );
+  const title = isEmptyTabId(state.activeTabId)
+    ? isTauriRuntime()
+      ? 'Quillvibe - New Tab'
+      : 'New Tab — Quillvibe'
+    : formatAppWindowTitle(
+        state.settings,
+        state.project,
+        state.activeView,
+        state.typesetSubTab,
+        isTauriRuntime(),
+      );
   if (typeof document !== 'undefined') {
     document.title = title;
+    if (!isTauriRuntime()) {
+      const isCourse = state.activeView === 'course';
+      const metaDesc = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+      if (metaDesc) {
+        metaDesc.content = isCourse
+          ? 'Take the free 10-module, 28-lesson Quillvibe Book Writing & Publishing Course online. Learn drafting, story bibles, proofreading marks, interior print typesetting, book cover design, and EPUB 3 / PDF publishing.'
+          : 'Quillvibe is a free, open-source book writing studio and free 10-module Book Writing & Publishing Course. Draft manuscripts, organize story bibles, proofread with 15 copyediting marks, design covers, and export Print PDF and EPUB 3 offline.';
+      }
+      const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+      if (canonical) {
+        canonical.href = isCourse
+          ? 'https://quillvibe.jhonrey.com/course'
+          : 'https://quillvibe.jhonrey.com/';
+      }
+    }
   }
   void setDesktopWindowTitle(title);
 }
 
+function showSharedBookSyncNotice(bookId: string, bookTitle: string): void {
+  if (alertedSharedBookIds.has(bookId)) return;
+  alertedSharedBookIds.add(bookId);
+  const existing = document.getElementById('qv-shared-book-modal');
+  if (existing) existing.remove();
+
+  const close = () => backdrop.remove();
+  const backdrop = el(
+    'div',
+    {
+      className: 'bv-modal-backdrop',
+      id: 'qv-shared-book-modal',
+      on: {
+        click: (e) => {
+          if (e.target === backdrop) close();
+        },
+      },
+    },
+    el(
+      'div',
+      {
+        className: 'bv-modal',
+        style: { maxWidth: '460px' },
+        attrs: { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Shared Book Live Sync Notice' },
+      },
+      el(
+        'div',
+        { className: 'bv-panel-head' },
+        el('span', { className: 'bv-panel-title', text: 'Book Open in Multiple Windows / Tabs' }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Close',
+          attrs: { type: 'button' },
+          on: { click: close },
+        }),
+      ),
+      el(
+        'div',
+        { className: 'bv-modal-body', style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+        el('p', {
+          text: `“${bookTitle || 'Untitled Book'}” is already open in another Quillvibe window or tab.`,
+          style: { margin: '0', fontSize: '13.5px', fontWeight: '600', color: 'var(--text-primary)' },
+        }),
+        el('p', {
+          text: 'Changes you save in this window will reflect automatically across all open copies of this book using safe revision checks so your saves do not conflict or overwrite each other.',
+          style: { margin: '0', fontSize: '13px', lineHeight: '1.55', color: 'var(--text-secondary)' },
+        }),
+        el(
+          'div',
+          { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' } },
+          el('button', {
+            className: 'bv-btn bv-btn-primary',
+            text: 'Got It',
+            attrs: { type: 'button' },
+            on: { click: close },
+          }),
+        ),
+      ),
+    ),
+  );
+  document.body.appendChild(backdrop);
+}
+
+function maybeNotifySharedBook(bookId: string): void {
+  if (!bookId || isEmptyTabId(bookId)) return;
+  const others = windowSync?.getOtherWindowsWithBook(bookId) ?? [];
+  const dupInCurrent = state.openBookTabIds.filter((id) => id === bookId).length > 1;
+  if (others.length > 0 || dupInCurrent) {
+    const book = state.library.books.find((b) => b.id === bookId);
+    showSharedBookSyncNotice(bookId, book?.title || state.project.title);
+  }
+}
+
 function schedulePersist(): void {
+  if (isApplyingRemoteSync || isEmptyTabId(state.activeTabId)) return;
   // Merge smoothly against any parallel desktop window edits stored in library JSON
   if (typeof window !== 'undefined' && window.localStorage) {
     const rawLib = window.localStorage.getItem('quillvibe.library.v2');
@@ -275,10 +378,30 @@ function schedulePersist(): void {
   state.library = upsertBookInLibrary(state.library, state.project);
   state.saveStatusLabel = 'Saving…';
   if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
+  windowSync?.broadcastBookUpdated(state.project.id, state.project);
   if (persistTimer !== null) window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(async () => {
+    // Re-read latest localStorage right before atomic write so parallel window edits to other books are preserved
+    let libToWrite = state.library;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const latestRaw = window.localStorage.getItem('quillvibe.library.v2');
+      if (latestRaw) {
+        try {
+          const latestLib = safeJsonParse<BookLibraryState>(latestRaw);
+          if (Array.isArray(latestLib.books) && latestLib.books.length > 0) {
+            const merged = latestLib.books.map((b) =>
+              b.id === state.project.id ? state.project : b,
+            );
+            if (!merged.some((b) => b.id === state.project.id)) merged.push(state.project);
+            libToWrite = { activeBookId: state.project.id, books: merged };
+          }
+        } catch {
+          // Keep current state.library
+        }
+      }
+    }
     const serializedBook = serializeExtensionFile('.qv', state.project);
-    const serializedLib = JSON.stringify(state.library);
+    const serializedLib = JSON.stringify(libToWrite);
     await Promise.all([persistProject(serializedBook), persistLibrary(serializedLib)]);
     state.saveStatusLabel = 'Saved';
     if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
@@ -424,18 +547,24 @@ function renderActiveView(): void {
   if (tierPillBtnEl) {
     tierPillBtnEl.textContent = `Workspace: ${formatWorkspaceLayoutName(state.settings.toolTier)}`;
   }
+  const isNewTab = isEmptyTabId(state.activeTabId);
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
-  shellEl.classList.toggle('is-typeset-studio', state.activeView === 'typeset' || state.activeView === 'course');
+  shellEl.classList.toggle(
+    'is-typeset-studio',
+    isNewTab || state.activeView === 'typeset' || state.activeView === 'course',
+  );
   immersiveBtnEl?.classList.toggle('is-active', state.immersiveMode);
   syncResponsiveDrawerClasses();
-  if (bookTitleInputEl && bookTitleInputEl.value !== state.project.title) {
-    bookTitleInputEl.value = state.project.title;
+  if (bookTitleInputEl) {
+    const desiredTitle = isNewTab ? 'New Tab' : state.project.title;
+    if (bookTitleInputEl.value !== desiredTitle) bookTitleInputEl.value = desiredTitle;
+    bookTitleInputEl.disabled = isNewTab;
   }
   if (exportFormatSelectEl && exportFormatSelectEl.value !== state.defaultExportFormat) {
     exportFormatSelectEl.value = state.defaultExportFormat;
   }
-  if (state.activeView !== 'course') {
+  if (state.activeView !== 'course' && !isNewTab) {
     headerNavGlass?.setValue(state.activeView);
     headerNavGlass?.sampleBackdrop(true);
   }
@@ -444,6 +573,39 @@ function renderActiveView(): void {
     Array.from(mobileBottomNavEl.children).forEach((child, idx) => {
       child.classList.toggle('is-active', opts[idx]?.id === state.activeView);
     });
+  }
+
+  if (isNewTab) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderNewTabView(mainStageEl, actions, {
+      isBookOpenElsewhere: (bookId) =>
+        (windowSync?.getOtherWindowsWithBook(bookId).length ?? 0) > 0 ||
+        state.openBookTabIds.includes(bookId),
+      onPickBook: (bookId) => {
+        const emptyId = state.activeTabId;
+        const alreadyInWindow = state.openBookTabIds.includes(bookId);
+        if (alreadyInWindow) {
+          state.openBookTabIds = state.openBookTabIds.filter((id) => id !== emptyId);
+        } else {
+          state.openBookTabIds = state.openBookTabIds.map((id) => (id === emptyId ? bookId : id));
+        }
+        state.activeTabId = bookId;
+        actions.switchBook(bookId);
+      },
+      onCreateBlankBook: (title, penName) => {
+        const emptyId = state.activeTabId;
+        const { newBookId } = createBookForNewTab(actions, title, penName);
+        state.openBookTabIds = state.openBookTabIds.map((id) => (id === emptyId ? newBookId : id));
+        state.activeTabId = newBookId;
+        renderDesktopTabBar();
+        renderActiveView();
+        actions.notify(`Created “${title}”`);
+      },
+    });
+    syncWindowAndDocumentTitle();
+    immersiveHud?.sync();
+    return;
   }
 
   renderBinder(binderEl, actions);
@@ -793,17 +955,26 @@ const actions: AppActions = {
 
   async openNewWindow(bookId?: string) {
     if (!isTauriRuntime()) return;
-    const syncedLib = upsertBookInLibrary(state.library, state.project);
-    state.library = syncedLib;
+    if (!isEmptyTabId(state.activeTabId)) {
+      const syncedLib = upsertBookInLibrary(state.library, state.project);
+      state.library = syncedLib;
+      await persistLibrary(JSON.stringify(syncedLib));
+    }
+    const targetId = bookId?.trim() ? bookId.trim() : EMPTY_TAB_PREFIX;
     const targetBook =
-      (bookId && syncedLib.books.find((b) => b.id === bookId)) || state.project;
-    await persistLibrary(JSON.stringify(syncedLib));
-    const res = await openBookInNewDesktopWindow(
-      targetBook.id,
-      `Quillvibe - ${targetBook.title || 'Untitled Book'}`,
-    );
+      !isEmptyTabId(targetId)
+        ? state.library.books.find((b) => b.id === targetId)
+        : null;
+    const winTitle = targetBook
+      ? `Quillvibe - ${targetBook.title || 'Untitled Book'}`
+      : 'Quillvibe - New Tab';
+    const res = await openBookInNewDesktopWindow(targetId, winTitle);
     if (res.ok) {
-      actions.notify(`Opened “${targetBook.title}” in new window`);
+      actions.notify(
+        targetBook
+          ? `Opened “${targetBook.title}” in new window`
+          : 'Opened new Quillvibe window',
+      );
     } else {
       actions.notify(res.error || 'Could not open new desktop window.');
     }
@@ -814,30 +985,62 @@ const actions: AppActions = {
     if (!state.openBookTabIds.includes(bookId)) {
       state.openBookTabIds = [...state.openBookTabIds, bookId];
     }
-    if (state.project.id !== bookId) {
+    state.activeTabId = bookId;
+    if (state.project.id !== bookId || isEmptyTabId(state.activeTabId)) {
       actions.switchBook(bookId);
     } else {
+      windowSync?.publishPresence();
       renderDesktopTabBar();
+      renderActiveView();
+      maybeNotifySharedBook(bookId);
     }
   },
 
-  closeBookTab(bookId: string) {
-    const validTabs = state.openBookTabIds.filter((id) =>
-      state.library.books.some((b) => b.id === id),
+  openEmptyTab() {
+    const newId = createEmptyTabId();
+    state.openBookTabIds = [...state.openBookTabIds, newId];
+    state.activeTabId = newId;
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
+  },
+
+  closeBookTab(tabId: string) {
+    const validTabs = state.openBookTabIds.filter(
+      (id) => isEmptyTabId(id) || state.library.books.some((b) => b.id === id),
     );
     if (validTabs.length <= 1) return;
-    const idx = validTabs.indexOf(bookId);
+    const idx = validTabs.indexOf(tabId);
     if (idx === -1) return;
-    const nextTabs = validTabs.filter((id) => id !== bookId);
+    const nextTabs = validTabs.filter((id) => id !== tabId);
     state.openBookTabIds = nextTabs;
-    if (state.project.id === bookId) {
+    if (state.activeTabId === tabId) {
       const fallbackId = nextTabs[Math.max(0, idx - 1)] ?? nextTabs[0];
       if (fallbackId) {
+        if (isEmptyTabId(fallbackId)) {
+          state.activeTabId = fallbackId;
+          windowSync?.publishPresence();
+          renderDesktopTabBar();
+          renderActiveView();
+          return;
+        }
         actions.switchBook(fallbackId);
         return;
       }
     }
+    windowSync?.publishPresence();
     renderDesktopTabBar();
+  },
+
+  mergeAllWindowsHere() {
+    if (!isTauriRuntime() || !windowSync) return;
+    const otherCount = windowSync.getOtherOpenWindowCount();
+    if (otherCount === 0) {
+      actions.notify('Only this Quillvibe window is currently open.');
+      return;
+    }
+    windowSync.requestMergeAllWindowsHere();
+    actions.notify(`Combining tabs from ${otherCount} other window${otherCount > 1 ? 's' : ''}…`);
   },
 
   replayWalkthrough() {
@@ -866,22 +1069,25 @@ const actions: AppActions = {
   },
 
   switchBook(bookId: string) {
-    const updatedLib = switchActiveBook(
-      upsertBookInLibrary(state.library, state.project),
-      bookId,
-    );
+    const baseLib = isEmptyTabId(state.activeTabId)
+      ? state.library
+      : upsertBookInLibrary(state.library, state.project);
+    const updatedLib = switchActiveBook(baseLib, bookId);
     state.library = updatedLib;
     state.project = getActiveBookFromLibrary(updatedLib);
     if (!state.openBookTabIds.includes(state.project.id)) {
       state.openBookTabIds = [...state.openBookTabIds, state.project.id];
     }
+    state.activeTabId = state.project.id;
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
     state.sprintStartWords = getProjectWordCount(state.project);
+    windowSync?.publishPresence();
     schedulePersist();
     renderDesktopTabBar();
     renderActiveView();
+    maybeNotifySharedBook(state.project.id);
     actions.notify(`Switched to “${state.project.title}”`);
   },
 
@@ -889,15 +1095,19 @@ const actions: AppActions = {
     state.library = library;
     state.project = getActiveBookFromLibrary(library);
     const validIds = new Set(library.books.map((b) => b.id));
-    const keptTabs = state.openBookTabIds.filter((id) => validIds.has(id));
+    const keptTabs = state.openBookTabIds.filter((id) => isEmptyTabId(id) || validIds.has(id));
     if (!keptTabs.includes(state.project.id)) {
       keptTabs.push(state.project.id);
     }
     state.openBookTabIds = keptTabs;
+    if (!isEmptyTabId(state.activeTabId) || !keptTabs.includes(state.activeTabId)) {
+      state.activeTabId = state.project.id;
+    }
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
     state.sprintStartWords = getProjectWordCount(state.project);
+    windowSync?.publishPresence();
     schedulePersist();
     renderDesktopTabBar();
     renderActiveView();
@@ -1405,21 +1615,12 @@ function openTabPickerMenu(anchor: HTMLElement): void {
         on: {
           click: () => {
             closeMenu();
-            const pen = state.project.authorIdentity?.penName || state.project.author || 'Author';
-            const num = state.library.books.length + 1;
-            const res = addBookToLibrary(
-              upsertBookInLibrary(state.library, state.project),
-              `Untitled Book ${num}`,
-              pen,
-            );
-            state.openBookTabIds = [...state.openBookTabIds, res.newBook.id];
-            actions.replaceLibrary(res.library);
-            actions.notify(`Opened “${res.newBook.title}” in new tab`);
+            actions.openEmptyTab();
           },
         },
       },
       icon('plus', 13),
-      el('span', { className: 'qv-tab-picker-title', text: 'New Book in Tab' }),
+      el('span', { className: 'qv-tab-picker-title', text: 'New Empty Tab' }),
     ),
   );
   menu.appendChild(
@@ -1431,15 +1632,34 @@ function openTabPickerMenu(anchor: HTMLElement): void {
         on: {
           click: () => {
             closeMenu();
-            void actions.openNewWindow(state.project.id);
+            void actions.openNewWindow();
           },
         },
       },
       icon('window-new', 13),
-      el('span', { className: 'qv-tab-picker-title', text: 'Open in New Window' }),
+      el('span', { className: 'qv-tab-picker-title', text: 'New Window (Empty Tab)' }),
       el('span', { className: 'qv-tab-picker-badge', text: 'Ctrl+Shift+N' }),
     ),
   );
+  if ((windowSync?.getOtherOpenWindowCount() ?? 0) > 0) {
+    menu.appendChild(
+      el(
+        'button',
+        {
+          className: 'qv-tab-picker-item',
+          attrs: { type: 'button', role: 'menuitem' },
+          on: {
+            click: () => {
+              closeMenu();
+              actions.mergeAllWindowsHere();
+            },
+          },
+        },
+        icon('split', 13),
+        el('span', { className: 'qv-tab-picker-title', text: 'Combine All Windows Here' }),
+      ),
+    );
+  }
 
   document.body.appendChild(menu);
   const rect = anchor.getBoundingClientRect();
@@ -1464,15 +1684,84 @@ function renderDesktopTabBar(): void {
   if (topbarNewWinBtnEl) topbarNewWinBtnEl.style.display = showTabs ? 'none' : '';
   if (!showTabs) return;
 
-  // Ensure openBookTabIds contains valid books and always includes the active book
+  // Ensure openBookTabIds contains valid books or empty tabs and always includes activeTabId
   const byId = new Map(state.library.books.map((b) => [b.id, b]));
-  const validIds = state.openBookTabIds.filter((id) => byId.has(id));
-  if (!validIds.includes(state.project.id) && byId.has(state.project.id)) {
+  const validIds = state.openBookTabIds.filter((id) => isEmptyTabId(id) || byId.has(id));
+  if (validIds.length === 0) {
     validIds.push(state.project.id);
+  }
+  if (!validIds.includes(state.activeTabId)) {
+    if (isEmptyTabId(state.activeTabId) || byId.has(state.activeTabId)) {
+      validIds.push(state.activeTabId);
+    } else {
+      state.activeTabId = validIds[0];
+    }
   }
   state.openBookTabIds = validIds;
 
   clearNode(desktopTabBarEl);
+
+  const TAB_MIME = 'application/x-quillvibe-tab';
+  const handleExternalTabDrop = (raw: string, insertIndex?: number): boolean => {
+    try {
+      const parsed = JSON.parse(raw) as { bookId?: string; sourceWindowId?: string };
+      if (!parsed?.bookId || !parsed?.sourceWindowId) return false;
+      const incomingId = parsed.bookId;
+      if (parsed.sourceWindowId === windowSync?.windowId) {
+        // Same-window reorder
+        const fromIdx = state.openBookTabIds.indexOf(incomingId);
+        if (fromIdx === -1) return false;
+        const next = [...state.openBookTabIds];
+        next.splice(fromIdx, 1);
+        const targetIdx =
+          insertIndex !== undefined
+            ? Math.max(0, Math.min(next.length, insertIndex > fromIdx ? insertIndex - 1 : insertIndex))
+            : next.length;
+        next.splice(targetIdx, 0, incomingId);
+        state.openBookTabIds = next;
+        renderDesktopTabBar();
+        return true;
+      }
+      // Cross-window drop: combine tab into this window and tell source window to remove it
+      const next = state.openBookTabIds.filter((id) => id !== incomingId);
+      const targetIdx =
+        insertIndex !== undefined ? Math.max(0, Math.min(next.length, insertIndex)) : next.length;
+      next.splice(targetIdx, 0, incomingId);
+      state.openBookTabIds = next;
+      windowSync?.notifyTabTransferred(parsed.sourceWindowId, incomingId);
+      if (isEmptyTabId(incomingId)) {
+        state.activeTabId = incomingId;
+        windowSync?.publishPresence();
+        renderDesktopTabBar();
+        renderActiveView();
+      } else {
+        actions.switchBook(incomingId);
+      }
+      actions.notify('Combined tab into this window');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  desktopTabBarEl.ondragover = (e) => {
+    if (!e.dataTransfer?.types.includes(TAB_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    desktopTabBarEl?.classList.add('is-drop-target');
+  };
+  desktopTabBarEl.ondragleave = (e) => {
+    if (e.relatedTarget && desktopTabBarEl?.contains(e.relatedTarget as Node)) return;
+    desktopTabBarEl?.classList.remove('is-drop-target');
+  };
+  desktopTabBarEl.ondrop = (e) => {
+    desktopTabBarEl?.classList.remove('is-drop-target');
+    const raw = e.dataTransfer?.getData(TAB_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleExternalTabDrop(raw);
+  };
 
   const logoWrap = el(
     'div',
@@ -1485,12 +1774,13 @@ function renderDesktopTabBar(): void {
     attrs: { role: 'tablist', 'aria-label': 'Open books' },
   });
 
-  for (const id of validIds) {
-    const book = byId.get(id);
-    if (!book) continue;
-    const isActive = id === state.project.id;
+  validIds.forEach((id, tabIndex) => {
+    const isEmpty = isEmptyTabId(id);
+    const book = isEmpty ? null : byId.get(id);
+    if (!isEmpty && !book) return;
+    const isActive = id === state.activeTabId;
     const canClose = validIds.length > 1;
-    const tabTitle = book.title?.trim() || 'Untitled Book';
+    const tabTitle = isEmpty ? 'New Tab' : book?.title?.trim() || 'Untitled Book';
 
     const closeBtn = canClose
       ? el(
@@ -1516,12 +1806,21 @@ function renderDesktopTabBar(): void {
         attrs: {
           role: 'tab',
           tabindex: '0',
+          draggable: 'true',
           'aria-selected': String(isActive),
-          title: `${tabTitle} — Right-click to open in new window`,
+          title: `${tabTitle} — Drag to reorder, drag out for a new window, or drop onto another Quillvibe window to combine`,
         },
         on: {
           click: () => {
-            if (!isActive) actions.switchBook(id);
+            if (isActive) return;
+            if (isEmpty) {
+              state.activeTabId = id;
+              windowSync?.publishPresence();
+              renderDesktopTabBar();
+              renderActiveView();
+            } else {
+              actions.switchBook(id);
+            }
           },
           auxclick: (e) => {
             if (e.button === 1 && canClose) {
@@ -1532,7 +1831,60 @@ function renderDesktopTabBar(): void {
           keydown: (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              if (!isActive) actions.switchBook(id);
+              if (!isActive) {
+                if (isEmpty) {
+                  state.activeTabId = id;
+                  renderDesktopTabBar();
+                  renderActiveView();
+                } else {
+                  actions.switchBook(id);
+                }
+              }
+            }
+          },
+          dragstart: (e) => {
+            if (!e.dataTransfer) return;
+            tabEl.classList.add('is-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData(
+              TAB_MIME,
+              JSON.stringify({
+                bookId: id,
+                sourceWindowId: windowSync?.windowId ?? 'local',
+                title: tabTitle,
+              }),
+            );
+          },
+          dragover: (e) => {
+            if (!e.dataTransfer?.types.includes(TAB_MIME)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            tabEl.classList.add('is-drag-over');
+          },
+          dragleave: () => {
+            tabEl.classList.remove('is-drag-over');
+          },
+          drop: (e) => {
+            tabEl.classList.remove('is-drag-over');
+            desktopTabBarEl?.classList.remove('is-drop-target');
+            const raw = e.dataTransfer?.getData(TAB_MIME);
+            if (!raw) return;
+            e.preventDefault();
+            e.stopPropagation();
+            handleExternalTabDrop(raw, tabIndex);
+          },
+          dragend: (e) => {
+            tabEl.classList.remove('is-dragging');
+            desktopTabBarEl?.classList.remove('is-drop-target');
+            const barRect = desktopTabBarEl?.getBoundingClientRect();
+            const tornOut =
+              barRect &&
+              e.dataTransfer?.dropEffect === 'none' &&
+              (e.clientY > barRect.bottom + 42 || e.clientY < barRect.top - 42);
+            if (tornOut && state.openBookTabIds.length > 1) {
+              void actions.openNewWindow(isEmpty ? EMPTY_TAB_PREFIX : id);
+              actions.closeBookTab(id);
             }
           },
         },
@@ -1548,23 +1900,25 @@ function renderDesktopTabBar(): void {
           {
             label: 'Pop Out to New Window',
             icon: 'window-new',
-            onSelect: () => void actions.openNewWindow(id),
-          },
-          {
-            label: 'New Book in Tab',
-            icon: 'plus',
             onSelect: () => {
-              const pen = state.project.authorIdentity?.penName || state.project.author || 'Author';
-              const num = state.library.books.length + 1;
-              const res = addBookToLibrary(
-                upsertBookInLibrary(state.library, state.project),
-                `Untitled Book ${num}`,
-                pen,
-              );
-              state.openBookTabIds = [...state.openBookTabIds, res.newBook.id];
-              actions.replaceLibrary(res.library);
+              void actions.openNewWindow(isEmpty ? EMPTY_TAB_PREFIX : id);
+              if (canClose) actions.closeBookTab(id);
             },
           },
+          {
+            label: 'New Empty Tab',
+            icon: 'plus',
+            onSelect: () => actions.openEmptyTab(),
+          },
+          ...((windowSync?.getOtherOpenWindowCount() ?? 0) > 0
+            ? [
+                {
+                  label: 'Combine All Windows Into This Window',
+                  icon: 'split' as const,
+                  onSelect: () => actions.mergeAllWindowsHere(),
+                },
+              ]
+            : []),
           {
             label: 'Close Tab',
             disabled: !canClose,
@@ -1575,10 +1929,13 @@ function renderDesktopTabBar(): void {
             disabled: !canClose,
             onSelect: () => {
               state.openBookTabIds = [id];
-              if (state.project.id !== id) {
+              state.activeTabId = id;
+              if (!isEmpty && state.project.id !== id) {
                 actions.switchBook(id);
               } else {
+                windowSync?.publishPresence();
                 renderDesktopTabBar();
+                renderActiveView();
               }
             },
           },
@@ -1587,20 +1944,34 @@ function renderDesktopTabBar(): void {
     ]);
 
     tabStrip.appendChild(tabEl);
-  }
+  });
 
   const addTabBtn = el(
     'button',
     {
       className: 'qv-tab-add-btn',
       tooltip: {
-        title: 'Add Book Tab or New Window',
-        short: 'Stack another book in this window for series reference, or open a separate window.',
+        title: 'New Empty Book Tab',
+        short: 'Open a fresh tab to pick any recent book or start a new manuscript.',
       },
-      attrs: { type: 'button', 'aria-label': 'Add book tab or new window' },
-      on: { click: () => openTabPickerMenu(addTabBtn) },
+      attrs: { type: 'button', 'aria-label': 'New empty book tab' },
+      on: { click: () => actions.openEmptyTab() },
     },
     icon('plus', 13),
+  );
+
+  const tabMenuBtn = el(
+    'button',
+    {
+      className: 'qv-tab-add-btn',
+      tooltip: {
+        title: 'Tabs & Windows Menu',
+        short: 'Switch books, open an empty window, or combine all open windows into one.',
+      },
+      attrs: { type: 'button', 'aria-label': 'Tabs and windows menu' },
+      on: { click: () => openTabPickerMenu(tabMenuBtn) },
+    },
+    '▾',
   );
 
   const dragSpacer = el('div', {
@@ -1612,6 +1983,7 @@ function renderDesktopTabBar(): void {
     logoWrap,
     tabStrip,
     addTabBtn,
+    tabMenuBtn,
     dragSpacer,
     createDesktopWindowControlsEl(),
   );
@@ -2212,7 +2584,7 @@ function wireGlobalShortcutsAndDrop(): void {
       void actions.openAnyQuillvibeFile();
     } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'n' && isTauriRuntime()) {
       e.preventDefault();
-      void actions.openNewWindow(state.project.id);
+      void actions.openNewWindow();
     } else if (
       (e.ctrlKey || e.metaKey) &&
       !e.shiftKey &&
@@ -2223,7 +2595,7 @@ function wireGlobalShortcutsAndDrop(): void {
       state.openBookTabIds.length > 1
     ) {
       e.preventDefault();
-      actions.closeBookTab(state.project.id);
+      actions.closeBookTab(state.activeTabId);
     } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       actions.setState({ zenMode: !state.zenMode }, true);
@@ -2390,11 +2762,110 @@ async function bootstrap(): Promise<void> {
       ? new URLSearchParams(window.location.search).get('bookId')?.trim()
       : null);
   const skipSplashFromWindow = Boolean(winInit.__QUILLVIBE_SKIP_SPLASH__ || requestedBookId);
-  if (requestedBookId && state.library.books.some((b) => b.id === requestedBookId)) {
+  if (requestedBookId && isEmptyTabId(requestedBookId)) {
+    const emptyId = createEmptyTabId();
+    state.openBookTabIds = [emptyId];
+    state.activeTabId = emptyId;
+  } else if (requestedBookId && state.library.books.some((b) => b.id === requestedBookId)) {
     state.library = switchActiveBook(state.library, requestedBookId);
     state.project = getActiveBookFromLibrary(state.library);
+    state.openBookTabIds = [state.project.id];
+    state.activeTabId = state.project.id;
+  } else {
+    state.openBookTabIds = [state.project.id];
+    state.activeTabId = state.project.id;
   }
-  state.openBookTabIds = [state.project.id];
+
+  windowSync?.destroy();
+  windowSync = new WorkspaceWindowSync({
+    getOpenBookIds: () => state.openBookTabIds,
+    getActiveBookId: () => state.activeTabId,
+    onRemoteBookUpdated: (bookId, remoteProject) => {
+      const normalized = normalizeProjectDefaults(remoteProject);
+      const exists = state.library.books.some((b) => b.id === bookId);
+      state.library = {
+        activeBookId: state.library.activeBookId,
+        books: exists
+          ? state.library.books.map((b) => (b.id === bookId ? normalized : b))
+          : [...state.library.books, normalized],
+      };
+      if (!isEmptyTabId(state.activeTabId) && state.project.id === bookId) {
+        isApplyingRemoteSync = true;
+        try {
+          const proseEl = mainStageEl?.querySelector<HTMLTextAreaElement>('.bv-prose-textarea');
+          const prevStart = proseEl?.selectionStart ?? 0;
+          const prevEnd = proseEl?.selectionEnd ?? 0;
+          const prevScroll = proseEl?.scrollTop ?? 0;
+          const wasFocused = Boolean(proseEl && document.activeElement === proseEl);
+          state.project = normalized;
+          if (bookTitleInputEl && bookTitleInputEl.value !== normalized.title) {
+            bookTitleInputEl.value = normalized.title;
+          }
+          if (state.activeView === 'editor' && proseEl) {
+            const ctx = findSceneContext(state.project, state.activeSceneId);
+            if (ctx && proseEl.value !== ctx.scene.content) {
+              proseEl.value = ctx.scene.content;
+              if (wasFocused) {
+                const maxLen = proseEl.value.length;
+                proseEl.setSelectionRange(Math.min(prevStart, maxLen), Math.min(prevEnd, maxLen));
+              }
+              proseEl.scrollTop = prevScroll;
+            }
+            updateWordCountersOnly();
+          } else {
+            renderActiveView();
+          }
+          state.saveStatusLabel = 'Synced';
+          if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
+        } finally {
+          isApplyingRemoteSync = false;
+        }
+      }
+      renderDesktopTabBar();
+    },
+    onTabTransferredAway: (bookId) => {
+      const remaining = state.openBookTabIds.filter((id) => id !== bookId);
+      if (remaining.length === 0) {
+        void closeDesktopWindow();
+        return;
+      }
+      state.openBookTabIds = remaining;
+      if (state.activeTabId === bookId) {
+        const nextId = remaining[0];
+        if (isEmptyTabId(nextId)) {
+          state.activeTabId = nextId;
+          windowSync?.publishPresence();
+          renderDesktopTabBar();
+          renderActiveView();
+        } else {
+          actions.switchBook(nextId);
+        }
+      } else {
+        windowSync?.publishPresence();
+        renderDesktopTabBar();
+      }
+    },
+    onMergeRequested: (targetWindowId) => {
+      const myBooks = state.openBookTabIds.filter((id) => !isEmptyTabId(id));
+      windowSync?.sendMergeOffer(targetWindowId, myBooks);
+    },
+    onMergeOfferReceived: (fromWindowId, incomingBookIds) => {
+      const next = [...state.openBookTabIds];
+      for (const bid of incomingBookIds) {
+        if (bid && !isEmptyTabId(bid) && !next.includes(bid)) {
+          next.push(bid);
+        }
+      }
+      state.openBookTabIds = next;
+      windowSync?.publishPresence();
+      renderDesktopTabBar();
+      windowSync?.sendMergeAck(fromWindowId);
+      actions.notify('Combined open windows into this window');
+    },
+    onMergeAcknowledged: () => {
+      void closeDesktopWindow();
+    },
+  });
 
   // Keep library books synchronized across parallel desktop windows without overwriting active edits
   if (typeof window !== 'undefined') {
@@ -2404,13 +2875,16 @@ async function bootstrap(): Promise<void> {
         const externalLib = safeJsonParse<BookLibraryState>(ev.newValue);
         if (!Array.isArray(externalLib.books) || externalLib.books.length === 0) return;
         const merged = externalLib.books.map((b) =>
-          b.id === state.project.id ? state.project : normalizeProjectDefaults(b),
+          !isEmptyTabId(state.activeTabId) && b.id === state.project.id
+            ? state.project
+            : normalizeProjectDefaults(b),
         );
-        if (!merged.some((b) => b.id === state.project.id)) {
+        if (!isEmptyTabId(state.activeTabId) && !merged.some((b) => b.id === state.project.id)) {
           merged.push(state.project);
         }
         state.library = { activeBookId: state.project.id, books: merged };
         renderDesktopTabBar();
+        if (isEmptyTabId(state.activeTabId)) renderActiveView();
       } catch {
         // Ignore malformed storage updates
       }
@@ -2502,6 +2976,8 @@ async function bootstrap(): Promise<void> {
 
   if (state.activeView !== 'course' && !skipSplashFromWindow) {
     maybeRunFirstLaunchSplash(actions, forceSplashFromRoute);
+  } else if (!isEmptyTabId(state.activeTabId)) {
+    window.setTimeout(() => maybeNotifySharedBook(state.project.id), 300);
   }
 }
 

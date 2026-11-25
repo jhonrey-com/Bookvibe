@@ -5,7 +5,7 @@
 **Quillvibe** is a free, open-source book writing app built for authors and writers. You can write chapters, keep character and world notes, mark up drafts while proofreading, design book covers, and export print-ready `.pdf` and `.epub` books—all in one place without creating an account. It opens in **Ivory Light** with three **Workspace Layouts** (**Focused**, **Editorial**, and **Full Studio**), works offline, saves books in Quillvibe's protected `.qv` format, and is published under **`jhonrey.com`**.
 
 > **Try Quillvibe in Your Browser:** **[Open `https://quillvibe.jhonrey.com/start`](https://quillvibe.jhonrey.com/start)**  
-> **Download Desktop App (`v2.2.2` — Windows, Mac & Linux):** **[GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
+> **Download Desktop App (`v2.2.3` — Windows, Mac & Linux):** **[GitHub Releases](https://github.com/jhonrey-com/Quillvibe/releases/latest)**  
 > **Contact, Feedback & Support:** Email **[quillvibe@jhonrey.com](mailto:quillvibe@jhonrey.com)**
 
 > [!NOTE]
@@ -55,7 +55,7 @@ Visit **[https://quillvibe.jhonrey.com/](https://quillvibe.jhonrey.com/)** to wr
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from **[GitHub Releases (`v2.2.2`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (published under **`jhonrey.com`**):
+Download the latest installer from **[GitHub Releases (`v2.2.3`)](https://github.com/jhonrey-com/Quillvibe/releases/latest)** (published under **`jhonrey.com`**):
 - **Windows:** `.msi` or `-setup.exe`
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`

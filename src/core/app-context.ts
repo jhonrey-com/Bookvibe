@@ -39,6 +39,7 @@ export interface AppState {
   sprintStartWords: number;
   immersiveMode: boolean;
   openBookTabIds: string[];
+  activeTabId: string;
   saveStatusLabel: string;
 }
 
@@ -60,7 +61,9 @@ export interface AppActions {
   toggleImmersiveMode(force?: boolean): Promise<void>;
   openNewWindow(bookId?: string): Promise<void>;
   openBookInTab(bookId: string): void;
+  openEmptyTab(): void;
   closeBookTab(bookId: string): void;
+  mergeAllWindowsHere(): void;
   replayWalkthrough(): void;
   importExternalDocument(): Promise<void>;
   importLegacyBookFile(): Promise<void>;
