@@ -84,6 +84,7 @@ import {
   DEFAULT_SETTINGS,
   applySettingsToDocument,
   formatAppWindowTitle,
+  formatWorkspaceLayoutName,
   loadSettings,
   saveSettings,
 } from './core/settings';
@@ -421,8 +422,7 @@ function renderActiveView(): void {
     rebuildHeaderNavControl();
   }
   if (tierPillBtnEl) {
-    const tierLabel = state.settings.toolTier.charAt(0).toUpperCase() + state.settings.toolTier.slice(1);
-    tierPillBtnEl.textContent = `Level: ${tierLabel}`;
+    tierPillBtnEl.textContent = `Workspace: ${formatWorkspaceLayoutName(state.settings.toolTier)}`;
   }
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
@@ -2068,13 +2068,11 @@ function buildShell(root: HTMLElement): void {
   immersiveHud?.destroy();
   immersiveHud = mountImmersiveHud(actions, alarmController, { toggleSprint, resetSprint });
 
-  const initialTierLabel =
-    state.settings.toolTier.charAt(0).toUpperCase() + state.settings.toolTier.slice(1);
   tierPillBtnEl = el('button', {
     className: 'bv-mini-btn qv-tier-pill',
-    text: `Level: ${initialTierLabel}`,
+    text: `Workspace: ${formatWorkspaceLayoutName(state.settings.toolTier)}`,
     tooltip: TOOLTIP_CATALOG.tierSwitch,
-    attrs: { type: 'button', 'aria-label': 'Workspace Level Settings' },
+    attrs: { type: 'button', 'aria-label': 'Workspace Layout Settings' },
     on: { click: () => actions.openSettingsModal('editor') },
   });
 
@@ -2125,9 +2123,9 @@ function buildShell(root: HTMLElement): void {
       })),
     },
     {
-      heading: 'Workspace Tier',
+      heading: 'Workspace Layout',
       items: (['basic', 'intermediate', 'advanced'] as ToolTier[]).map((t) => ({
-        label: t.charAt(0).toUpperCase() + t.slice(1),
+        label: formatWorkspaceLayoutName(t),
         checked: state.settings.toolTier === t,
         onSelect: () => actions.updateSettings({ toolTier: t }),
       })),

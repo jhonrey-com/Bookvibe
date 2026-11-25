@@ -46,9 +46,9 @@ export const COURSE_MODULES: readonly CourseModule[] = [
   {
     id: 'mod-setup',
     number: 1,
-    title: 'Desk Setup, Workspace Tiers & Multi-Window Books',
+    title: 'Desk Setup, Workspace Layouts & Multi-Window Books',
     summary:
-      'Set up your book identity, adjust Basic, Intermediate, or Advanced tool visibility, resize columns, and work across parallel windows.',
+      'Set up your book identity, switch between Focused, Editorial, and Full Studio layouts, resize columns, and work across parallel windows or tabs.',
     audience: 'First-time authors setting up a quiet desk',
     lessons: [
       {
@@ -91,38 +91,38 @@ export const COURSE_MODULES: readonly CourseModule[] = [
       },
       {
         id: 'm1-tier',
-        title: 'Scale From Basic Document Sheet to Full Publishing Studio',
+        title: 'Switch Between Focused Drafting and Full Publishing Studio',
         durationMin: 4,
         instruction:
-          'Start in Basic mode for a distraction-free document sheet, then move up to Intermediate or Advanced when you want outlining, Story Bible cross-linking, or Cover Studio.',
+          'Draft in Focused layout for a quiet document sheet, then switch to Editorial or Full Studio when you want outlining, Story Bible cross-linking, or Cover Studio.',
         objective: 'Keep the interface calm while drafting and expose specialized tools only when needed.',
         concepts: [
-          'Writing stalls when twenty unrelated panels compete for attention on chapter one. Basic tier intentionally hides multi-pane visualizers and cover tools so you see only your binder, clean sheet, and simple typography bar.',
-          'Switching to Intermediate unlocks Corkboard index cards, Outline filter ledger, Editorial Proofreading markup, and Interior Print Typesetting. Advanced unlocks Story Bible, interactive Story Graph, Vector Book Cover Studio, Collaboration permissions, and .qvext extensions without changing a word of your manuscript.',
+          'Writing stalls when twenty unrelated panels compete for attention on chapter one. Focused layout intentionally hides multi-pane visualizers and cover tools so you see only your binder, clean sheet, and simple typography bar.',
+          'Switching to Editorial opens Corkboard index cards, Outline filter ledger, Editorial Proofreading markup, and Interior Print Typesetting. Full Studio opens Story Bible, interactive Story Graph, Vector Book Cover Studio, Collaboration permissions, and .qvext extensions without changing a word of your manuscript.',
         ],
         steps: [
-          'Open Settings -> Workspace & Editor (or click the Level pill in the bottom-left status bar) to pick Basic, Intermediate, or Advanced.',
-          'Start drafting a scene in Basic level to enjoy a quiet Ivory sheet.',
-          'Move up to Intermediate or Advanced whenever you are ready to outline scenes or lay out a cover.',
+          'Open Settings -> Workspace & Editor (or click the Workspace pill in the bottom-left status bar) to pick Focused, Editorial, or Full Studio.',
+          'Start drafting a scene in Focused layout for a quiet Ivory sheet.',
+          'Switch to Editorial or Full Studio whenever you are ready to outline scenes or lay out a cover.',
         ],
         example: {
-          heading: 'Practical Tier Workflow',
-          body: 'Use Basic tier during morning first-draft sprints (500–1,500 new words), then switch to Advanced during afternoon structural revision and cover layout.',
+          heading: 'Practical Layout Workflow',
+          body: 'Use Focused layout during morning first-draft sprints (500–1,500 new words), then switch to Full Studio during afternoon structural revision and cover layout.',
         },
         proTip:
           'Toolbar labels can also be set in Settings -> Toolbar Detail Mode to Icons Only, Balanced, or Full Details to match your screen size.',
         checkpoint: {
-          question: 'Does changing Workspace Level between Basic and Advanced delete any Story Bible entries or cover layers?',
+          question: 'Does switching Workspace Layout between Focused and Full Studio delete any Story Bible entries or cover layers?',
           options: [
-            'Yes, downgrading removes cover data',
-            'No — Workspace Levels only filter visible panels while keeping all book data',
-            'Only Advanced scenes are backed up',
+            'Yes, switching layouts removes cover data',
+            'No — Workspace Layouts only filter visible panels while keeping all book data',
+            'Only Full Studio scenes are backed up',
           ],
           correctIndex: 1,
           explanation:
-            'All parts, scenes, bible profiles, snapshots, and cover layers stay intact inside the book file across every level.',
+            'All parts, scenes, bible profiles, snapshots, and cover layers stay intact inside the book file across every layout.',
         },
-        actionLabel: 'Open Workspace Level Settings',
+        actionLabel: 'Open Workspace Layout Settings',
         minTier: 'basic',
         targetView: 'editor',
         targetSelector: '.qv-tier-pill',
@@ -297,21 +297,21 @@ export const COURSE_MODULES: readonly CourseModule[] = [
     title: 'Story Architecture: Corkboard, Outline, Bible & Graph',
     summary:
       'Diagnose pacing holes visually on index cards, filter chapter ledgers by POV and location, build character codex dossiers, and map plot threads.',
-    audience: 'Intermediate & Advanced structural planners',
+    audience: 'Structural planners and revisers',
     lessons: [
       {
         id: 'm3-cork',
         title: 'Stage & Reorder Scenes on the Corkboard',
         durationMin: 4,
         instruction:
-          'Switch to Corkboard (Intermediate tier or higher) to inspect scene synopsis cards side by side, update draft statuses, and drag scenes across chapters.',
+          'Switch to Corkboard (Editorial or Full Studio layout) to inspect scene synopsis cards side by side, update draft statuses, and drag scenes across chapters.',
         objective: 'Evaluate narrative momentum chapter-by-chapter before rewriting prose.',
         concepts: [
           'Reading prose line-by-line hides pacing flaws. Stepping up to Corkboard flattens every scene into a crisp index card showing scene title, synopsis, POV tag, word count against target progress bar, and workflow state (Outline, Draft, Revision, Final).',
           'Because cards accept drag-and-drop across chapter columns—as well as right-click quick actions—resequencing an investigation scene two chapters earlier takes two seconds instead of manual cut-and-paste.',
         ],
         steps: [
-          'Set Workspace Tier to Intermediate or Advanced and open the Corkboard tab.',
+          'Set Workspace Layout to Editorial or Full Studio and open the Corkboard tab.',
           'Edit a scene synopsis directly on the index card and adjust its status badge.',
           'Drag any index card onto another chapter group or right-click to jump straight into Draft Editor.',
         ],
@@ -1256,10 +1256,10 @@ export function closeInteractiveCourseDrawer(): void {
 export function navigateToCourseLesson(actions: AppActions, lesson: CourseLesson): void {
   if (lesson.minTier === 'advanced' && actions.getState().settings.toolTier !== 'advanced') {
     actions.updateSettings({ toolTier: 'advanced' });
-    actions.notify('Switched Workspace Tier to Advanced for this lesson.');
+    actions.notify('Switched Workspace Layout to Full Studio for this lesson.');
   } else if (lesson.minTier === 'intermediate' && actions.getState().settings.toolTier === 'basic') {
     actions.updateSettings({ toolTier: 'intermediate' });
-    actions.notify('Switched Workspace Tier to Intermediate for this lesson.');
+    actions.notify('Switched Workspace Layout to Editorial for this lesson.');
   }
 
   actions.setState(

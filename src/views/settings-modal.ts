@@ -311,9 +311,9 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
       );
 
       const tierOptions: Array<{ id: ToolTier; title: string; desc: string }> = [
-        { id: 'basic', title: 'Basic', desc: 'Manuscript sheet & notes only.' },
-        { id: 'intermediate', title: 'Intermediate', desc: 'Adds Corkboard, Outline, Proofread, Typeset.' },
-        { id: 'advanced', title: 'Advanced', desc: 'Adds Story Bible, Graph, Pro Cover, Permissions.' },
+        { id: 'basic', title: 'Focused', desc: 'Manuscript sheet & notes only.' },
+        { id: 'intermediate', title: 'Editorial', desc: 'Adds Corkboard, Outline, Proofread, Typeset.' },
+        { id: 'advanced', title: 'Full Studio', desc: 'Adds Story Bible, Graph, Cover Studio, Permissions.' },
       ];
       const tierCardsGrid = el(
         'div',
@@ -328,7 +328,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
                 click: () => {
                   actions.updateSettings({ toolTier: opt.id });
                   actions.setState({}, true);
-                  actions.notify(`Switched workspace level to ${opt.title}`);
+                  actions.notify(`Switched workspace layout to ${opt.title}`);
                   renderBody();
                 },
               },
@@ -605,9 +605,9 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
           el(
             'section',
             { className: 'bv-cork-card' },
-            el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Level' }),
+            el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Layout' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-theme' }, text: 'Application Theme' }), themeSel),
-            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Level (Moves Section Bar Cleanly)' }), tierCardsGrid),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Layout' }), tierCardsGrid),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-toolbar-mode' }, text: 'Toolbar Detail Mode' }), toolbarModeSel),
             el('div', { className: 'bv-field' }, fontSizeLabel, fontSizeSlider),
             el('div', { className: 'bv-field' }, lhLabel, lhSlider),
@@ -1034,7 +1034,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v2.2.1', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.2.2', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -1053,7 +1053,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '2.2.1',
+                    version: '2.2.2',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,

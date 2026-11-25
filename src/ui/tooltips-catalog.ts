@@ -83,14 +83,14 @@ export const TOOLTIP_CATALOG = {
     ],
   },
   settingsBtn: {
-    title: 'Settings, Levels & Themes',
-    short: 'Tool levels (Basic/Int/Adv), Ivory/Obsidian themes, fonts & imports.',
-    details: 'Switch Basic, Intermediate, or Advanced tools, change Ivory/Parchment/Obsidian themes, install custom fonts, or import .docx/.html/.md/.bookvibe files.',
+    title: 'Settings, Layouts & Themes',
+    short: 'Workspace layouts (Focused / Editorial / Full Studio), themes, fonts & imports.',
+    details: 'Switch between Focused, Editorial, and Full Studio layouts, change Ivory/Parchment/Obsidian themes, install custom fonts, or import .docx/.html/.md/.bookvibe files.',
   },
   tierSwitch: {
-    title: 'Workspace Tool Tier',
-    short: 'Change between Basic, Intermediate, and Advanced tools.',
-    details: 'Basic keeps the screen clean and focused; Intermediate adds Corkboard, Outline & Proofread; Advanced opens Cover Studio, Story Bible & Graph.',
+    title: 'Workspace Layout',
+    short: 'Switch between Focused, Editorial, and Full Studio workspace layouts.',
+    details: 'Focused keeps a quiet drafting page; Editorial adds Corkboard, Outline, Proofread & Typeset; Full Studio opens Cover Studio, Story Bible & Graph.',
   },
   themeSwitch: {
     title: 'Application Theme',

@@ -393,9 +393,9 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
 
   const tierRow = el('div', { className: 'qv-tier-card-grid' });
   const tierCards: Array<{ id: ToolTier; title: string; desc: string }> = [
-    { id: 'basic', title: 'Basic', desc: 'Clean page only. Quiet focus.' },
-    { id: 'intermediate', title: 'Intermediate', desc: 'Corkboard, Outline, Proofread, Typeset.' },
-    { id: 'advanced', title: 'Advanced', desc: 'Full Studio: Bible, Graph, Pro Cover, Permissions.' },
+    { id: 'basic', title: 'Focused', desc: 'Clean page only. Quiet drafting.' },
+    { id: 'intermediate', title: 'Editorial', desc: 'Corkboard, Outline, Proofread, Typeset.' },
+    { id: 'advanced', title: 'Full Studio', desc: 'Story Bible, Graph, Cover Studio, Permissions.' },
   ];
   const renderTierButtons = () => {
     tierRow.replaceChildren();
@@ -656,7 +656,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
               el(
                 'div',
                 {},
-                el('h2', { className: 'qv-welcome-section-title', text: 'Workspace Level' }),
+                el('h2', { className: 'qv-welcome-section-title', text: 'Workspace Layout' }),
                 tierRow,
               ),
             ]

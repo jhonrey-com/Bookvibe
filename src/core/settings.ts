@@ -158,6 +158,12 @@ export function isTierAtLeast(current: ToolTier, required: ToolTier): boolean {
   return rank[current] >= rank[required];
 }
 
+export function formatWorkspaceLayoutName(tier: ToolTier): string {
+  if (tier === 'intermediate') return 'Editorial';
+  if (tier === 'advanced') return 'Full Studio';
+  return 'Focused';
+}
+
 export function resolveSectionDisplayName(
   activeView: StudioViewId,
   typesetSubTab?: 'interior' | 'cover' | 'publish',
