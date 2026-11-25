@@ -378,19 +378,22 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     ? state.editorSubMode
     : 'draft';
 
-  const subModeControl = new LiquidGlassControl<EditorSubMode>({
-    ariaLabel: 'Editor pane mode',
-    surface: 'clear',
-    compact: true,
-    iconOnly: true,
-    value: effectiveSubMode,
-    options: subModeOptions,
-    onChange: (mode) => {
-      pendingComposer = null;
-      actions.setState({ editorSubMode: mode }, true);
-    },
-  });
-  activeEditorGlass = subModeControl;
+  let subModeControl: LiquidGlassControl<EditorSubMode> | null = null;
+  if (subModeOptions.length > 1) {
+    subModeControl = new LiquidGlassControl<EditorSubMode>({
+      ariaLabel: 'Editor pane mode',
+      surface: 'clear',
+      compact: true,
+      iconOnly: true,
+      value: effectiveSubMode,
+      options: subModeOptions,
+      onChange: (mode) => {
+        pendingComposer = null;
+        actions.setState({ editorSubMode: mode }, true);
+      },
+    });
+    activeEditorGlass = subModeControl;
+  }
 
   const ensureDraftEditable = (): boolean => {
     if (isProofMode || state.editorSubMode === 'diff') {
@@ -591,7 +594,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         whiteSpace: 'nowrap',
       },
     }),
-    el('div', { style: { flexShrink: '0' } }, subModeControl.element),
+    subModeControl ? el('div', { style: { flexShrink: '0' } }, subModeControl.element) : null,
   );
 
   const panes = el('div', {

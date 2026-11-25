@@ -38,6 +38,7 @@ export interface AppState {
   sprintRemainingSec: number;
   sprintStartWords: number;
   immersiveMode: boolean;
+  openBookTabIds: string[];
   saveStatusLabel: string;
 }
 
@@ -58,6 +59,8 @@ export interface AppActions {
   startInteractiveCourse(moduleIdx?: number): void;
   toggleImmersiveMode(force?: boolean): Promise<void>;
   openNewWindow(bookId?: string): Promise<void>;
+  openBookInTab(bookId: string): void;
+  closeBookTab(bookId: string): void;
   replayWalkthrough(): void;
   importExternalDocument(): Promise<void>;
   importLegacyBookFile(): Promise<void>;

@@ -222,6 +222,7 @@ export interface QuillvibeSettings {
   alarmRingtone: AlarmRingtoneId;
   alarmVolume: number;
   enableSpellcheck: boolean;
+  enableDesktopBookTabs: boolean;
   immersiveHudX: number;
   immersiveHudY: number;
   immersiveHudCollapsed: boolean;

@@ -54,6 +54,7 @@ import { COLLABORATOR_ROLE_LABELS } from './core/collab';
 import { resolveEffectiveFontCss } from './core/fonts';
 import { ensureAuthorIdentity } from './core/identity';
 import {
+  addBookToLibrary,
   createInitialLibrary,
   getActiveBookFromLibrary,
   normalizeProjectDefaults,
@@ -196,6 +197,7 @@ const state: AppState = {
   sprintRemainingSec: 25 * 60,
   sprintStartWords: getProjectWordCount(starter),
   immersiveMode: false,
+  openBookTabIds: [starter.id],
   saveStatusLabel: 'Saved',
 };
 
@@ -205,6 +207,10 @@ let toastTimer: number | null = null;
 let immersiveHud: ImmersiveHudHandle | null = null;
 let alarmController: AlarmController | null = null;
 let immersiveBtnEl: HTMLButtonElement | null = null;
+let desktopTabBarEl: HTMLElement | null = null;
+let topbarLogoEl: HTMLElement | null = null;
+let topbarWinControlsEl: HTMLElement | null = null;
+let topbarNewWinBtnEl: HTMLButtonElement | null = null;
 
 let headerNavGlass: LiquidGlassControl<StudioViewId> | null = null;
 let headerNavHostEl: HTMLDivElement;
@@ -668,10 +674,14 @@ const actions: AppActions = {
     const prevTheme = state.settings.appTheme;
     const prevTier = state.settings.toolTier;
     const prevToolbar = state.settings.toolbarDisplayMode;
+    const prevDesktopTabs = state.settings.enableDesktopBookTabs;
     state.settings = saveSettings({ ...state.settings, ...patch });
     applySettingsToDocument(state.settings);
     syncWindowAndDocumentTitle();
     immersiveHud?.sync();
+    if (patch.enableDesktopBookTabs !== undefined && patch.enableDesktopBookTabs !== prevDesktopTabs) {
+      renderDesktopTabBar();
+    }
     if (
       patch.appTheme !== undefined && patch.appTheme !== prevTheme ||
       patch.toolTier !== undefined && patch.toolTier !== prevTier ||
@@ -688,6 +698,7 @@ const actions: AppActions = {
     state.project = normalizeProjectDefaults(updater(state.project));
     schedulePersist();
     syncWindowAndDocumentTitle();
+    renderDesktopTabBar();
     if (rerender) renderActiveView();
     else {
       updateWordCountersOnly();
@@ -782,18 +793,51 @@ const actions: AppActions = {
 
   async openNewWindow(bookId?: string) {
     if (!isTauriRuntime()) return;
+    const syncedLib = upsertBookInLibrary(state.library, state.project);
+    state.library = syncedLib;
     const targetBook =
-      (bookId && state.library.books.find((b) => b.id === bookId)) || state.project;
-    schedulePersist();
-    const ok = await openBookInNewDesktopWindow(
+      (bookId && syncedLib.books.find((b) => b.id === bookId)) || state.project;
+    await persistLibrary(JSON.stringify(syncedLib));
+    const res = await openBookInNewDesktopWindow(
       targetBook.id,
       `Quillvibe - ${targetBook.title || 'Untitled Book'}`,
     );
-    if (ok) {
+    if (res.ok) {
       actions.notify(`Opened “${targetBook.title}” in new window`);
     } else {
-      actions.notify('Pop-up blocked when opening new window.');
+      actions.notify(res.error || 'Could not open new desktop window.');
     }
+  },
+
+  openBookInTab(bookId: string) {
+    if (!state.library.books.some((b) => b.id === bookId)) return;
+    if (!state.openBookTabIds.includes(bookId)) {
+      state.openBookTabIds = [...state.openBookTabIds, bookId];
+    }
+    if (state.project.id !== bookId) {
+      actions.switchBook(bookId);
+    } else {
+      renderDesktopTabBar();
+    }
+  },
+
+  closeBookTab(bookId: string) {
+    const validTabs = state.openBookTabIds.filter((id) =>
+      state.library.books.some((b) => b.id === id),
+    );
+    if (validTabs.length <= 1) return;
+    const idx = validTabs.indexOf(bookId);
+    if (idx === -1) return;
+    const nextTabs = validTabs.filter((id) => id !== bookId);
+    state.openBookTabIds = nextTabs;
+    if (state.project.id === bookId) {
+      const fallbackId = nextTabs[Math.max(0, idx - 1)] ?? nextTabs[0];
+      if (fallbackId) {
+        actions.switchBook(fallbackId);
+        return;
+      }
+    }
+    renderDesktopTabBar();
   },
 
   replayWalkthrough() {
@@ -828,11 +872,15 @@ const actions: AppActions = {
     );
     state.library = updatedLib;
     state.project = getActiveBookFromLibrary(updatedLib);
+    if (!state.openBookTabIds.includes(state.project.id)) {
+      state.openBookTabIds = [...state.openBookTabIds, state.project.id];
+    }
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
     state.sprintStartWords = getProjectWordCount(state.project);
     schedulePersist();
+    renderDesktopTabBar();
     renderActiveView();
     actions.notify(`Switched to “${state.project.title}”`);
   },
@@ -840,11 +888,18 @@ const actions: AppActions = {
   replaceLibrary(library: BookLibraryState) {
     state.library = library;
     state.project = getActiveBookFromLibrary(library);
+    const validIds = new Set(library.books.map((b) => b.id));
+    const keptTabs = state.openBookTabIds.filter((id) => validIds.has(id));
+    if (!keptTabs.includes(state.project.id)) {
+      keptTabs.push(state.project.id);
+    }
+    state.openBookTabIds = keptTabs;
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
     state.sprintStartWords = getProjectWordCount(state.project);
     schedulePersist();
+    renderDesktopTabBar();
     renderActiveView();
   },
 
@@ -1236,6 +1291,332 @@ const actions: AppActions = {
   refreshWordCounters: updateWordCountersOnly,
 };
 
+function createDesktopWindowControlsEl(): HTMLElement {
+  return el(
+    'div',
+    { className: 'bv-win-controls' },
+    el(
+      'button',
+      {
+        className: 'bv-win-btn',
+        tooltip: { title: 'Minimize Window', short: 'Minimize Quillvibe to the taskbar or dock.' },
+        attrs: { type: 'button', 'aria-label': 'Minimize window' },
+        on: { click: () => void minimizeDesktopWindow() },
+      },
+      (() => {
+        const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+        s.appendChild(svgEl('line', { x1: 2, y1: 6.5, x2: 10, y2: 6.5, stroke: 'currentColor', 'stroke-width': 1.4 }));
+        return s;
+      })(),
+    ),
+    el(
+      'button',
+      {
+        className: 'bv-win-btn',
+        tooltip: { title: 'Maximize / Restore', short: 'Toggle full window size or restore bounds.' },
+        attrs: { type: 'button', 'aria-label': 'Maximize or restore window' },
+        on: { click: () => void toggleMaximizeDesktopWindow() },
+      },
+      (() => {
+        const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+        s.appendChild(svgEl('rect', { x: 2.25, y: 2.25, width: 7.5, height: 7.5, rx: 1, stroke: 'currentColor', 'stroke-width': 1.3 }));
+        return s;
+      })(),
+    ),
+    el(
+      'button',
+      {
+        className: 'bv-win-btn bv-win-btn-close',
+        tooltip: { title: 'Close Window', short: 'Exit Quillvibe desktop window.' },
+        attrs: { type: 'button', 'aria-label': 'Close window' },
+        on: { click: () => void closeDesktopWindow() },
+      },
+      (() => {
+        const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
+        s.append(
+          svgEl('path', { d: 'M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5', stroke: 'currentColor', 'stroke-width': 1.4, 'stroke-linecap': 'round' }),
+        );
+        return s;
+      })(),
+    ),
+  );
+}
+
+function openTabPickerMenu(anchor: HTMLElement): void {
+  const existing = document.getElementById('qv-tab-picker-menu');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const closeMenu = () => {
+    menu.remove();
+    document.removeEventListener('pointerdown', onOutside, true);
+    document.removeEventListener('keydown', onKey);
+  };
+  const onOutside = (ev: PointerEvent) => {
+    const t = ev.target as Node | null;
+    if (t && !menu.contains(t) && !anchor.contains(t)) closeMenu();
+  };
+  const onKey = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') closeMenu();
+  };
+
+  const menu = el('div', {
+    className: 'qv-tab-picker-menu',
+    id: 'qv-tab-picker-menu',
+    attrs: { role: 'menu', 'aria-label': 'Open book tab or window' },
+  });
+
+  menu.appendChild(el('div', { className: 'qv-tab-picker-head', text: 'Books in Library' }));
+
+  for (const book of state.library.books) {
+    const alreadyOpen = state.openBookTabIds.includes(book.id);
+    const isCurrent = book.id === state.project.id;
+    menu.appendChild(
+      el(
+        'button',
+        {
+          className: `qv-tab-picker-item${isCurrent ? ' is-current' : ''}`,
+          attrs: { type: 'button', role: 'menuitem' },
+          on: {
+            click: () => {
+              closeMenu();
+              actions.openBookInTab(book.id);
+            },
+          },
+        },
+        el('span', { className: 'qv-tab-picker-title', text: book.title || 'Untitled Book' }),
+        el('span', {
+          className: 'qv-tab-picker-badge',
+          text: isCurrent ? 'Active' : alreadyOpen ? 'Switch' : 'Add Tab',
+        }),
+      ),
+    );
+  }
+
+  menu.appendChild(el('div', { className: 'qv-tab-picker-sep' }));
+  menu.appendChild(
+    el(
+      'button',
+      {
+        className: 'qv-tab-picker-item',
+        attrs: { type: 'button', role: 'menuitem' },
+        on: {
+          click: () => {
+            closeMenu();
+            const pen = state.project.authorIdentity?.penName || state.project.author || 'Author';
+            const num = state.library.books.length + 1;
+            const res = addBookToLibrary(
+              upsertBookInLibrary(state.library, state.project),
+              `Untitled Book ${num}`,
+              pen,
+            );
+            state.openBookTabIds = [...state.openBookTabIds, res.newBook.id];
+            actions.replaceLibrary(res.library);
+            actions.notify(`Opened “${res.newBook.title}” in new tab`);
+          },
+        },
+      },
+      icon('plus', 13),
+      el('span', { className: 'qv-tab-picker-title', text: 'New Book in Tab' }),
+    ),
+  );
+  menu.appendChild(
+    el(
+      'button',
+      {
+        className: 'qv-tab-picker-item',
+        attrs: { type: 'button', role: 'menuitem' },
+        on: {
+          click: () => {
+            closeMenu();
+            void actions.openNewWindow(state.project.id);
+          },
+        },
+      },
+      icon('window-new', 13),
+      el('span', { className: 'qv-tab-picker-title', text: 'Open in New Window' }),
+      el('span', { className: 'qv-tab-picker-badge', text: 'Ctrl+Shift+N' }),
+    ),
+  );
+
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  const menuW = Math.min(276, window.innerWidth - 16);
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuW - 8));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(rect.bottom + 4)}px`;
+  menu.style.width = `${menuW}px`;
+
+  window.setTimeout(() => {
+    document.addEventListener('pointerdown', onOutside, true);
+    document.addEventListener('keydown', onKey);
+  }, 0);
+}
+
+function renderDesktopTabBar(): void {
+  if (!isTauriRuntime() || !desktopTabBarEl) return;
+  const showTabs = state.settings.enableDesktopBookTabs !== false;
+  desktopTabBarEl.style.display = showTabs ? '' : 'none';
+  if (topbarLogoEl) topbarLogoEl.style.display = showTabs ? 'none' : '';
+  if (topbarWinControlsEl) topbarWinControlsEl.style.display = showTabs ? 'none' : '';
+  if (topbarNewWinBtnEl) topbarNewWinBtnEl.style.display = showTabs ? 'none' : '';
+  if (!showTabs) return;
+
+  // Ensure openBookTabIds contains valid books and always includes the active book
+  const byId = new Map(state.library.books.map((b) => [b.id, b]));
+  const validIds = state.openBookTabIds.filter((id) => byId.has(id));
+  if (!validIds.includes(state.project.id) && byId.has(state.project.id)) {
+    validIds.push(state.project.id);
+  }
+  state.openBookTabIds = validIds;
+
+  clearNode(desktopTabBarEl);
+
+  const logoWrap = el(
+    'div',
+    { className: 'qv-tabbar-logo', attrs: { 'data-tauri-drag-region': '' } },
+    quillvibeLogo(18),
+  );
+
+  const tabStrip = el('div', {
+    className: 'qv-tab-strip',
+    attrs: { role: 'tablist', 'aria-label': 'Open books' },
+  });
+
+  for (const id of validIds) {
+    const book = byId.get(id);
+    if (!book) continue;
+    const isActive = id === state.project.id;
+    const canClose = validIds.length > 1;
+    const tabTitle = book.title?.trim() || 'Untitled Book';
+
+    const closeBtn = canClose
+      ? el(
+          'button',
+          {
+            className: 'qv-tab-close',
+            attrs: { type: 'button', 'aria-label': `Close ${tabTitle} tab` },
+            on: {
+              click: (e) => {
+                e.stopPropagation();
+                actions.closeBookTab(id);
+              },
+            },
+          },
+          '×',
+        )
+      : null;
+
+    const tabEl = el(
+      'div',
+      {
+        className: `qv-book-tab${isActive ? ' is-active' : ''}`,
+        attrs: {
+          role: 'tab',
+          tabindex: '0',
+          'aria-selected': String(isActive),
+          title: `${tabTitle} — Right-click to open in new window`,
+        },
+        on: {
+          click: () => {
+            if (!isActive) actions.switchBook(id);
+          },
+          auxclick: (e) => {
+            if (e.button === 1 && canClose) {
+              e.preventDefault();
+              actions.closeBookTab(id);
+            }
+          },
+          keydown: (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (!isActive) actions.switchBook(id);
+            }
+          },
+        },
+      },
+      el('span', { className: 'qv-book-tab-title', text: tabTitle }),
+      closeBtn,
+    );
+
+    attachContextMenu(tabEl, () => [
+      {
+        heading: tabTitle,
+        items: [
+          {
+            label: 'Pop Out to New Window',
+            icon: 'window-new',
+            onSelect: () => void actions.openNewWindow(id),
+          },
+          {
+            label: 'New Book in Tab',
+            icon: 'plus',
+            onSelect: () => {
+              const pen = state.project.authorIdentity?.penName || state.project.author || 'Author';
+              const num = state.library.books.length + 1;
+              const res = addBookToLibrary(
+                upsertBookInLibrary(state.library, state.project),
+                `Untitled Book ${num}`,
+                pen,
+              );
+              state.openBookTabIds = [...state.openBookTabIds, res.newBook.id];
+              actions.replaceLibrary(res.library);
+            },
+          },
+          {
+            label: 'Close Tab',
+            disabled: !canClose,
+            onSelect: () => actions.closeBookTab(id),
+          },
+          {
+            label: 'Close Other Tabs',
+            disabled: !canClose,
+            onSelect: () => {
+              state.openBookTabIds = [id];
+              if (state.project.id !== id) {
+                actions.switchBook(id);
+              } else {
+                renderDesktopTabBar();
+              }
+            },
+          },
+        ],
+      },
+    ]);
+
+    tabStrip.appendChild(tabEl);
+  }
+
+  const addTabBtn = el(
+    'button',
+    {
+      className: 'qv-tab-add-btn',
+      tooltip: {
+        title: 'Add Book Tab or New Window',
+        short: 'Stack another book in this window for series reference, or open a separate window.',
+      },
+      attrs: { type: 'button', 'aria-label': 'Add book tab or new window' },
+      on: { click: () => openTabPickerMenu(addTabBtn) },
+    },
+    icon('plus', 13),
+  );
+
+  const dragSpacer = el('div', {
+    className: 'qv-tabbar-spacer',
+    attrs: { 'data-tauri-drag-region': '' },
+  });
+
+  desktopTabBarEl.append(
+    logoWrap,
+    tabStrip,
+    addTabBtn,
+    dragSpacer,
+    createDesktopWindowControlsEl(),
+  );
+}
+
 function buildShell(root: HTMLElement): void {
   clearNode(root);
 
@@ -1322,55 +1703,31 @@ function buildShell(root: HTMLElement): void {
     icon('panel-right', 15),
   );
 
-  const winControlsEl = isTauriRuntime()
-    ? el(
-        'div',
-        { className: 'bv-win-controls' },
-        el(
-          'button',
-          {
-            className: 'bv-win-btn',
-            tooltip: { title: 'Minimize Window', short: 'Minimize Quillvibe to the taskbar or dock.' },
-            attrs: { type: 'button', 'aria-label': 'Minimize window' },
-            on: { click: () => void minimizeDesktopWindow() },
+  topbarWinControlsEl = isTauriRuntime() ? createDesktopWindowControlsEl() : null;
+  topbarLogoEl = el(
+    'div',
+    { className: 'bv-logo-mark', attrs: { 'data-tauri-drag-region': '' } },
+    quillvibeLogo(28),
+  );
+
+  desktopTabBarEl = isTauriRuntime()
+    ? el('div', {
+        className: 'qv-desktop-tabbar',
+        attrs: { 'data-tauri-drag-region': '' },
+        on: {
+          mousedown: (e) => {
+            if (e.button !== 0) return;
+            const t = e.target as HTMLElement | null;
+            if (!t || t.closest('button, .qv-book-tab, a')) return;
+            void startDesktopWindowDrag();
           },
-          (() => {
-            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
-            s.appendChild(svgEl('line', { x1: 2, y1: 6.5, x2: 10, y2: 6.5, stroke: 'currentColor', 'stroke-width': 1.4 }));
-            return s;
-          })(),
-        ),
-        el(
-          'button',
-          {
-            className: 'bv-win-btn',
-            tooltip: { title: 'Maximize / Restore', short: 'Toggle full window size or restore bounds.' },
-            attrs: { type: 'button', 'aria-label': 'Maximize or restore window' },
-            on: { click: () => void toggleMaximizeDesktopWindow() },
+          dblclick: (e) => {
+            const t = e.target as HTMLElement | null;
+            if (!t || t.closest('button, .qv-book-tab, a')) return;
+            void isDesktopWindowMaximized().then(() => toggleMaximizeDesktopWindow());
           },
-          (() => {
-            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
-            s.appendChild(svgEl('rect', { x: 2.25, y: 2.25, width: 7.5, height: 7.5, rx: 1, stroke: 'currentColor', 'stroke-width': 1.3 }));
-            return s;
-          })(),
-        ),
-        el(
-          'button',
-          {
-            className: 'bv-win-btn bv-win-btn-close',
-            tooltip: { title: 'Close Window', short: 'Exit Quillvibe desktop window.' },
-            attrs: { type: 'button', 'aria-label': 'Close window' },
-            on: { click: () => void closeDesktopWindow() },
-          },
-          (() => {
-            const s = svgEl('svg', { width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none' });
-            s.append(
-              svgEl('path', { d: 'M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5', stroke: 'currentColor', 'stroke-width': 1.4, 'stroke-linecap': 'round' }),
-            );
-            return s;
-          })(),
-        ),
-      )
+        },
+      })
     : null;
 
   const topbar = el(
@@ -1396,7 +1753,7 @@ function buildShell(root: HTMLElement): void {
     el(
       'div',
       { className: 'bv-brand' },
-      el('div', { className: 'bv-logo-mark', attrs: { 'data-tauri-drag-region': '' } }, quillvibeLogo(28)),
+      topbarLogoEl,
       binderToggleBtn,
       el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
     ),
@@ -1433,7 +1790,7 @@ function buildShell(root: HTMLElement): void {
       ),
       ...(isTauriRuntime()
         ? [
-            el(
+            (topbarNewWinBtnEl = el(
               'button',
               {
                 className: 'bv-btn bv-btn-icon',
@@ -1442,7 +1799,7 @@ function buildShell(root: HTMLElement): void {
                 on: { click: () => void actions.openNewWindow() },
               },
               icon('window-new', 15),
-            ),
+            )),
             (immersiveBtnEl = el(
               'button',
               {
@@ -1537,7 +1894,7 @@ function buildShell(root: HTMLElement): void {
         icon('help', 15),
       ),
       inspectorToggleBtn,
-      winControlsEl,
+      topbarWinControlsEl,
     ),
   );
 
@@ -1752,8 +2109,10 @@ function buildShell(root: HTMLElement): void {
     attrs: { 'aria-label': 'Mobile workspace navigation' },
   });
 
-  shellEl = el('div', { className: 'bv-shell' }, topbar, workspaceGridEl, mobileBottomNavEl, statusbar);
+  const chromeTop = el('div', { className: 'qv-chrome-top' }, desktopTabBarEl, topbar);
+  shellEl = el('div', { className: 'bv-shell' }, chromeTop, workspaceGridEl, mobileBottomNavEl, statusbar);
   root.appendChild(shellEl);
+  renderDesktopTabBar();
   rebuildHeaderNavControl();
 
   attachContextMenu(shellEl, () => [
@@ -1853,6 +2212,20 @@ function wireGlobalShortcutsAndDrop(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       void actions.openAnyQuillvibeFile();
+    } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'n' && isTauriRuntime()) {
+      e.preventDefault();
+      void actions.openNewWindow(state.project.id);
+    } else if (
+      (e.ctrlKey || e.metaKey) &&
+      !e.shiftKey &&
+      !e.altKey &&
+      e.key.toLowerCase() === 'w' &&
+      isTauriRuntime() &&
+      state.settings.enableDesktopBookTabs &&
+      state.openBookTabIds.length > 1
+    ) {
+      e.preventDefault();
+      actions.closeBookTab(state.project.id);
     } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
       actions.setState({ zenMode: !state.zenMode }, true);
@@ -2022,6 +2395,28 @@ async function bootstrap(): Promise<void> {
   if (requestedBookId && state.library.books.some((b) => b.id === requestedBookId)) {
     state.library = switchActiveBook(state.library, requestedBookId);
     state.project = getActiveBookFromLibrary(state.library);
+  }
+  state.openBookTabIds = [state.project.id];
+
+  // Keep library books synchronized across parallel desktop windows without overwriting active edits
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (ev) => {
+      if (ev.key !== 'quillvibe.library.v2' || !ev.newValue) return;
+      try {
+        const externalLib = safeJsonParse<BookLibraryState>(ev.newValue);
+        if (!Array.isArray(externalLib.books) || externalLib.books.length === 0) return;
+        const merged = externalLib.books.map((b) =>
+          b.id === state.project.id ? state.project : normalizeProjectDefaults(b),
+        );
+        if (!merged.some((b) => b.id === state.project.id)) {
+          merged.push(state.project);
+        }
+        state.library = { activeBookId: state.project.id, books: merged };
+        renderDesktopTabBar();
+      } catch {
+        // Ignore malformed storage updates
+      }
+    });
   }
 
   if (startupFile) {

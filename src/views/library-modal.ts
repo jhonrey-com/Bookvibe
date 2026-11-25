@@ -86,6 +86,29 @@ export function showLibraryModal(actions: AppActions): void {
                 }),
             ...(isTauriRuntime()
               ? [
+                  ...(state.settings.enableDesktopBookTabs
+                    ? [
+                        el(
+                          'button',
+                          {
+                            className: 'bv-mini-btn',
+                            tooltip: {
+                              title: 'Open in Tab',
+                              short: 'Stack this book as a tab in the current desktop window.',
+                            },
+                            attrs: { type: 'button' },
+                            on: {
+                              click: () => {
+                                actions.openBookInTab(book.id);
+                                renderBody(modalBody);
+                              },
+                            },
+                          },
+                          icon('plus', 11),
+                          'Tab',
+                        ),
+                      ]
+                    : []),
                   el(
                     'button',
                     {

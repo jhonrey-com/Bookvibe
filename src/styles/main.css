@@ -176,6 +176,217 @@ button {
   grid-template-columns: 1fr;
 }
 
+/* --- Top Chrome & Desktop Stacked Book Tab Bar --- */
+
+.qv-chrome-top {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-bar);
+}
+
+.qv-desktop-tabbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 36px;
+  padding: 4px 10px 0 10px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-hairline);
+  user-select: none;
+  min-width: 0;
+}
+
+.qv-tabbar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 28px;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.qv-tab-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 0;
+  max-width: calc(100vw - 200px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.qv-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.qv-book-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  min-width: 108px;
+  max-width: 220px;
+  padding: 0 10px;
+  border-radius: 7px 7px 0 0;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 110ms ease, color 110ms ease, border-color 110ms ease;
+}
+
+.qv-book-tab:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.qv-book-tab.is-active {
+  background: var(--bg-bar);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: var(--border-hairline);
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+}
+
+.qv-book-tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qv-tab-close {
+  width: 17px;
+  height: 17px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.qv-tab-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.qv-tab-add-btn {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 110ms ease, color 110ms ease, border-color 110ms ease;
+}
+
+.qv-tab-add-btn:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.qv-tabbar-spacer {
+  flex: 1 1 24px;
+  height: 100%;
+  min-width: 16px;
+}
+
+.qv-desktop-tabbar .bv-win-controls {
+  margin-left: 0;
+  padding-left: 6px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
+}
+
+.qv-tab-picker-menu {
+  position: fixed;
+  z-index: 980;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.qv-tab-picker-head {
+  padding: 4px 8px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.qv-tab-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qv-tab-picker-item:hover {
+  background: var(--bg-elevated);
+}
+
+.qv-tab-picker-item.is-current {
+  font-weight: 600;
+}
+
+.qv-tab-picker-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qv-tab-picker-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.qv-tab-picker-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border-hairline);
+}
+
 /* --- Top Header Bar --- */
 
 .bv-topbar {
@@ -3854,7 +4065,8 @@ select.bv-select,
 
 /* --- Immersive Fullscreen HUD & Alarm Clock --- */
 
-.bv-shell.is-immersive .bv-statusbar {
+.bv-shell.is-immersive .bv-statusbar,
+.bv-shell.is-immersive .qv-desktop-tabbar {
   display: none;
 }
 

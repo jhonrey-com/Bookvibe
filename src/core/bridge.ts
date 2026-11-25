@@ -576,15 +576,18 @@ export async function isDesktopFullscreen(): Promise<boolean> {
 export async function openBookInNewDesktopWindow(
   bookId?: string,
   title?: string,
-): Promise<boolean> {
-  if (!isTauriRuntime()) return false;
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isTauriRuntime()) return { ok: false, error: 'Multi-window mode requires the desktop app.' };
   try {
     await tauriInvoke<string>('open_book_in_new_window', {
       bookId: bookId ?? null,
       title: title ?? 'Quillvibe',
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err || 'Could not open new desktop window.'),
+    };
   }
 }

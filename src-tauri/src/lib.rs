@@ -488,7 +488,7 @@ fn launch_os_bluetooth_share_cmd(
 }
 
 #[tauri::command]
-fn open_book_in_new_window(
+async fn open_book_in_new_window(
     app: AppHandle,
     book_id: Option<String>,
     title: Option<String>,
@@ -522,13 +522,16 @@ fn open_book_in_new_window(
     .maximized(true)
     .resizable(true)
     .decorations(false)
+    .visible(true)
     .focused(true)
     .background_color(tauri::window::Color(246, 244, 239, 255))
     .initialization_script(&init_script);
 
-    builder
+    let win = builder
         .build()
         .map_err(|e| format!("Could not open new desktop window: {e}"))?;
+    let _ = win.show();
+    let _ = win.set_focus();
 
     Ok(label)
 }

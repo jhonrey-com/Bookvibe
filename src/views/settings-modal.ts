@@ -473,6 +473,17 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         on: { change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }) },
       });
 
+      const desktopTabsChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-desktop-tabs',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.enableDesktopBookTabs },
+        on: {
+          change: () => {
+            actions.updateSettings({ enableDesktopBookTabs: desktopTabsChk.checked });
+          },
+        },
+      });
+
       const titlePreviewEl = el('div', {
         className: 'bv-mono-tag',
         text: `Preview: ${formatAppWindowTitle(settings, project, state.activeView, state.typesetSubTab, isTauriRuntime())}`,
@@ -611,6 +622,16 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-default-fmt' }, text: 'Default Save / Export Extension' }), defaultFmtSel),
             el('div', { className: 'bv-field' }, saveDelayLabel, saveDelaySlider),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-spellcheck' } }, spellcheckChk, el('span', { text: 'Enable strict word spellcheck underlines while drafting' })),
+            ...(isTauriRuntime()
+              ? [
+                  el(
+                    'label',
+                    { className: 'bv-check-row', attrs: { for: 'qv-set-desktop-tabs' } },
+                    desktopTabsChk,
+                    el('span', { text: 'Stack multiple books in a top desktop tab bar for series reference' }),
+                  ),
+                ]
+              : []),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-tours' } }, tourChk, el('span', { text: 'Show interactive hints & course tips' })),
             el(
               'button',
@@ -1013,7 +1034,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v2.2.0', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: 'v2.2.1', style: { color: 'var(--accent-emerald)' } }),
         ),
       ),
       el(
@@ -1032,7 +1053,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '2.2.0',
+                    version: '2.2.1',
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,
