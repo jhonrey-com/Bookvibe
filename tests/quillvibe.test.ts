@@ -55,6 +55,7 @@ import {
   syncWikilinkEdgesInGraph,
 } from '../src/core/graph-canvas-io';
 import { ProjectHistoryStack } from '../src/core/history';
+import { validateExternalExtensionManifest } from '../src/core/plugins';
 import { computeSnappedImagePosition } from '../src/core/scene-images';
 import {
   LEGACY_IMPORT_EXTENSIONS,
@@ -435,6 +436,56 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     expect(resolvePathToRoute('/help', false)).toMatchObject({ view: 'help', canonicalPath: '/help' });
     expect(resolvePathToRoute('/faq', false)).toMatchObject({ view: 'help', canonicalPath: '/faq' });
     expect(resolvePathToRoute('/course', false)).toMatchObject({ view: 'course', canonicalPath: '/course' });
+    expect(resolvePathToRoute('/developer', false)).toMatchObject({ view: 'developer', canonicalPath: '/developer' });
+    expect(resolvePathToRoute('/developers', false)).toMatchObject({ view: 'developer', canonicalPath: '/developer' });
+
+    const validExt = validateExternalExtensionManifest(
+      JSON.stringify({
+        magic: 'QUILLVIBE_EXT_V2',
+        id: 'press.test-ext',
+        name: 'Test Style Pack',
+        version: '1.0.0',
+        author: 'jhonrey.com',
+        description: 'Sample ruleset',
+        dataUsageSummary: 'Reads active scene.',
+        permissions: ['read:active-scene', 'propose:proofread-marks'],
+        rules: [
+          { id: 'r1', label: 'Double hyphen', pattern: '--', markKind: 'substitute', replacement: '—', note: 'Use em-dash' },
+        ],
+      }),
+    );
+    expect(validExt.id).toBe('press.test-ext');
+    expect(() =>
+      validateExternalExtensionManifest(
+        JSON.stringify({
+          magic: 'QUILLVIBE_EXT_V2',
+          id: 'core.impersonate',
+          name: 'Bad',
+          version: '1.0.0',
+          author: 'Dev',
+          description: 'Bad',
+          dataUsageSummary: 'None',
+          permissions: ['read:active-scene'],
+        }),
+      ),
+    ).toThrow(/reserved/i);
+    expect(() =>
+      validateExternalExtensionManifest(
+        JSON.stringify({
+          magic: 'QUILLVIBE_EXT_V2',
+          id: 'dev.redos',
+          name: 'ReDoS Test',
+          version: '1.0.0',
+          author: 'Dev',
+          description: 'Test',
+          dataUsageSummary: 'None',
+          permissions: ['read:active-scene', 'propose:proofread-marks'],
+          rules: [
+            { id: 'bad', label: 'Evil', pattern: '(a+)+', markKind: 'comment', note: 'Unsafe' },
+          ],
+        }),
+      ),
+    ).toThrow(/unsafe/i);
 
     expect(buildRtfExport(project).startsWith('{\\rtf1')).toBe(true);
     expect(buildPortableMigrationMarkdown(project)).toContain('# Story Bible');

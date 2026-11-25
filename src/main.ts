@@ -95,6 +95,7 @@ import {
 import { createSnapshotForScene } from './core/snapshots';
 import {
   COURSE_TAB_ID,
+  DEVELOPER_TAB_ID,
   EMPTY_TAB_PREFIX,
   HELP_TAB_ID,
   WorkspaceWindowSync,
@@ -132,6 +133,7 @@ import { renderBinder } from './views/binder';
 import { showCollabModal } from './views/collab-modal';
 import { renderCorkboardView } from './views/corkboard';
 import { renderCoursePageView, setCoursePageSelection } from './views/course-page';
+import { renderDeveloperPageView } from './views/developer-page';
 import { renderEditorView } from './views/editor';
 import { showExtensionsModal } from './views/extensions-modal';
 import { renderGraphView } from './views/graph';
@@ -248,6 +250,12 @@ function activateDesktopTab(tabId: string): void {
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
+  } else if (tabId === DEVELOPER_TAB_ID) {
+    state.activeTabId = DEVELOPER_TAB_ID;
+    state.activeView = 'developer';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
   } else if (isEmptyTabId(tabId)) {
     state.activeTabId = tabId;
     state.activeView = 'editor';
@@ -255,7 +263,10 @@ function activateDesktopTab(tabId: string): void {
     renderDesktopTabBar();
     renderActiveView();
   } else {
-    state.activeView = state.activeView === 'course' || state.activeView === 'help' ? 'editor' : state.activeView;
+    state.activeView =
+      state.activeView === 'course' || state.activeView === 'help' || state.activeView === 'developer'
+        ? 'editor'
+        : state.activeView;
     actions.switchBook(tabId);
   }
 }
@@ -331,25 +342,32 @@ function syncWindowAndDocumentTitle(): void {
         ? isTauriRuntime()
           ? 'Quillvibe - Help & FAQ'
           : 'Quillvibe Help Center, FAQ & Error Guide'
-        : formatAppWindowTitle(
-            state.settings,
-            state.project,
-            state.activeView,
-            state.typesetSubTab,
-            isTauriRuntime(),
-          );
+        : state.activeTabId === DEVELOPER_TAB_ID || state.activeView === 'developer'
+          ? isTauriRuntime()
+            ? 'Quillvibe - Developer Portal'
+            : 'Quillvibe Developer Portal — Build .qvext Extension Add-ons'
+          : formatAppWindowTitle(
+              state.settings,
+              state.project,
+              state.activeView,
+              state.typesetSubTab,
+              isTauriRuntime(),
+            );
   if (typeof document !== 'undefined') {
     document.title = title;
     if (!isTauriRuntime()) {
       const isCourse = state.activeView === 'course';
       const isHelp = state.activeView === 'help';
+      const isDev = state.activeView === 'developer';
       const metaDesc = document.querySelector<HTMLMetaElement>('meta[name="description"]');
       if (metaDesc) {
         metaDesc.content = isCourse
           ? 'Take the free 10-module, 28-lesson Quillvibe Book Writing & Publishing Course online. Learn drafting, story bibles, proofreading marks, interior print typesetting, book cover design, and EPUB 3 / PDF publishing.'
           : isHelp
             ? 'Complete Quillvibe Help Center, FAQ, and QV-xxx error code guide for writers across web and desktop.'
-            : 'Quillvibe is a free, open-source book writing studio and free 10-module Book Writing & Publishing Course. Draft manuscripts, organize story bibles, proofread with 15 copyediting marks, design covers, and export Print PDF and EPUB 3 offline.';
+            : isDev
+              ? 'Official developer portal for building, validating, and testing sandboxed .qvext extension add-ons for Quillvibe.'
+              : 'Quillvibe is a free, open-source book writing studio and free 10-module Book Writing & Publishing Course. Draft manuscripts, organize story bibles, proofread with 15 copyediting marks, design covers, and export Print PDF and EPUB 3 offline.';
       }
       const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
       if (canonical) {
@@ -357,7 +375,9 @@ function syncWindowAndDocumentTitle(): void {
           ? 'https://quillvibe.jhonrey.com/course'
           : isHelp
             ? 'https://quillvibe.jhonrey.com/help'
-            : 'https://quillvibe.jhonrey.com/';
+            : isDev
+              ? 'https://quillvibe.jhonrey.com/developer'
+              : 'https://quillvibe.jhonrey.com/';
       }
     }
   }
@@ -644,7 +664,8 @@ function renderActiveView(): void {
   const isNewTab = isEmptyTabId(state.activeTabId);
   const isCourseTab = state.activeTabId === COURSE_TAB_ID || state.activeView === 'course';
   const isHelpTab = state.activeTabId === HELP_TAB_ID || state.activeView === 'help';
-  const isFullStagePage = isNewTab || isCourseTab || isHelpTab || state.activeView === 'typeset';
+  const isDevTab = state.activeTabId === DEVELOPER_TAB_ID || state.activeView === 'developer';
+  const isFullStagePage = isNewTab || isCourseTab || isHelpTab || isDevTab || state.activeView === 'typeset';
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
   shellEl.classList.toggle('is-typeset-studio', isFullStagePage);
@@ -657,14 +678,16 @@ function renderActiveView(): void {
         ? 'Book Writing Course'
         : isHelpTab
           ? 'Help & FAQ'
-          : state.project.title;
+          : isDevTab
+            ? 'Developer Portal'
+            : state.project.title;
     if (bookTitleInputEl.value !== desiredTitle) bookTitleInputEl.value = desiredTitle;
-    bookTitleInputEl.disabled = isNewTab || isCourseTab || isHelpTab;
+    bookTitleInputEl.disabled = isNewTab || isCourseTab || isHelpTab || isDevTab;
   }
   if (exportFormatSelectEl && exportFormatSelectEl.value !== state.defaultExportFormat) {
     exportFormatSelectEl.value = state.defaultExportFormat;
   }
-  if (!isCourseTab && !isHelpTab && !isNewTab) {
+  if (!isCourseTab && !isHelpTab && !isDevTab && !isNewTab) {
     headerNavGlass?.setValue(state.activeView);
     headerNavGlass?.sampleBackdrop(true);
   }
@@ -730,6 +753,15 @@ function renderActiveView(): void {
     clearNode(binderEl);
     clearNode(inspectorEl);
     renderHelpPageView(mainStageEl, actions);
+    syncWindowAndDocumentTitle();
+    immersiveHud?.sync();
+    return;
+  }
+
+  if (isDevTab) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderDeveloperPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
     immersiveHud?.sync();
     return;
@@ -1148,6 +1180,31 @@ const actions: AppActions = {
     renderActiveView();
   },
 
+  openDeveloperPage() {
+    if (!isTauriRuntime()) {
+      if (state.activeView === 'developer') {
+        renderActiveView();
+        return;
+      }
+      const win = window.open('/developer', '_blank', 'noopener,noreferrer');
+      if (!win) {
+        actions.setState({ activeView: 'developer' }, true);
+      }
+      return;
+    }
+    if (isEmptyTabId(state.activeTabId)) {
+      state.openBookTabIds = state.openBookTabIds
+        .filter((id) => id !== DEVELOPER_TAB_ID)
+        .map((id) => (id === state.activeTabId ? DEVELOPER_TAB_ID : id));
+    } else if (!state.openBookTabIds.includes(DEVELOPER_TAB_ID)) {
+      state.openBookTabIds = [...state.openBookTabIds, DEVELOPER_TAB_ID];
+    }
+    state.activeTabId = DEVELOPER_TAB_ID;
+    state.activeView = 'developer';
+    renderDesktopTabBar();
+    renderActiveView();
+  },
+
   startInteractiveCourse(moduleIdx = 0) {
     openInteractiveCourseDrawer(actions, moduleIdx);
   },
@@ -1229,7 +1286,13 @@ const actions: AppActions = {
         if (isNonBookTabId(fallbackId)) {
           state.activeTabId = fallbackId;
           state.activeView =
-            fallbackId === COURSE_TAB_ID ? 'course' : fallbackId === HELP_TAB_ID ? 'help' : 'editor';
+            fallbackId === COURSE_TAB_ID
+              ? 'course'
+              : fallbackId === HELP_TAB_ID
+                ? 'help'
+                : fallbackId === DEVELOPER_TAB_ID
+                  ? 'developer'
+                  : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -1930,6 +1993,7 @@ function renderDesktopTabBar(): void {
     const isEmpty = isEmptyTabId(id);
     const isCourse = id === COURSE_TAB_ID;
     const isHelp = id === HELP_TAB_ID;
+    const isDev = id === DEVELOPER_TAB_ID;
     const book = isNonBookTabId(id) ? null : byId.get(id);
     if (!isNonBookTabId(id) && !book) return;
     const isActive = id === state.activeTabId;
@@ -1940,7 +2004,9 @@ function renderDesktopTabBar(): void {
         ? 'Book Writing Course'
         : isHelp
           ? 'Help & FAQ'
-          : book?.title?.trim() || 'Untitled Book';
+          : isDev
+            ? 'Developer Portal'
+            : book?.title?.trim() || 'Untitled Book';
 
     const closeBtn = canClose
       ? el(
@@ -2616,6 +2682,11 @@ function buildShell(root: HTMLElement): void {
           icon: 'help',
           onSelect: () => actions.openHelpPage(),
         },
+        {
+          label: 'Open Developer Portal (.qvext)',
+          icon: 'extensions',
+          onSelect: () => actions.openDeveloperPage(),
+        },
         ...(isTauriRuntime()
           ? [
               {
@@ -2952,7 +3023,14 @@ async function bootstrap(): Promise<void> {
         const nextId = remaining[0];
         if (isNonBookTabId(nextId)) {
           state.activeTabId = nextId;
-          state.activeView = nextId === COURSE_TAB_ID ? 'course' : nextId === HELP_TAB_ID ? 'help' : 'editor';
+          state.activeView =
+            nextId === COURSE_TAB_ID
+              ? 'course'
+              : nextId === HELP_TAB_ID
+                ? 'help'
+                : nextId === DEVELOPER_TAB_ID
+                  ? 'developer'
+                  : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -3102,7 +3180,12 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  if (state.activeView === 'typeset' || state.activeView === 'course' || state.activeView === 'help') {
+  if (
+    state.activeView === 'typeset' ||
+    state.activeView === 'course' ||
+    state.activeView === 'help' ||
+    state.activeView === 'developer'
+  ) {
     state.showBinder = false;
     state.showInspector = false;
   }

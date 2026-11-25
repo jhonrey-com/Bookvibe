@@ -479,6 +479,16 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
               {
                 className: 'bv-btn',
                 attrs: { type: 'button' },
+                on: { click: () => actions.openDeveloperPage() },
+              },
+              icon('extensions', 14),
+              'Developer Portal',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
                 on: { click: () => actions.setState({ activeView: 'editor' }, true) },
               },
               icon('quill', 14),

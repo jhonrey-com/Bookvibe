@@ -8,13 +8,14 @@ const PRESENCE_TTL_MS = 12_000;
 export const EMPTY_TAB_PREFIX = '__qv_new_tab__';
 export const COURSE_TAB_ID = '__qv_course_tab__';
 export const HELP_TAB_ID = '__qv_help_tab__';
+export const DEVELOPER_TAB_ID = '__qv_developer_tab__';
 
 export function isEmptyTabId(tabId: string | null | undefined): boolean {
   return Boolean(tabId && tabId.startsWith(EMPTY_TAB_PREFIX));
 }
 
 export function isSpecialPageTabId(tabId: string | null | undefined): boolean {
-  return tabId === COURSE_TAB_ID || tabId === HELP_TAB_ID;
+  return tabId === COURSE_TAB_ID || tabId === HELP_TAB_ID || tabId === DEVELOPER_TAB_ID;
 }
 
 export function isNonBookTabId(tabId: string | null | undefined): boolean {

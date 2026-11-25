@@ -17,6 +17,7 @@ const VIEW_TO_PATH: Record<StudioViewId, string> = {
   typeset: '/studio',
   course: '/course',
   help: '/help',
+  developer: '/developer',
 };
 
 export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): RouteMatch {
@@ -33,6 +34,9 @@ export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): R
   }
   if (clean === '/help' || clean.startsWith('/help/') || clean === '/faq' || clean.startsWith('/faq/')) {
     return { view: 'help', showStartSplash: false, canonicalPath: clean.startsWith('/faq') ? '/faq' : '/help' };
+  }
+  if (clean === '/developer' || clean.startsWith('/developer/') || clean === '/developers' || clean.startsWith('/developers/')) {
+    return { view: 'developer', showStartSplash: false, canonicalPath: '/developer' };
   }
   if (clean === '/write' || clean === '/editor' || clean === '/') {
     return { view: 'editor', showStartSplash: false, canonicalPath: '/write' };

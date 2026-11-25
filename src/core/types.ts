@@ -14,7 +14,16 @@ export type FontFamilyId = 'garamond' | 'baskerville' | 'palatino' | 'inter';
 
 export type ChapterNumeralStyle = 'roman' | 'word' | 'numeric';
 
-export type StudioViewId = 'editor' | 'corkboard' | 'outline' | 'bible' | 'graph' | 'typeset' | 'course' | 'help';
+export type StudioViewId =
+  | 'editor'
+  | 'corkboard'
+  | 'outline'
+  | 'bible'
+  | 'graph'
+  | 'typeset'
+  | 'course'
+  | 'help'
+  | 'developer';
 
 export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom';
 

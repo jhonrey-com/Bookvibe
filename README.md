@@ -7,6 +7,7 @@
 > **Try Quillvibe in Your Browser:** <a href="https://quillvibe.jhonrey.com/start" target="_blank" rel="noopener noreferrer"><strong>Open <code>https://quillvibe.jhonrey.com/start</code></strong></a>  
 > **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 28 Lessons)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
+> **Developer Portal (`.qvext` Add-ons):** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/developer</code></strong></a> *(Companion Extension Builder App Coming Soon)*  
 > **Download Desktop App (`v3.0.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
@@ -159,9 +160,13 @@ More detail: [docs/OFFICIAL-EXTENSION-REGISTRATION.md](docs/OFFICIAL-EXTENSION-R
 
 ---
 
-## 7. Extensions & Add-ons
+## 7. Extensions & Add-ons (`.qvext`)
 
-Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-ons. External add-ons cannot access the internet, your disk, or your author keys, and always ask for your permission before installing. Read **[docs/DEVELOPER-EXTENSIONS.md](docs/DEVELOPER-EXTENSIONS.md)**.
+Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-ons. External add-ons are declarative JSON manifests validated against ReDoS and script checks, cannot access the internet, your disk, or your author keys, and always require consent before installing.
+
+- **Developer Portal & Live Validator:** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/developer</strong></a> (validate manifests, inspect SHA-256 digests, test in sandbox, and read developer relations details).
+- **Upcoming Companion App (Coming Soon):** A dedicated standalone application for coding, testing, and packaging `.qvext` extensions is in planning.
+- **Specification Reference:** Read <a href="docs/DEVELOPER-EXTENSIONS.md" target="_blank" rel="noopener noreferrer"><strong>docs/DEVELOPER-EXTENSIONS.md</strong></a>.
 
 ---
 
@@ -186,6 +191,7 @@ Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-
 
 - **Questions, Suggestions, Corrections, Bugs, or Security Concerns:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a> directly.
 - **Online Help Center, FAQ & Error Codes:** Visit <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/help</strong></a>.
+- **Developer Portal & `.qvext` Guide:** Visit <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/developer</strong></a>.
 - **Security Policy:** See <a href="SECURITY.md" target="_blank" rel="noopener noreferrer"><strong>SECURITY.md</strong></a>.
 - **Complete UI & FAQ Reference:** Read <a href="docs/FAQ-AND-CONTROLS.md" target="_blank" rel="noopener noreferrer"><strong>docs/FAQ-AND-CONTROLS.md</strong></a>.
 - **Project Wiki & Roadmap:** Browse the <a href="https://github.com/jhonrey-com/Quillvibe/wiki" target="_blank" rel="noopener noreferrer"><strong>Quillvibe GitHub Wiki</strong></a>.

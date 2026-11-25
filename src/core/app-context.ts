@@ -58,6 +58,7 @@ export interface AppActions {
   openHelpModal(initialTab?: 'controls' | 'tour' | 'icons' | 'guides' | 'course' | 'reference'): void;
   openCoursePage(moduleId?: string): void;
   openHelpPage(query?: string): void;
+  openDeveloperPage(): void;
   startInteractiveCourse(moduleIdx?: number): void;
   toggleImmersiveMode(force?: boolean): Promise<void>;
   openNewWindow(bookId?: string): Promise<void>;

@@ -487,6 +487,17 @@ export async function showExtensionsModal(
               },
             }),
             el('button', {
+              className: 'bv-btn',
+              text: 'Developer Portal (/developer)',
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  closeModal();
+                  actions.openDeveloperPage();
+                },
+              },
+            }),
+            el('button', {
               className: 'bv-mini-btn',
               text: 'Download .qvext Template',
               attrs: { type: 'button' },
