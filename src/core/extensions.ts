@@ -537,6 +537,7 @@ export async function parseQuillvibeInput(
 export interface AppliedExtensionResult {
   project: BookProject;
   focusView: StudioViewId;
+  focusTypesetSubTab?: 'interior' | 'cover' | 'publish';
   focusSceneId?: string;
   summaryMessage: string;
 }
@@ -681,6 +682,7 @@ export function applyOpenedExtensionFile(
       return {
         project: next,
         focusView: 'typeset',
+        focusTypesetSubTab: 'interior',
         summaryMessage: `Applied ${parsed.extension} preset “${parsed.payload.presetName}”`,
       };
     }
@@ -710,6 +712,7 @@ export function applyOpenedExtensionFile(
       return {
         project: next,
         focusView: 'typeset',
+        focusTypesetSubTab: 'cover',
         summaryMessage: `Loaded .qvdesign cover “${parsed.payload.designName}” (${incomingComments.length} review pin${incomingComments.length === 1 ? '' : 's'})`,
       };
     }

@@ -25,7 +25,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
-const MAX_PROJECT_BYTES: u64 = 50 * 1024 * 1024;
 const DEFAULT_PROJECT_FILENAME: &str = "current-project.qv";
 const PREV_QUILLVIBE_PROJECT_FILENAME: &str = "current-project.quillvibe";
 const LEGACY_PROJECT_FILENAME: &str = "current-project.bookvibe";
@@ -125,13 +124,8 @@ fn read_validated_quillvibe_file(
     let supported_legacy = allow_legacy_import && is_importable_legacy_path(path);
     if !supported_native && !supported_legacy {
         return Err(String::from(
-            "Unsupported file extension. Only .qv, .qvbible, .qvscene, and .qvstyle files open directly in Quillvibe.",
+            "Unsupported file extension. Only .qv, .qvbible, .qvscene, .qvstyle, and .qvdesign files open directly in Quillvibe.",
         ));
-    }
-
-    let meta = fs::metadata(path).map_err(|e| format!("Cannot inspect file: {e}"))?;
-    if meta.len() > MAX_PROJECT_BYTES {
-        return Err(String::from("File exceeds 50 MB safety limit."));
     }
 
     let bytes = fs::read(path).map_err(|e| format!("Failed reading file: {e}"))?;
@@ -172,9 +166,6 @@ fn read_validated_quillvibe_file(
 }
 
 fn write_atomic_bytes(target: &Path, payload: &[u8]) -> Result<(), String> {
-    if payload.len() as u64 > MAX_PROJECT_BYTES {
-        return Err(String::from("Payload exceeds 50 MB limit."));
-    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed creating directory: {e}"))?;
     }
@@ -218,10 +209,6 @@ fn load_default_project(app: AppHandle) -> Result<Option<String>, String> {
     if !path.exists() {
         return Ok(None);
     }
-    let meta = fs::metadata(&path).map_err(|e| format!("Cannot stat saved project: {e}"))?;
-    if meta.len() > MAX_PROJECT_BYTES {
-        return Err(String::from("Saved project exceeds size limit."));
-    }
     let content = fs::read_to_string(&path).map_err(|e| format!("Cannot read saved project: {e}"))?;
     Ok(Some(content))
 }
@@ -246,10 +233,6 @@ fn load_book_library(app: AppHandle) -> Result<Option<String>, String> {
     };
     if !path.exists() {
         return Ok(None);
-    }
-    let meta = fs::metadata(&path).map_err(|e| format!("Cannot stat library: {e}"))?;
-    if meta.len() > MAX_PROJECT_BYTES {
-        return Err(String::from("Library exceeds size limit."));
     }
     let content = fs::read_to_string(&path).map_err(|e| format!("Cannot read library: {e}"))?;
     Ok(Some(content))

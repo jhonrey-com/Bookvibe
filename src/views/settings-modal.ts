@@ -59,7 +59,7 @@ const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
   { id: 'print-ready', label: 'Print & Press Ready' },
 ];
 
-const CURRENT_QUILLVIBE_VERSION = '3.1.0';
+const CURRENT_QUILLVIBE_VERSION = '3.1.1';
 
 function showUpdateCheckDialog(actions: AppActions): void {
   document.getElementById('qv-update-dialog')?.remove();

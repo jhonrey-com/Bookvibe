@@ -103,9 +103,6 @@ function readBytesToBase64(bytes: Uint8Array): string {
 }
 
 export async function installDeviceFontFile(file: File): Promise<CustomFontEntry> {
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error('Font file exceeds 5 MB limit.');
-  }
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   const format = validateFontBytes(bytes, file.name);

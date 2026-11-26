@@ -107,8 +107,8 @@ export function encodeSvgStringToDataUrl(svgString: string): string {
  * Strips scripts, foreignObject, external <use>, event handlers, and javascript: URIs from SVG files.
  */
 export function sanitizeSvgMarkup(rawSvg: string): string {
-  if (!rawSvg || rawSvg.length > 2 * 1024 * 1024) {
-    throw new Error('SVG file exceeds 2 MB limit.');
+  if (!rawSvg || !rawSvg.trim()) {
+    throw new Error('SVG file is empty.');
   }
 
   const trimmed = rawSvg.trim();
@@ -465,10 +465,6 @@ export function downscaleImageFileToDataUrl(
   if (!allowed.includes(file.type)) {
     return Promise.reject(new Error('Only SVG, PNG, JPEG, or WebP images are supported.'));
   }
-  if (file.size > 12 * 1024 * 1024) {
-    return Promise.reject(new Error('Image exceeds 12 MB limit.'));
-  }
-
   const preserveAlpha = file.type === 'image/png' || file.type === 'image/webp';
 
   return new Promise((resolve, reject) => {

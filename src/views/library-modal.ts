@@ -12,6 +12,7 @@ import {
   deleteBookFromLibrary,
   duplicateBookInLibrary,
   normalizeProjectDefaults,
+  sortLibraryBooksByLatest,
 } from '../core/library';
 import { getProjectWordCount } from '../core/manuscript';
 import { el, icon } from '../ui/dom';
@@ -134,7 +135,8 @@ export function showLibraryModal(actions: AppActions): void {
     });
 
     const shelfList = el('div', { className: 'bv-snap-list' });
-    for (const book of library.books) {
+    const sortedBooks = sortLibraryBooksByLatest(library.books);
+    for (const book of sortedBooks) {
       const isCurrent = book.id === activeBook.id;
       const pen = book.authorIdentity?.penName || book.author;
       const keyBadge = book.authorIdentity?.authorKeyId || 'No Key';

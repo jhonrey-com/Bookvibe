@@ -774,6 +774,7 @@ export interface BookProject {
   storyGraph?: StoryGraph;
   cover?: BookCoverConfig;
   publishing?: BookPublishingMeta;
+  updatedAt?: string;
 }
 
 export interface BookLibraryState {

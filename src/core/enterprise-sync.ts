@@ -19,7 +19,6 @@ export interface EnterpriseSyncCheckResult {
 
 const ENTERPRISE_SYNC_KEY = 'quillvibe.enterpriseSync.v1';
 const ENTERPRISE_TOKEN_SESSION_KEY = 'quillvibe.enterpriseToken.session';
-const MAX_REMOTE_BOOK_BYTES = 50 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15000;
 
 export const DEFAULT_ENTERPRISE_SYNC_CONFIG: EnterpriseSyncConfig = {
@@ -262,10 +261,6 @@ export async function pullBookFromEnterpriseServer(
   }
 
   const text = await res.text();
-  if (text.length > MAX_REMOTE_BOOK_BYTES) {
-    throw new Error('Remote response exceeds 50 MB Quillvibe safety limit.');
-  }
-
   const parsedJson = safeJsonParse<Record<string, unknown>>(text);
   const candidateRaw =
     typeof parsedJson.content === 'string' && !parsedJson.magic ? parsedJson.content : text;

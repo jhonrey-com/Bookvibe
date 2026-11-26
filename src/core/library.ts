@@ -100,8 +100,35 @@ export function createEmptyBookProject(title = 'Untitled Book', penName = 'Pen N
     },
     collaborators: [],
     activeAuthorLabel: penName.trim() || 'Pen Name',
+    updatedAt: new Date().toISOString(),
   };
   return normalizeProjectDefaults(empty);
+}
+
+/**
+ * Returns the latest modification timestamp (in ms) across a book and all of its scenes.
+ */
+export function getBookLastModifiedMs(book: BookProject): number {
+  let latest = Date.parse(book.updatedAt || '');
+  if (!Number.isFinite(latest)) latest = 0;
+  for (const part of book.parts) {
+    for (const ch of part.chapters) {
+      for (const sc of ch.scenes) {
+        const t = Date.parse(sc.updatedAt || '');
+        if (Number.isFinite(t) && t > latest) {
+          latest = t;
+        }
+      }
+    }
+  }
+  return latest;
+}
+
+/**
+ * Sorts a library book array so the most recently updated book appears first.
+ */
+export function sortLibraryBooksByLatest(books: BookProject[]): BookProject[] {
+  return [...books].sort((a, b) => getBookLastModifiedMs(b) - getBookLastModifiedMs(a));
 }
 
 export function createInitialLibrary(initialBook?: BookProject): BookLibraryState {
@@ -115,8 +142,12 @@ export function createInitialLibrary(initialBook?: BookProject): BookLibraryStat
 export function upsertBookInLibrary(
   library: BookLibraryState,
   book: BookProject,
+  options?: { touchTimestamp?: boolean },
 ): BookLibraryState {
   const normalized = normalizeProjectDefaults(book);
+  if (options?.touchTimestamp) {
+    normalized.updatedAt = new Date().toISOString();
+  }
   const idx = library.books.findIndex((b) => b.id === normalized.id);
   const books = [...library.books];
   if (idx >= 0) {
@@ -126,7 +157,7 @@ export function upsertBookInLibrary(
   }
   return {
     activeBookId: normalized.id,
-    books,
+    books: sortLibraryBooksByLatest(books),
   };
 }
 
@@ -139,7 +170,7 @@ export function addBookToLibrary(
   return {
     library: {
       activeBookId: newBook.id,
-      books: [...library.books, newBook],
+      books: sortLibraryBooksByLatest([...library.books, newBook]),
     },
     newBook,
   };
@@ -154,6 +185,7 @@ export function duplicateBookInLibrary(
   const copy = structuredClone(source);
   copy.id = newId('book');
   copy.title = `${source.title} (Copy)`;
+  copy.updatedAt = new Date().toISOString();
   if (copy.authorIdentity) {
     copy.authorIdentity.lastSignedAt = '';
     copy.authorIdentity.manuscriptDigest = '';
@@ -161,7 +193,7 @@ export function duplicateBookInLibrary(
   return {
     library: {
       activeBookId: copy.id,
-      books: [...library.books, copy],
+      books: sortLibraryBooksByLatest([...library.books, copy]),
     },
     duplicated: copy,
   };

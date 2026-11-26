@@ -174,7 +174,7 @@ export function quillvibeLogo(size = 24): SVGSVGElement {
   const svg = svgEl('svg', {
     width: size,
     height: size,
-    viewBox: '10.2 11.4 43.6 42.2',
+    viewBox: '7 8 50 48',
     fill: 'none',
     'aria-hidden': 'true',
   });

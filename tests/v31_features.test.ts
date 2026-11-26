@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import { base64ToUint8Array, uint8ArrayToBase64 } from '../src/core/codec';
 import { buildDocxBytes } from '../src/core/docx-export';
-import { exportCoverDesignArchive, importCoverDesignArchive } from '../src/core/extensions';
+import {
+  applyOpenedExtensionFile,
+  exportCoverDesignArchive,
+  importCoverDesignArchive,
+  parseQuillvibeInput,
+  serializeQuillvibeBinary,
+} from '../src/core/extensions';
 import { seedGraphFromProject, syncGraphNodeBackToBook } from '../src/core/graph';
-import { createEmptyBookProject } from '../src/core/library';
+import {
+  createEmptyBookProject,
+  deleteBookFromLibrary,
+  sortLibraryBooksByLatest,
+  upsertBookInLibrary,
+} from '../src/core/library';
 import { isSceneLocked, toggleChapterLock, togglePartLock } from '../src/core/manuscript';
 import { resolvePathToRoute, routeForState } from '../src/core/router';
 import { mapAppThemeToPaperTheme, mapPaperThemeToAppTheme } from '../src/core/settings';
 import { createCoverVariantSnapshot, createPathLayer } from '../src/core/cover';
+import type { QuillvibeExtension } from '../src/core/types';
 
 describe('Quillvibe v3.1.0 features', () => {
   it('generates a complete OOXML .docx ZIP package with manuscript content', () => {
@@ -136,5 +149,74 @@ describe('Quillvibe v3.1.0 features', () => {
     });
     expect(syncedProj.bible.characters.find((c) => c.id === 'char-99')?.name).toBe('Commander Elena');
     expect(syncedProj.bible.characters.find((c) => c.id === 'char-99')?.role).toBe('Chief Navigator');
+  });
+
+  it('encodes and decodes all 5 official QVBX extensions (unlocked, password-locked, and chunked base64)', async () => {
+    const project = createEmptyBookProject('Harbor Chronicle', 'J. Reyes');
+    const exts: QuillvibeExtension[] = ['.qv', '.qvbible', '.qvscene', '.qvstyle', '.qvdesign'];
+
+    for (const ext of exts) {
+      const unlockedBytes = await serializeQuillvibeBinary(ext, project);
+      const parsedFromBytes = await parseQuillvibeInput(unlockedBytes, {
+        filenameHint: `sample${ext}`,
+      });
+      expect(parsedFromBytes.parsed.extension).toBe(ext);
+      expect(parsedFromBytes.isProtectedBinary).toBe(true);
+
+      const lockedBytes = await serializeQuillvibeBinary(ext, project, {
+        password: 'quill-secret-pass',
+      });
+      const b64WithWhitespace = `${uint8ArrayToBase64(lockedBytes).slice(0, 24)}\n${uint8ArrayToBase64(lockedBytes).slice(24)}`;
+      const parsedFromB64 = await parseQuillvibeInput(b64WithWhitespace, {
+        filenameHint: `locked${ext}`,
+        base64Encoded: true,
+        password: 'quill-secret-pass',
+      });
+      expect(parsedFromB64.parsed.extension).toBe(ext);
+
+      const applied = applyOpenedExtensionFile(parsedFromB64.parsed, project);
+      if (ext === '.qvdesign') {
+        expect(applied.focusView).toBe('typeset');
+        expect(applied.focusTypesetSubTab).toBe('cover');
+      }
+    }
+
+    // Verify large multi-chunk aligned base64 round-trip (>32766 bytes)
+    const bigPayload = new Uint8Array(70_000);
+    for (let i = 0; i < bigPayload.length; i++) {
+      bigPayload[i] = (i * 31) & 0xff;
+    }
+    const decodedBig = base64ToUint8Array(uint8ArrayToBase64(bigPayload));
+    expect(decodedBig.length).toBe(bigPayload.length);
+    expect(decodedBig[0]).toBe(bigPayload[0]);
+    expect(decodedBig[69_999]).toBe(bigPayload[69_999]);
+  });
+
+  it('deletes books cleanly from library and sorts most recently modified book to the top', () => {
+    const older = createEmptyBookProject('Older Draft', 'Author A');
+    older.updatedAt = '2026-11-20T10:00:00.000Z';
+    older.parts[0].chapters[0].scenes[0].updatedAt = '2026-11-20T10:00:00.000Z';
+
+    const newer = createEmptyBookProject('Latest Edit', 'Author B');
+    newer.updatedAt = '2026-11-25T10:00:00.000Z';
+    newer.parts[0].chapters[0].scenes[0].updatedAt = '2026-11-25T10:00:00.000Z';
+
+    const initial = { activeBookId: older.id, books: [older, newer] };
+    const upserted = upsertBookInLibrary(initial, older, { touchTimestamp: false });
+    expect(upserted.books[0].id).toBe(newer.id);
+
+    const touchedOlder = upsertBookInLibrary(upserted, older, { touchTimestamp: true });
+    expect(touchedOlder.books[0].id).toBe(older.id);
+
+    const sorted = sortLibraryBooksByLatest([
+      older,
+      { ...newer, updatedAt: '2099-01-01T00:00:00.000Z' },
+    ]);
+    expect(sorted[0].id).toBe(newer.id);
+
+    const afterDelete = deleteBookFromLibrary(touchedOlder, newer.id);
+    expect(afterDelete.books.some((b) => b.id === newer.id)).toBe(false);
+    expect(afterDelete.books.length).toBe(1);
+    expect(afterDelete.activeBookId).toBe(older.id);
   });
 });

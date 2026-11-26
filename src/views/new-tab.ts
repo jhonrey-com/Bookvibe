@@ -1,21 +1,17 @@
 import type { AppActions } from '../core/app-context';
-import { addBookToLibrary, upsertBookInLibrary } from '../core/library';
-import { getAllScenes, getProjectWordCount } from '../core/manuscript';
+import {
+  addBookToLibrary,
+  getBookLastModifiedMs,
+  sortLibraryBooksByLatest,
+  upsertBookInLibrary,
+} from '../core/library';
+import { getProjectWordCount } from '../core/manuscript';
 import { clearNode, el, icon, quillvibeLogo } from '../ui/dom';
 
 export interface NewTabViewOptions {
   isBookOpenElsewhere: (bookId: string) => boolean;
   onPickBook: (bookId: string) => void;
   onCreateBlankBook: (title: string, penName: string) => void;
-}
-
-function getLatestBookTimestamp(book: AppActions extends never ? never : ReturnType<AppActions['getState']>['project']): number {
-  let latest = 0;
-  for (const ctx of getAllScenes(book)) {
-    const t = Date.parse(ctx.scene.updatedAt || '');
-    if (Number.isFinite(t) && t > latest) latest = t;
-  }
-  return latest;
 }
 
 export function renderNewTabView(
@@ -25,16 +21,14 @@ export function renderNewTabView(
 ): void {
   clearNode(container);
   const state = actions.getState();
-  const books = [...state.library.books].sort(
-    (a, b) => getLatestBookTimestamp(b) - getLatestBookTimestamp(a),
-  );
+  const books = sortLibraryBooksByLatest(state.library.books);
 
   const bookGrid = el('div', { className: 'qv-newtab-grid' });
   for (const book of books) {
     const words = getProjectWordCount(book);
     const pen = book.authorIdentity?.penName || book.author || 'Author';
     const openElsewhere = options.isBookOpenElsewhere(book.id);
-    const latestTs = getLatestBookTimestamp(book);
+    const latestTs = getBookLastModifiedMs(book);
     const updatedLabel = latestTs
       ? new Date(latestTs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       : 'Local';

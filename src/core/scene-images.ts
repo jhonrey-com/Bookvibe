@@ -93,9 +93,6 @@ export async function readImageFileToSceneImage(
   if (!file.type.startsWith('image/')) {
     throw new Error('Please choose a valid PNG, JPEG, WebP, or GIF image.');
   }
-  if (file.size > 14 * 1024 * 1024) {
-    throw new Error('Image exceeds 14 MB limit. Resize the image before adding it.');
-  }
 
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();

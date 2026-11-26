@@ -63,6 +63,7 @@ import {
   createInitialLibrary,
   getActiveBookFromLibrary,
   normalizeProjectDefaults,
+  sortLibraryBooksByLatest,
   switchActiveBook,
   upsertBookInLibrary,
 } from './core/library';
@@ -113,6 +114,7 @@ import type {
   BookLibraryState,
   BookProject,
   ExportFormatId,
+  OpenedFileResult,
   QuillvibeExtension,
   QuillvibeSettings,
   StudioViewId,
@@ -477,10 +479,35 @@ function maybeNotifySharedBook(bookId: string): void {
   }
 }
 
-function schedulePersist(): void {
+function isFullStageView(view: StudioViewId): boolean {
+  return (
+    view === 'typeset' ||
+    view === 'course' ||
+    view === 'help' ||
+    view === 'developer' ||
+    view === 'settings' ||
+    view === 'manual'
+  );
+}
+
+function resolveOpenedFilePayload(opened: OpenedFileResult): {
+  input: Uint8Array | string;
+  base64Encoded: boolean;
+} {
+  if (opened.bytes && opened.bytes.byteLength > 0) {
+    return { input: opened.bytes, base64Encoded: false };
+  }
+  if (opened.isBinary && opened.contentBase64) {
+    return { input: opened.contentBase64, base64Encoded: true };
+  }
+  return { input: opened.content, base64Encoded: Boolean(opened.isBinary) };
+}
+
+function schedulePersist(options?: { authoritativeLibrary?: boolean }): void {
   if (isApplyingRemoteSync || isEmptyTabId(state.activeTabId)) return;
-  // Merge smoothly against any parallel desktop window edits stored in library JSON
-  if (typeof window !== 'undefined' && window.localStorage) {
+  const authoritative = Boolean(options?.authoritativeLibrary);
+  // Merge smoothly against any parallel desktop window edits stored in library JSON unless caller committed an explicit deletion/replacement
+  if (!authoritative && typeof window !== 'undefined' && window.localStorage) {
     const rawLib = window.localStorage.getItem('quillvibe.library.v2');
     if (rawLib) {
       try {
@@ -494,7 +521,7 @@ function schedulePersist(): void {
           }
           state.library = {
             activeBookId: state.project.id,
-            books: mergedBooks,
+            books: sortLibraryBooksByLatest(mergedBooks),
           };
         }
       } catch {
@@ -502,7 +529,19 @@ function schedulePersist(): void {
       }
     }
   }
-  state.library = upsertBookInLibrary(state.library, state.project);
+  state.library = authoritative
+    ? {
+        activeBookId: state.library.activeBookId,
+        books: sortLibraryBooksByLatest(state.library.books),
+      }
+    : upsertBookInLibrary(state.library, state.project);
+  if (authoritative && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem('quillvibe.library.v2', JSON.stringify(state.library));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
   state.saveStatusLabel = 'Saving…';
   if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
   windowSync?.broadcastBookUpdated(state.project.id, state.project);
@@ -510,7 +549,7 @@ function schedulePersist(): void {
   persistTimer = window.setTimeout(async () => {
     // Re-read latest localStorage right before atomic write so parallel window edits to other books are preserved
     let libToWrite = state.library;
-    if (typeof window !== 'undefined' && window.localStorage) {
+    if (!authoritative && typeof window !== 'undefined' && window.localStorage) {
       const latestRaw = window.localStorage.getItem('quillvibe.library.v2');
       if (latestRaw) {
         try {
@@ -520,7 +559,7 @@ function schedulePersist(): void {
               b.id === state.project.id ? state.project : b,
             );
             if (!merged.some((b) => b.id === state.project.id)) merged.push(state.project);
-            libToWrite = { activeBookId: state.project.id, books: merged };
+            libToWrite = { activeBookId: state.project.id, books: sortLibraryBooksByLatest(merged) };
           }
         } catch {
           // Keep current state.library
@@ -576,16 +615,18 @@ function updateWordCountersOnly(): void {
 }
 
 function syncResponsiveDrawerClasses(): void {
+  const isFullStage = isEmptyTabId(state.activeTabId) || isFullStageView(state.activeView);
   const isNarrowDrawerMode = window.innerWidth <= 1180;
-  const inspectorActive = state.showInspector;
-  workspaceGridEl.classList.toggle('hide-binder', !state.showBinder);
+  const binderActive = !isFullStage && state.showBinder;
+  const inspectorActive = !isFullStage && state.showInspector;
+  workspaceGridEl.classList.toggle('hide-binder', !binderActive);
   workspaceGridEl.classList.toggle('hide-inspector', !inspectorActive);
-  binderToggleBtn?.classList.toggle('is-active', state.showBinder);
+  binderToggleBtn?.classList.toggle('is-active', binderActive);
   inspectorToggleBtn?.classList.toggle('is-active', inspectorActive);
 
   const hasOverlayOpen =
-    (isNarrowDrawerMode && inspectorActive) ||
-    (window.innerWidth <= 960 && state.showBinder);
+    !isFullStage &&
+    ((isNarrowDrawerMode && inspectorActive) || (window.innerWidth <= 960 && binderActive));
   drawerBackdropEl?.classList.toggle('is-visible', hasOverlayOpen);
 }
 
@@ -1088,6 +1129,9 @@ async function handleOpenedFile(
       }
     }
     state.activeView = applied.focusView;
+    if (applied.focusTypesetSubTab) {
+      state.typesetSubTab = applied.focusTypesetSubTab;
+    }
     if (applied.focusSceneId) {
       state.activeSceneId = applied.focusSceneId;
     } else if (!findSceneContext(state.project, state.activeSceneId)) {
@@ -1143,9 +1187,9 @@ const actions: AppActions = {
 
     if (patch.activeView && patch.activeView !== prevView) {
       destroyActiveTour();
-      // Auto-collapse Binder & Inspector when opening Cover Studio / Typeset or Academy /course, restore when leaving
-      const prevFullStage = prevView === 'typeset' || prevView === 'course';
-      const nextFullStage = patch.activeView === 'typeset' || patch.activeView === 'course';
+      // Auto-collapse Binder & Inspector when opening full-stage or dedicated pages, restore when leaving
+      const prevFullStage = isFullStageView(prevView);
+      const nextFullStage = isFullStageView(patch.activeView);
       if (nextFullStage && !prevFullStage) {
         savedDrawerStateBeforeTypeset = {
           binder: state.showBinder,
@@ -1217,7 +1261,9 @@ const actions: AppActions = {
       projectHistory.pushSnapshot(state.project, `Edit ${state.activeView}`);
     }
     const prevPaper = state.project.paperTheme;
-    state.project = normalizeProjectDefaults(updater(state.project));
+    const nextProj = normalizeProjectDefaults(updater(state.project));
+    nextProj.updatedAt = new Date().toISOString();
+    state.project = nextProj;
     if (
       state.settings.linkPaperThemeToAppTheme &&
       state.project.paperTheme !== prevPaper
@@ -1258,6 +1304,7 @@ const actions: AppActions = {
     } else {
       state.project = updateSceneInProject(state.project, state.activeSceneId, { title: value });
     }
+    state.project.updatedAt = new Date().toISOString();
     schedulePersist();
     updateWordCountersOnly();
     const undoBtn = mainStageEl?.querySelector<HTMLButtonElement>('[aria-label="Undo edit"]');
@@ -1566,15 +1613,19 @@ const actions: AppActions = {
   },
 
   replaceLibrary(library: BookLibraryState) {
-    state.library = library;
-    state.project = getActiveBookFromLibrary(library);
-    const validIds = new Set(library.books.map((b) => b.id));
-    const keptTabs = state.openBookTabIds.filter((id) => isEmptyTabId(id) || validIds.has(id));
+    const sortedLib: BookLibraryState = {
+      activeBookId: library.activeBookId,
+      books: sortLibraryBooksByLatest(library.books),
+    };
+    state.library = sortedLib;
+    state.project = getActiveBookFromLibrary(sortedLib);
+    const validIds = new Set(sortedLib.books.map((b) => b.id));
+    const keptTabs = state.openBookTabIds.filter((id) => isNonBookTabId(id) || validIds.has(id));
     if (!keptTabs.includes(state.project.id)) {
       keptTabs.push(state.project.id);
     }
     state.openBookTabIds = keptTabs;
-    if (!isEmptyTabId(state.activeTabId) || !keptTabs.includes(state.activeTabId)) {
+    if (!isNonBookTabId(state.activeTabId) || !keptTabs.includes(state.activeTabId)) {
       state.activeTabId = state.project.id;
     }
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
@@ -1582,7 +1633,7 @@ const actions: AppActions = {
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
     state.sprintStartWords = getProjectWordCount(state.project);
     windowSync?.publishPresence();
-    schedulePersist();
+    schedulePersist({ authoritativeLibrary: true });
     renderDesktopTabBar();
     renderActiveView();
   },
@@ -1609,21 +1660,21 @@ const actions: AppActions = {
   async openAnyQuillvibeFile() {
     const opened = await openQuillvibeFile();
     if (!opened) return;
-    await handleOpenedFile(
-      opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
-      opened.filename,
-      { base64Encoded: Boolean(opened.isBinary), allowLegacy: false },
-    );
+    const resolved = resolveOpenedFilePayload(opened);
+    await handleOpenedFile(resolved.input, opened.filename, {
+      base64Encoded: resolved.base64Encoded,
+      allowLegacy: false,
+    });
   },
 
   async importLegacyBookFile() {
     const opened = await importLegacyBookFile();
     if (!opened) return;
-    await handleOpenedFile(
-      opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
-      opened.filename,
-      { base64Encoded: Boolean(opened.isBinary), allowLegacy: true },
-    );
+    const resolved = resolveOpenedFilePayload(opened);
+    await handleOpenedFile(resolved.input, opened.filename, {
+      base64Encoded: resolved.base64Encoded,
+      allowLegacy: true,
+    });
   },
 
   async exportAsExtension(
@@ -2199,7 +2250,7 @@ function renderDesktopTabBar(): void {
   const logoWrap = el(
     'div',
     { className: 'qv-tabbar-logo', attrs: { 'data-tauri-drag-region': '' } },
-    quillvibeLogo(22),
+    quillvibeLogo(18),
   );
 
   const tabStrip = el('div', {
@@ -2467,7 +2518,7 @@ function buildShell(root: HTMLElement): void {
   topbarLogoEl = el(
     'div',
     { className: 'bv-logo-mark', attrs: { 'data-tauri-drag-region': '' } },
-    quillvibeLogo(32),
+    quillvibeLogo(28),
   );
 
   desktopTabBarEl = isTauriRuntime()
@@ -2515,7 +2566,7 @@ function buildShell(root: HTMLElement): void {
       { className: 'bv-brand' },
       topbarLogoEl,
       binderToggleBtn,
-      el('div', { className: 'bv-book-meta' }, bookTitleInputEl, saveStatusEl),
+      el('div', { className: 'bv-book-meta' }, bookTitleInputEl),
     ),
     headerNavHostEl,
     el(
@@ -2831,7 +2882,7 @@ function buildShell(root: HTMLElement): void {
   const statusbar = el(
     'footer',
     { className: 'bv-statusbar' },
-    el('div', { className: 'bv-status-left' }, wordStatsEl, tierPillBtnEl),
+    el('div', { className: 'bv-status-left' }, saveStatusEl, wordStatsEl, tierPillBtnEl),
     el(
       'div',
       { className: 'bv-status-right' },
@@ -3058,7 +3109,7 @@ function wireGlobalShortcutsAndDrop(): void {
     if (!dropOverlay) {
       dropOverlay = el('div', {
         className: 'bv-drop-overlay',
-        text: 'Drop .qv, .qvbible, .qvscene, .qvstyle, .qvext, or .docx / .md file',
+        text: 'Drop .qv, .qvbible, .qvscene, .qvstyle, .qvdesign, .qvext, or .docx / .md file',
       });
       document.body.appendChild(dropOverlay);
     }
@@ -3109,7 +3160,7 @@ function wireGlobalShortcutsAndDrop(): void {
         return;
       }
       actions.notify(
-        'Unsupported file. Drop a .qv, .qvbible, .qvscene, .qvstyle, .qvext, .docx, .html, or .md file.',
+        'Unsupported file. Drop a .qv, .qvbible, .qvscene, .qvstyle, .qvdesign, .qvext, .docx, .html, or .md file.',
       );
       return;
     }
@@ -3138,7 +3189,7 @@ async function bootstrap(): Promise<void> {
       if (Array.isArray(parsedLib.books) && parsedLib.books.length > 0) {
         state.library = {
           activeBookId: parsedLib.activeBookId,
-          books: parsedLib.books.map(normalizeProjectDefaults),
+          books: sortLibraryBooksByLatest(parsedLib.books.map(normalizeProjectDefaults)),
         };
         state.project = getActiveBookFromLibrary(state.library);
       }
@@ -3335,7 +3386,11 @@ async function bootstrap(): Promise<void> {
         if (!isEmptyTabId(state.activeTabId) && !merged.some((b) => b.id === state.project.id)) {
           merged.push(state.project);
         }
-        state.library = { activeBookId: state.project.id, books: merged };
+        const mergedIds = new Set(merged.map((b) => b.id));
+        state.openBookTabIds = state.openBookTabIds.filter(
+          (id) => isNonBookTabId(id) || mergedIds.has(id),
+        );
+        state.library = { activeBookId: state.project.id, books: sortLibraryBooksByLatest(merged) };
         renderDesktopTabBar();
         if (isEmptyTabId(state.activeTabId)) renderActiveView();
       } catch {
@@ -3408,12 +3463,7 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  if (
-    state.activeView === 'typeset' ||
-    state.activeView === 'course' ||
-    state.activeView === 'help' ||
-    state.activeView === 'developer'
-  ) {
+  if (isFullStageView(state.activeView)) {
     state.showBinder = false;
     state.showInspector = false;
   }
@@ -3424,11 +3474,12 @@ async function bootstrap(): Promise<void> {
   // Open startup file AFTER shell is mounted (fixes desktop .qvscene/.qv startup crash)
   if (startupFile) {
     try {
-      await handleOpenedFile(
-        startupFile.isBinary && startupFile.contentBase64 ? startupFile.contentBase64 : startupFile.content,
-        startupFile.filename,
-        { base64Encoded: Boolean(startupFile.isBinary), allowLegacy: false, openInNewTab: true },
-      );
+      const resolved = resolveOpenedFilePayload(startupFile);
+      await handleOpenedFile(resolved.input, startupFile.filename, {
+        base64Encoded: resolved.base64Encoded,
+        allowLegacy: false,
+        openInNewTab: true,
+      });
       state.saveStatusLabel = 'Saved';
     } catch {
       // Continue cleanly if startup file was malformed
@@ -3440,11 +3491,12 @@ async function bootstrap(): Promise<void> {
   // Listen for files opened via OS double-click while this desktop window is already running
   if (isTauriRuntime()) {
     void listenDesktopOpenFile((opened) => {
-      void handleOpenedFile(
-        opened.isBinary && opened.contentBase64 ? opened.contentBase64 : opened.content,
-        opened.filename,
-        { base64Encoded: Boolean(opened.isBinary), allowLegacy: false, openInNewTab: true },
-      );
+      const resolved = resolveOpenedFilePayload(opened);
+      void handleOpenedFile(resolved.input, opened.filename, {
+        base64Encoded: resolved.base64Encoded,
+        allowLegacy: false,
+        openInNewTab: true,
+      });
     });
   }
 

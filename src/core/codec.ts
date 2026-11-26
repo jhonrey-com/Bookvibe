@@ -25,7 +25,6 @@ export class QuillvibeCodecError extends Error {
 export const QVBX_MAGIC = [0x51, 0x56, 0x42, 0x58] as const; // "QVBX"
 export const QVBX_VERSION = 2;
 export const QVBX_HEADER_SIZE = 84;
-const MAX_CONTAINER_BYTES = 50 * 1024 * 1024;
 const PBKDF2_ITERATIONS = 150_000;
 
 const FLAG_PASSWORD_PROTECTED = 0x01;
@@ -367,9 +366,6 @@ export async function encodeQuillvibeBinary(
 
   const jsonStr = JSON.stringify(envelope);
   const plainBytes = new TextEncoder().encode(jsonStr);
-  if (plainBytes.length > MAX_CONTAINER_BYTES) {
-    throw new QuillvibeCodecError('INVALID_FORMAT', 'Payload exceeds 50 MB size limit.');
-  }
 
   const password = options?.password?.trim() || '';
   const authorKeyId = (options?.sealAuthorKeyId ?? extractAuthorKeyIdFromEnvelope(envelope)).slice(0, 16);
@@ -422,9 +418,6 @@ export async function decodeQuillvibeBinary(
   bytes: Uint8Array,
   password?: string,
 ): Promise<QuillvibeEnvelope> {
-  if (bytes.length > MAX_CONTAINER_BYTES) {
-    throw new QuillvibeCodecError('DAMAGED_OR_TAMPERED', 'File exceeds 50 MB safety limit.');
-  }
   if (!isQvbxBinary(bytes)) {
     throw new QuillvibeCodecError(
       'INVALID_FORMAT',
@@ -536,16 +529,20 @@ export async function decodeQuillvibeBinary(
 }
 
 export function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let bin = '';
-  const chunk = 0x8000;
+  // 32766 is a multiple of 3 bytes so intermediate chunks emit no '=' padding.
+  const chunk = 0x7ffe;
+  const parts: string[] = [];
   for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    const slice = bytes.subarray(i, i + chunk);
+    parts.push(btoa(String.fromCharCode(...slice)));
   }
-  return btoa(bin);
+  return parts.join('');
 }
 
 export function base64ToUint8Array(b64: string): Uint8Array {
-  const bin = atob(b64);
+  const clean = b64.replace(/\s+/g, '');
+  if (!clean) return new Uint8Array(0);
+  const bin = atob(clean);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) {
     out[i] = bin.charCodeAt(i);

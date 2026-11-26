@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const MAX_SYNC_PAYLOAD_BYTES: usize = 50 * 1024 * 1024;
 const MAX_HTTP_HEADER_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,9 +190,6 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
             let val = v.trim().to_string();
             if key == "content-length" {
                 content_length = val.parse::<usize>().unwrap_or(0);
-                if content_length > MAX_SYNC_PAYLOAD_BYTES {
-                    return Err(String::from("Payload exceeds 50 MB limit."));
-                }
             } else if key == "x-quillvibe-pin" || key == "x-bookvibe-pin" {
                 pin_header = Some(val);
             }
@@ -211,9 +207,6 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
             break;
         }
         body.extend_from_slice(&tmp[..n]);
-        if body.len() > MAX_SYNC_PAYLOAD_BYTES {
-            return Err(String::from("Payload exceeds 50 MB limit."));
-        }
     }
     body.truncate(content_length);
 
@@ -236,9 +229,6 @@ pub fn start_lan_sync_host(
     host_name: String,
     port: Option<u16>,
 ) -> Result<LanSessionInfo, String> {
-    if book_json.len() > MAX_SYNC_PAYLOAD_BYTES {
-        return Err(String::from("Book payload exceeds 50 MB limit."));
-    }
     stop_lan_sync_host();
 
     let requested_port = port.unwrap_or(0);
@@ -339,9 +329,6 @@ pub fn start_lan_sync_host(
 }
 
 pub fn update_lan_sync_host_book(book_json: String) -> Result<bool, String> {
-    if book_json.len() > MAX_SYNC_PAYLOAD_BYTES {
-        return Err(String::from("Book payload exceeds 50 MB limit."));
-    }
     let guard = host_slot()
         .lock()
         .map_err(|_| String::from("Unable to lock active LAN host state."))?;
@@ -420,9 +407,6 @@ pub fn pull_book_from_lan_peer(peer_addr: &str, pin: &str) -> Result<String, Str
 }
 
 pub fn push_book_to_lan_peer(peer_addr: &str, pin: &str, book_json: &str) -> Result<String, String> {
-    if book_json.len() > MAX_SYNC_PAYLOAD_BYTES {
-        return Err(String::from("Book payload exceeds 50 MB limit."));
-    }
     let addr = parse_allowed_lan_addr(peer_addr)?;
     let clean_pin = pin.trim();
     if clean_pin.is_empty() {
@@ -460,9 +444,6 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
             Ok(0) => break,
             Ok(n) => {
                 raw.extend_from_slice(&tmp[..n]);
-                if raw.len() > MAX_SYNC_PAYLOAD_BYTES {
-                    return Err(String::from("Peer response exceeded 50 MB limit."));
-                }
             }
             Err(e) => return Err(format!("Socket error reading peer response: {e}")),
         }
