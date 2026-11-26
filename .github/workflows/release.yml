@@ -78,11 +78,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Mark previous releases as pre-release with outdated warning
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish full changelog and mark previous releases as pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT_TAG: ${{ github.ref_name }}
         run: |
+          python3 scripts/build-release-notes.py --tag "$CURRENT_TAG" --output current-notes.md
+          gh release edit "$CURRENT_TAG" --latest --notes-file current-notes.md
           python3 - <<'PY'
           import json
           import os
@@ -90,15 +96,6 @@ jobs:
           import tempfile
 
           current_tag = os.environ["CURRENT_TAG"]
-          banner = (
-              "> [!WARNING]\n"
-              "> **Outdated Release — Not Recommended for Download**\n"
-              "> This is an older build of Quillvibe and may contain bugs that have already been fixed. "
-              "Please download the newest version from the [**Latest Release**](https://github.com/jhonrey-com/Quillvibe/releases/latest) "
-              "or use the web app at **https://quillvibe.jhonrey.com/**.\n\n"
-              "---\n\n"
-          )
-
           raw = subprocess.check_output(
               ["gh", "release", "list", "--limit", "100", "--json", "tagName"],
               text=True,
@@ -107,22 +104,20 @@ jobs:
               tag = item["tagName"]
               if tag == current_tag:
                   continue
-              body = subprocess.check_output(
-                  ["gh", "release", "view", tag, "--json", "body", "-q", ".body"],
-                  text=True,
-              )
-              if "Outdated Release — Not Recommended for Download" not in body:
-                  new_body = banner + body.lstrip()
-              else:
-                  new_body = body
               with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
-                  tmp.write(new_body)
                   tmp_path = tmp.name
               try:
+                  res = subprocess.run(
+                      ["python3", "scripts/build-release-notes.py", "--tag", tag, "--outdated", "--output", tmp_path],
+                      check=False,
+                  )
+                  if res.returncode != 0:
+                      continue
                   subprocess.run(
                       ["gh", "release", "edit", tag, "--prerelease", "--notes-file", tmp_path],
                       check=True,
                   )
               finally:
-                  os.unlink(tmp_path)
+                  if os.path.exists(tmp_path):
+                      os.unlink(tmp_path)
           PY
