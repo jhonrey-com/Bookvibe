@@ -1,14 +1,19 @@
 use serde::Serialize;
+use std::collections::hash_map::RandomState;
 use std::collections::VecDeque;
+use std::hash::{BuildHasher, Hasher};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, UdpSocket};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MAX_HTTP_HEADER_BYTES: usize = 16 * 1024;
+const MAX_LAN_BODY_BYTES: usize = 256 * 1024 * 1024;
+const MAX_FAILED_PIN_ATTEMPTS: u32 = 5;
+const PIN_LOCKOUT_DURATION: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,14 +151,25 @@ pub fn detect_local_lan_ips() -> Vec<String> {
 fn generate_six_digit_pin() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as u64 ^ d.as_secs())
+        .map(|d| d.as_nanos())
         .unwrap_or(482913);
-    let mixed = nanos.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    let pin_num = ((mixed >> 16) % 900_000) + 100_000;
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u128(nanos);
+    hasher.write_u32(std::process::id());
+    let mixed = hasher.finish();
+    let pin_num = ((mixed >> 12) % 900_000) + 100_000;
     format!("{pin_num:06}")
 }
 
-fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<String>, Vec<u8>), String> {
+struct ParsedHttpHeaders {
+    method: String,
+    target: String,
+    pin_header: Option<String>,
+    content_length: usize,
+    initial_body: Vec<u8>,
+}
+
+fn read_http_headers(stream: &mut TcpStream) -> Result<ParsedHttpHeaders, String> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(6)));
     let mut buf = Vec::with_capacity(4096);
     let mut tmp = [0u8; 4096];
@@ -165,11 +181,15 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
             break;
         }
         buf.extend_from_slice(&tmp[..n]);
+        if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            if pos > MAX_HTTP_HEADER_BYTES {
+                return Err(String::from("HTTP headers too large."));
+            }
+            header_end = Some(pos);
+            break;
+        }
         if buf.len() > MAX_HTTP_HEADER_BYTES {
             return Err(String::from("HTTP headers too large."));
-        }
-        if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-            header_end = Some(pos);
         }
     }
 
@@ -189,7 +209,12 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
             let key = k.trim().to_ascii_lowercase();
             let val = v.trim().to_string();
             if key == "content-length" {
-                content_length = val.parse::<usize>().unwrap_or(0);
+                content_length = val
+                    .parse::<usize>()
+                    .map_err(|_| String::from("Invalid Content-Length header."))?;
+                if content_length > MAX_LAN_BODY_BYTES {
+                    return Err(String::from("LAN sync payload exceeds allowed limit."));
+                }
             } else if key == "x-quillvibe-pin" || key == "x-bookvibe-pin" {
                 pin_header = Some(val);
             }
@@ -197,20 +222,40 @@ fn read_http_message(stream: &mut TcpStream) -> Result<(String, String, Option<S
     }
 
     let body_start = hdr_end + 4;
-    let mut body = Vec::with_capacity(content_length);
-    if buf.len() > body_start {
-        body.extend_from_slice(&buf[body_start..]);
-    }
-    while body.len() < content_length {
-        let n = stream.read(&mut tmp).map_err(|e| format!("Socket body read error: {e}"))?;
+    let initial_body = if buf.len() > body_start {
+        let end = buf.len().min(body_start + content_length);
+        buf[body_start..end].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    Ok(ParsedHttpHeaders {
+        method,
+        target,
+        pin_header,
+        content_length,
+        initial_body,
+    })
+}
+
+fn read_http_body(stream: &mut TcpStream, parsed: &ParsedHttpHeaders) -> Result<Vec<u8>, String> {
+    let target_len = parsed.content_length.min(MAX_LAN_BODY_BYTES);
+    let mut body = Vec::with_capacity(target_len.min(64 * 1024));
+    body.extend_from_slice(&parsed.initial_body);
+    let mut tmp = [0u8; 4096];
+    while body.len() < target_len {
+        let remaining = target_len - body.len();
+        let cap = remaining.min(tmp.len());
+        let n = stream
+            .read(&mut tmp[..cap])
+            .map_err(|e| format!("Socket body read error: {e}"))?;
         if n == 0 {
             break;
         }
         body.extend_from_slice(&tmp[..n]);
     }
-    body.truncate(content_length);
-
-    Ok((method, target, pin_header, body))
+    body.truncate(target_len);
+    Ok(body)
 }
 
 fn write_http_response(stream: &mut TcpStream, status: &str, body: &str) {
@@ -259,25 +304,50 @@ pub fn start_lan_sync_host(
     let pin_clone = pin.clone();
 
     let handle = thread::spawn(move || {
+        let mut failed_attempts: u32 = 0;
+        let mut locked_until: Option<Instant> = None;
         while active_clone.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _addr)) => {
-                    if let Ok((method, target, supplied_pin, body)) = read_http_message(&mut stream) {
-                        let pin_ok = supplied_pin
+                    if let Some(until) = locked_until {
+                        if Instant::now() < until {
+                            write_http_response(
+                                &mut stream,
+                                "429 Too Many Requests",
+                                r#"{"error":"Too many invalid PIN attempts. Try again shortly."}"#,
+                            );
+                            continue;
+                        }
+                        locked_until = None;
+                        failed_attempts = 0;
+                    }
+                    if let Ok(parsed) = read_http_headers(&mut stream) {
+                        let pin_ok = parsed
+                            .pin_header
                             .as_deref()
                             .map(|p| constant_time_eq(p, &pin_clone))
                             .unwrap_or(false);
                         if !pin_ok {
+                            failed_attempts = failed_attempts.saturating_add(1);
+                            if failed_attempts >= MAX_FAILED_PIN_ATTEMPTS {
+                                locked_until = Some(Instant::now() + PIN_LOCKOUT_DURATION);
+                            }
                             write_http_response(&mut stream, "403 Forbidden", r#"{"error":"Invalid PIN"}"#);
                             continue;
                         }
-                        if method == "GET" && target == "/api/book" {
+                        failed_attempts = 0;
+                        locked_until = None;
+                        if parsed.method == "GET" && parsed.target == "/api/book" {
                             let snapshot = book_clone
                                 .lock()
                                 .map(|g| g.clone())
                                 .unwrap_or_else(|_| String::from("{}"));
                             write_http_response(&mut stream, "200 OK", &snapshot);
-                        } else if method == "POST" && target == "/api/push" {
+                        } else if parsed.method == "POST" && parsed.target == "/api/push" {
+                            let Ok(body) = read_http_body(&mut stream, &parsed) else {
+                                write_http_response(&mut stream, "400 Bad Request", r#"{"error":"Invalid request body"}"#);
+                                continue;
+                            };
                             if let Ok(incoming_str) = String::from_utf8(body) {
                                 if let Ok(mut q) = queue_clone.lock() {
                                     if q.len() < 16 {
@@ -383,8 +453,8 @@ pub fn poll_lan_incoming_sync() -> Option<String> {
 pub fn pull_book_from_lan_peer(peer_addr: &str, pin: &str) -> Result<String, String> {
     let addr = parse_allowed_lan_addr(peer_addr)?;
     let clean_pin = pin.trim();
-    if clean_pin.is_empty() {
-        return Err(String::from("Enter the 6-digit pairing PIN from the host device."));
+    if clean_pin.len() != 6 || !clean_pin.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(String::from("Enter the 6-digit numeric pairing PIN from the host device."));
     }
 
     let mut stream = TcpStream::connect_timeout(&SocketAddr::V4(addr), Duration::from_secs(5))
@@ -409,8 +479,8 @@ pub fn pull_book_from_lan_peer(peer_addr: &str, pin: &str) -> Result<String, Str
 pub fn push_book_to_lan_peer(peer_addr: &str, pin: &str, book_json: &str) -> Result<String, String> {
     let addr = parse_allowed_lan_addr(peer_addr)?;
     let clean_pin = pin.trim();
-    if clean_pin.is_empty() {
-        return Err(String::from("Enter the 6-digit pairing PIN from the host device."));
+    if clean_pin.len() != 6 || !clean_pin.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(String::from("Enter the 6-digit numeric pairing PIN from the host device."));
     }
 
     let mut stream = TcpStream::connect_timeout(&SocketAddr::V4(addr), Duration::from_secs(5))
@@ -439,18 +509,31 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
     let _ = stream.set_read_timeout(Some(Duration::from_secs(8)));
     let mut raw = Vec::with_capacity(4096);
     let mut tmp = [0u8; 4096];
+    let mut split_idx: Option<usize> = None;
     loop {
         match stream.read(&mut tmp) {
             Ok(0) => break,
             Ok(n) => {
                 raw.extend_from_slice(&tmp[..n]);
+                if split_idx.is_none() {
+                    if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                        if pos > MAX_HTTP_HEADER_BYTES {
+                            return Err(String::from("Peer HTTP headers exceeded size limit."));
+                        }
+                        split_idx = Some(pos);
+                    } else if raw.len() > MAX_HTTP_HEADER_BYTES {
+                        return Err(String::from("Peer HTTP headers exceeded size limit."));
+                    }
+                }
+                if raw.len() > MAX_HTTP_HEADER_BYTES + MAX_LAN_BODY_BYTES {
+                    return Err(String::from("Peer HTTP response exceeded maximum allowed size."));
+                }
             }
             Err(e) => return Err(format!("Socket error reading peer response: {e}")),
         }
     }
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
+    let split = split_idx
+        .or_else(|| raw.windows(4).position(|w| w == b"\r\n\r\n"))
         .ok_or_else(|| String::from("Malformed HTTP response from peer."))?;
     let hdr = String::from_utf8_lossy(&raw[..split]).to_string();
     let first_line = hdr.lines().next().unwrap_or("");

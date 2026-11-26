@@ -1,5 +1,5 @@
 import { normalizeProjectDefaults } from './library';
-import { countWords, findSceneContext, newId } from './manuscript';
+import { countWords, findSceneContext, isSceneLocked, newId } from './manuscript';
 import type {
   BookProject,
   CollaboratorRole,
@@ -405,6 +405,7 @@ export function acceptProofreadMark(
   sceneId: string,
   markId: string,
 ): { project: BookProject; applied: boolean } {
+  if (isSceneLocked(project, sceneId).locked) return { project, applied: false };
   const next = normalizeProjectDefaults(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return { project: next, applied: false };
@@ -478,6 +479,7 @@ export function updateProofreadMarkNote(
 }
 
 export function acceptAllProofreadMarks(project: BookProject, sceneId: string): BookProject {
+  if (isSceneLocked(project, sceneId).locked) return project;
   const next = normalizeProjectDefaults(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return next;

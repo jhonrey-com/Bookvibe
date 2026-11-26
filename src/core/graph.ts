@@ -1,5 +1,5 @@
 import { countTermOccurrences } from './bible';
-import { getAllScenes, newId } from './manuscript';
+import { getAllScenes, isSceneLocked, newId } from './manuscript';
 import type {
   BookProject,
   GraphNodeKind,
@@ -90,13 +90,42 @@ export function seedGraphFromProject(project: BookProject): StoryGraph {
   }
 
   const cols = 4;
-  const colStep = 195;
-  const rowStep = 112;
+  const colStep = 280;
+  const rowStep = 168;
+  const occupied: Array<{ x: number; y: number }> = [];
 
-  ringEntries.forEach((entry, i) => {
+  const isCellFree = (cx: number, cy: number) =>
+    !occupied.some((pt) => Math.abs(pt.x - cx) < 252 && Math.abs(pt.y - cy) < 136);
+
+  let nextSlot = 0;
+  const findNextFreeCell = (): { x: number; y: number } => {
+    while (true) {
+      const col = nextSlot % cols;
+      const row = Math.floor(nextSlot / cols);
+      nextSlot++;
+      const candX = 36 + col * colStep;
+      const candY = 36 + row * rowStep;
+      if (isCellFree(candX, candY)) {
+        occupied.push({ x: candX, y: candY });
+        return { x: candX, y: candY };
+      }
+    }
+  };
+
+  // Pass 1: preserve non-colliding saved positions so valid manual layouts stay intact
+  const resolvedCoords = new Map<string, { x: number; y: number }>();
+  for (const entry of ringEntries) {
     const prev = byRefId.get(entry.refId);
-    const col = i % cols;
-    const row = Math.floor(i / cols);
+    if (prev && isCellFree(prev.x, prev.y)) {
+      resolvedCoords.set(entry.refId, { x: prev.x, y: prev.y });
+      occupied.push({ x: prev.x, y: prev.y });
+    }
+  }
+
+  // Pass 2: allocate free grid cells for new entries and any previously colliding entries
+  ringEntries.forEach((entry) => {
+    const prev = byRefId.get(entry.refId);
+    const coords = resolvedCoords.get(entry.refId) ?? findNextFreeCell();
     seededNodes.push({
       ...(prev ?? {}),
       id: prev?.id ?? `gnode-${entry.refId}`,
@@ -104,17 +133,23 @@ export function seedGraphFromProject(project: BookProject): StoryGraph {
       refId: entry.refId,
       label: entry.label,
       subtitle: entry.subtitle,
-      x: prev ? prev.x : 36 + col * colStep,
-      y: prev ? prev.y : 36 + row * rowStep,
+      x: coords.x,
+      y: coords.y,
       color: prev?.color ?? GRAPH_KIND_COLORS[entry.kind],
       notes: entry.notes || prev?.notes || '',
     });
   });
 
-  // Preserve custom or plot nodes added directly in Graph view
+  // Preserve custom or plot nodes added directly in Graph view, relocating only if colliding
   for (const node of existingNodes) {
     if (!node.refId || !seededNodes.some((n) => n.id === node.id)) {
-      seededNodes.push(node);
+      if (isCellFree(node.x, node.y)) {
+        occupied.push({ x: node.x, y: node.y });
+        seededNodes.push(node);
+      } else {
+        const free = findNextFreeCell();
+        seededNodes.push({ ...node, x: free.x, y: free.y });
+      }
     }
   }
 
@@ -210,6 +245,7 @@ export function syncGraphNodeBackToBook(
       if (patch.notes !== undefined) lore.summary = patch.notes;
     }
   } else if (node.kind === 'scene') {
+    if (isSceneLocked(project, refId).locked) return project;
     for (const part of next.parts) {
       for (const chap of part.chapters) {
         const sc = chap.scenes.find((s) => s.id === refId);
@@ -392,8 +428,8 @@ export function applyAutoLayout(graph: StoryGraph): StoryGraph {
     .filter((g) => g.length > 0);
 
   const maxCols = 4;
-  const colStep = 248;
-  const rowStep = 132;
+  const colStep = 280;
+  const rowStep = 168;
   const nextNodes: StoryGraphNode[] = [];
 
   let bandY = 42;

@@ -18,6 +18,7 @@ import {
   addCollaborator,
   addVerifiedCoAuthorFromToken,
   generateLocalCoAuthorInviteToken,
+  getActiveSessionPermissions,
   getCollaboratorPermissions,
   mergeBookRevisions,
   removeCollaborator,
@@ -135,6 +136,8 @@ export function showCollabModal(actions: AppActions): void {
     const desktopMode = isTauriRuntime();
 
     if (activeTab === 'credits') {
+      const sessionPerms = getActiveSessionPermissions(project);
+      const canManageTeam = sessionPerms.canManageCollaborators;
       const activeNames = [
         project.authorIdentity?.penName || project.author || 'Primary Author',
         ...collabs.map((c) => c.penName || c.name),
@@ -180,9 +183,14 @@ export function showCollabModal(actions: AppActions): void {
             { className: 'qv-collab-perm-grid' },
             ...permFields.map((pf) => {
               const chk = el('input', {
-                attrs: { type: 'checkbox', checked: perms[pf.key] },
+                attrs: { type: 'checkbox', checked: perms[pf.key], disabled: !canManageTeam },
                 on: {
                   change: () => {
+                    if (!canManageTeam) {
+                      chk.checked = perms[pf.key];
+                      actions.notify('Managing team permissions is restricted to the book owner or managers.');
+                      return;
+                    }
                     actions.mutateProject((prev) =>
                       updateCollaboratorPermissions(prev, c.id, { [pf.key]: chk.checked }),
                     );
@@ -216,9 +224,13 @@ export function showCollabModal(actions: AppActions): void {
                   {
                     className: 'bv-mini-btn',
                     tooltip: { title: 'Remove Collaborator', short: 'Remove credit and access restriction rule.' },
-                    attrs: { type: 'button' },
+                    attrs: { type: 'button', disabled: !canManageTeam },
                     on: {
                       click: () => {
+                        if (!canManageTeam) {
+                          actions.notify('Only the primary author or team managers can remove collaborators.');
+                          return;
+                        }
                         actions.mutateProject((prev) => removeCollaborator(prev, c.id));
                         void renderTabContent();
                       },
@@ -303,9 +315,13 @@ export function showCollabModal(actions: AppActions): void {
               'button',
               {
                 className: 'bv-btn bv-btn-primary',
-                attrs: { type: 'button' },
+                attrs: { type: 'button', disabled: !canManageTeam },
                 on: {
                   click: async () => {
+                    if (!canManageTeam) {
+                      actions.notify('Only the primary author or team managers can add collaborators.');
+                      return;
+                    }
                     const role = roleSel.value as CollaboratorRole;
                     const token = coTokenIn.value.trim();
                     if (token) {
@@ -575,7 +591,7 @@ export function showCollabModal(actions: AppActions): void {
                         while (true) {
                           const incoming = await pollLanIncomingSync();
                           if (!incoming) break;
-                          mergeIncomingRaw(incoming, 'peer.qv', 'Wi-Fi Peer');
+                          await mergeIncomingRaw(incoming, 'peer.qv', 'Wi-Fi Peer');
                           mergedCount++;
                         }
                         if (mergedCount === 0) {
@@ -609,7 +625,7 @@ export function showCollabModal(actions: AppActions): void {
                   click: async () => {
                     try {
                       const raw = await pullFromLanPeer(peerAddrIn.value, peerPinIn.value);
-                      mergeIncomingRaw(raw, 'lan-peer.qv', peerAddrIn.value.trim());
+                      await mergeIncomingRaw(raw, 'lan-peer.qv', peerAddrIn.value.trim());
                     } catch (err) {
                       actions.notify(err instanceof Error ? err.message : 'LAN pull failed.');
                     }

@@ -1,5 +1,6 @@
 import type { AppActions } from '../core/app-context';
 import { exportGenericFile } from '../core/bridge';
+import { getActiveSessionPermissions } from '../core/collab';
 import { routeConnector, type RectBox } from '../core/connector-router';
 import {
   DEFAULT_FORCE_PARAMS,
@@ -137,12 +138,23 @@ function isPointInGroup(x: number, y: number, g: StoryGraphGroup): boolean {
   return x >= g.x && x <= g.x + g.width && y >= g.y && y <= g.y + g.height;
 }
 
-export function renderGraphView(container: HTMLElement, actions: AppActions): void {
+export function renderGraphView(container: HTMLElement, rawActions: AppActions): void {
   if (activeForceRafId !== null) {
     cancelAnimationFrame(activeForceRafId);
     activeForceRafId = null;
   }
   clearNode(container);
+
+  const initialState = rawActions.getState();
+  const graphPerms = getActiveSessionPermissions(initialState.project);
+  const actions: AppActions = graphPerms.canEditBibleAndGraph
+    ? rawActions
+    : {
+        ...rawActions,
+        mutateProject: () => {
+          rawActions.notify('Story Graph editing is disabled for your collaborator role.');
+        },
+      };
 
   const state = actions.getState();
   const project = normalizeProjectDefaults(state.project);

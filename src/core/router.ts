@@ -100,7 +100,13 @@ export function readInitialBrowserRoute(isFirstWebVisit: boolean): RouteMatch {
     window.location.pathname === '/index.html'
   ) {
     try {
-      window.history.replaceState({}, '', resolved.canonicalPath);
+      const remainingParams = new URLSearchParams(window.location.search);
+      remainingParams.delete('qv_route');
+      const remainingSearch = remainingParams.toString();
+      const targetUrl = remainingSearch
+        ? `${resolved.canonicalPath}?${remainingSearch}`
+        : resolved.canonicalPath;
+      window.history.replaceState({}, '', targetUrl);
     } catch {
       // Ignore restricted history APIs (e.g. file://)
     }

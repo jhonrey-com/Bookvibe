@@ -4,6 +4,7 @@ import {
   exportGenericFile,
   isTauriRuntime,
 } from '../core/bridge';
+import { getActiveSessionPermissions } from '../core/collab';
 import {
   renderCoverToJpegDataUrl,
   renderCoverToPngDataUrl,
@@ -260,9 +261,19 @@ function applyDragToStyle(node: HTMLElement, xPct: number, yPct: number, rotDeg 
   node.style.transform = `translate(-50%, -50%) rotate(${rotDeg}deg) scale(${sx}, ${sy})`;
 }
 
-export function renderCoverStudio(container: HTMLElement, actions: AppActions): void {
+export function renderCoverStudio(container: HTMLElement, rawActions: AppActions): void {
   captureStudioScroll(container);
   clearNode(container);
+
+  const coverPerms = getActiveSessionPermissions(rawActions.getState().project);
+  const actions: AppActions = coverPerms.canEditCoverAndTypeset
+    ? rawActions
+    : {
+        ...rawActions,
+        mutateProject: () => {
+          rawActions.notify('Cover Studio editing is disabled for your collaborator role.');
+        },
+      };
 
   const state = actions.getState();
   const project = normalizeProjectDefaults(state.project);

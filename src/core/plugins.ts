@@ -317,11 +317,33 @@ export function isSafeRegexPattern(pattern: string): boolean {
   if (typeof pattern !== 'string') return false;
   const trimmed = pattern.trim();
   if (trimmed.length === 0 || trimmed.length > 120) return false;
-  // Block backreferences, lookbehinds, and nested quantifiers e.g. (a+)+, ([a-z]+)*, (.*){2,}
+  // Block backreferences, lookbehinds, nested quantifiers e.g. (a+)+, ((?:a+))+, and quantified alternations (a|a)+
   if (/\\[1-9]/.test(trimmed)) return false;
   if (/\(\?<[=!]/.test(trimmed)) return false;
   if (/\([^)]*[+*][^)]*\)[+*?{]/.test(trimmed)) return false;
   if (/[+*]\s*[+*]/.test(trimmed)) return false;
+  if (/\((?:[^()|]*\|)+[^()]*\)[+*?{]/.test(trimmed)) return false;
+  let parenDepth = 0;
+  let hasQuantifierInsideParen = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '\\') {
+      i++;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+    } else if (ch === ')') {
+      if (parenDepth > 0) parenDepth--;
+      const nextCh = trimmed[i + 1] || '';
+      if (hasQuantifierInsideParen && /[+*?{]/.test(nextCh)) {
+        return false;
+      }
+      if (parenDepth === 0) hasQuantifierInsideParen = false;
+    } else if (parenDepth > 0 && (ch === '+' || ch === '*')) {
+      hasQuantifierInsideParen = true;
+    }
+  }
   try {
     new RegExp(trimmed, 'gu');
     return true;
@@ -485,6 +507,37 @@ export function validateExternalExtensionManifest(rawJson: string): QuillvibePlu
     manifest.presets = obj.presets.map((p, idx) => {
       if (typeof p !== 'object' || p === null) throw new Error(`Invalid preset at index ${idx}.`);
       const po = p as Record<string, unknown>;
+      let safeTypo:
+        | {
+            fontFamily?: string;
+            fontSizePt?: number;
+            lineHeight?: number;
+            marginInches?: number;
+            dropCaps?: boolean;
+          }
+        | undefined;
+      if (typeof po.typography === 'object' && po.typography !== null) {
+        const to = po.typography as Record<string, unknown>;
+        safeTypo = {
+          fontFamily:
+            typeof to.fontFamily === 'string' && /^[a-z0-9-]+$/i.test(to.fontFamily)
+              ? to.fontFamily
+              : undefined,
+          fontSizePt:
+            typeof to.fontSizePt === 'number' && Number.isFinite(to.fontSizePt)
+              ? Math.max(8, Math.min(24, to.fontSizePt))
+              : undefined,
+          lineHeight:
+            typeof to.lineHeight === 'number' && Number.isFinite(to.lineHeight)
+              ? Math.max(1, Math.min(3, to.lineHeight))
+              : undefined,
+          marginInches:
+            typeof to.marginInches === 'number' && Number.isFinite(to.marginInches)
+              ? Math.max(0.25, Math.min(2.5, to.marginInches))
+              : undefined,
+          dropCaps: typeof to.dropCaps === 'boolean' ? to.dropCaps : undefined,
+        };
+      }
       return {
         id: assertCleanString(po.id, `presets[${idx}].id`, 48),
         label: assertCleanString(po.label, `presets[${idx}].label`, 80),
@@ -492,14 +545,11 @@ export function validateExternalExtensionManifest(rawJson: string): QuillvibePlu
           po.paperTheme === 'obsidian' || po.paperTheme === 'parchment' || po.paperTheme === 'ivory'
             ? po.paperTheme
             : undefined,
-        typography:
-          typeof po.typography === 'object' && po.typography !== null
-            ? (po.typography as QuillvibePluginManifest['presets'] extends Array<infer U>
-                ? U extends { typography?: infer T }
-                  ? T
-                  : never
-                : never)
-            : undefined,
+        typography: safeTypo as QuillvibePluginManifest['presets'] extends Array<infer U>
+          ? U extends { typography?: infer T }
+            ? T
+            : never
+          : never,
       };
     });
   }
@@ -521,10 +571,14 @@ export function validateExternalExtensionManifest(rawJson: string): QuillvibePlu
         /^data:font\/(ttf|otf|woff|woff2);base64,[A-Za-z0-9+/=]+$/.test(fo.dataUrl)
           ? fo.dataUrl
           : undefined;
+      const cssStack = assertCleanString(fo.cssStack, `fonts[${idx}].cssStack`, 160);
+      if (!/^[a-zA-Z0-9\s,'"-]+$/.test(cssStack)) {
+        throw new Error(`Extension font "${fo.family}" contains unsafe CSS characters in cssStack.`);
+      }
       return {
         id: assertCleanString(fo.id, `fonts[${idx}].id`, 48),
         family: assertCleanString(fo.family, `fonts[${idx}].family`, 64),
-        cssStack: assertCleanString(fo.cssStack, `fonts[${idx}].cssStack`, 160),
+        cssStack,
         category: cat,
         dataUrl,
       };

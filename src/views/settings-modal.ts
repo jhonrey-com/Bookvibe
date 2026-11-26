@@ -59,7 +59,73 @@ const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
   { id: 'print-ready', label: 'Print & Press Ready' },
 ];
 
-const CURRENT_QUILLVIBE_VERSION = '3.1.1';
+const CURRENT_QUILLVIBE_VERSION = '3.1.2';
+
+function appendInlineMarkdown(target: HTMLElement, text: string): void {
+  const tokenRegex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (match.index > last) {
+      target.appendChild(document.createTextNode(text.slice(last, match.index)));
+    }
+    const raw = match[0];
+    if (raw.startsWith('**')) {
+      target.appendChild(el('strong', { text: raw.slice(2, -2) }));
+    } else {
+      target.appendChild(el('code', { text: raw.slice(1, -1), style: { fontSize: '11.5px' } }));
+    }
+    last = tokenRegex.lastIndex;
+  }
+  if (last < text.length) {
+    target.appendChild(document.createTextNode(text.slice(last)));
+  }
+}
+
+function renderFormattedReleaseNotes(body: string): HTMLElement {
+  const wrap = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
+  const lines = body.slice(0, 1200).split(/\r?\n/);
+  let currentList: HTMLUListElement | null = null;
+  const flushList = () => {
+    if (currentList) {
+      wrap.appendChild(currentList);
+      currentList = null;
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line === '---') {
+      flushList();
+      continue;
+    }
+    const headingMatch = /^#{1,4}\s+(.+)$/.exec(line);
+    if (headingMatch) {
+      flushList();
+      const h = el('div', { style: { fontWeight: '600', fontSize: '12.5px', color: 'var(--text-primary)', marginTop: '4px' } });
+      appendInlineMarkdown(h, headingMatch[1]);
+      wrap.appendChild(h);
+      continue;
+    }
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      if (!currentList) {
+        currentList = el('ul', {
+          style: { margin: '0', paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '12px', color: 'var(--text-secondary)' },
+        });
+      }
+      const li = el('li');
+      appendInlineMarkdown(li, line.slice(2).trim());
+      currentList.appendChild(li);
+      continue;
+    }
+    flushList();
+    const p = el('p', { style: { margin: '0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.45' } });
+    appendInlineMarkdown(p, line);
+    wrap.appendChild(p);
+  }
+  flushList();
+  return wrap;
+}
 
 function showUpdateCheckDialog(actions: AppActions): void {
   document.getElementById('qv-update-dialog')?.remove();
@@ -164,16 +230,7 @@ function showUpdateCheckDialog(actions: AppActions): void {
         notesBox.style.display = 'flex';
         notesBox.replaceChildren(
           el('strong', { text: data.name || `Release ${latestTag}`, style: { fontSize: '12.5px' } }),
-          el('pre', {
-            text: data.body.slice(0, 700),
-            style: {
-              margin: '0',
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-            },
-          }),
+          renderFormattedReleaseNotes(data.body),
         );
       }
       actions.notify(upToDate ? 'Quillvibe is up to date' : `Quillvibe v${latestTag} is available`);

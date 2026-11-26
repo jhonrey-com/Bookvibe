@@ -194,6 +194,7 @@ export function updateSceneInProject(
     >
   >,
 ): BookProject {
+  if (isSceneLocked(project, sceneId).locked) return project;
   const next = structuredClone(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return next;
@@ -206,6 +207,9 @@ export function deleteSceneFromProject(
   project: BookProject,
   sceneId: string,
 ): { project: BookProject; fallbackSceneId?: string } {
+  if (isSceneLocked(project, sceneId).locked) {
+    return { project, fallbackSceneId: sceneId };
+  }
   const next = structuredClone(project);
   for (const part of next.parts) {
     for (const chap of part.chapters) {
@@ -228,6 +232,9 @@ export function deleteChapterFromProject(
   for (const part of next.parts) {
     const idx = part.chapters.findIndex((c) => c.id === chapterId);
     if (idx >= 0) {
+      if (part.locked || part.chapters[idx].locked) {
+        return { project, fallbackSceneId: getAllScenes(project)[0]?.scene.id };
+      }
       part.chapters.splice(idx, 1);
       break;
     }
@@ -241,9 +248,16 @@ export function moveScene(
   targetChapterId: string,
   targetIndex?: number,
 ): BookProject {
+  if (isSceneLocked(project, sourceSceneId).locked) return project;
   const next = structuredClone(project);
   const ctx = findSceneContext(next, sourceSceneId);
   if (!ctx) return next;
+
+  const targetOwnerPart = next.parts.find((p) => p.chapters.some((c) => c.id === targetChapterId));
+  const targetChapCheck = targetOwnerPart?.chapters.find((c) => c.id === targetChapterId);
+  if (targetOwnerPart?.locked || targetChapCheck?.locked) {
+    return project;
+  }
 
   const sourceList = next.parts[ctx.partIndex].chapters[ctx.chapterIndex].scenes;
   const [removed] = sourceList.splice(ctx.sceneIndex, 1);
@@ -272,6 +286,7 @@ export function splitSceneAtOffset(
   sceneId: string,
   cursorOffset: number,
 ): { project: BookProject; newSceneId?: string } {
+  if (isSceneLocked(project, sceneId).locked) return { project };
   const next = structuredClone(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return { project: next };

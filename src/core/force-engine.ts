@@ -19,10 +19,10 @@ export interface ForceParams {
 }
 
 export const DEFAULT_FORCE_PARAMS: ForceParams = {
-  centerForce: 0.08,
-  repelForce: 6400,
-  linkForce: 0.14,
-  linkDistance: 170,
+  centerForce: 0.06,
+  repelForce: 14500,
+  linkForce: 0.12,
+  linkDistance: 230,
 };
 
 /**

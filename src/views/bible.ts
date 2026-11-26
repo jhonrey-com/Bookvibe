@@ -1,4 +1,5 @@
 import type { AppActions, BibleCategory } from '../core/app-context';
+import { getActiveSessionPermissions } from '../core/collab';
 import {
   indexBibleMentions,
   upsertCharacter,
@@ -27,12 +28,23 @@ function reorderArray<T>(list: T[], fromIdx: number, toIdx: number): T[] {
   return copy;
 }
 
-export function renderBibleView(container: HTMLElement, actions: AppActions): void {
+export function renderBibleView(container: HTMLElement, rawActions: AppActions): void {
   if (activeBibleGlass) {
     activeBibleGlass.destroy();
     activeBibleGlass = null;
   }
   clearNode(container);
+
+  const initialState = rawActions.getState();
+  const biblePerms = getActiveSessionPermissions(initialState.project);
+  const actions: AppActions = biblePerms.canEditBibleAndGraph
+    ? rawActions
+    : {
+        ...rawActions,
+        mutateProject: () => {
+          rawActions.notify('Story Bible editing is disabled for your collaborator role.');
+        },
+      };
 
   const state = actions.getState();
   const project = normalizeProjectDefaults(state.project);
@@ -759,7 +771,7 @@ function renderBibleDetailForm(
   backlinksWrap.appendChild(
     el('span', {
       className: 'bv-panel-title',
-      text: `Scene Appearances (${match?.appearances.length ?? 0} scenes · ${match?.totalOccurrences ?? 0} mentions)`,
+      text: `Scene Appearances (${match?.appearances.length ?? 0} ${(match?.appearances.length ?? 0) === 1 ? 'scene' : 'scenes'} · ${match?.totalOccurrences ?? 0} ${(match?.totalOccurrences ?? 0) === 1 ? 'mention' : 'mentions'})`,
     }),
   );
 

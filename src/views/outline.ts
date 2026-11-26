@@ -35,7 +35,8 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
   clearNode(container);
   const state = actions.getState();
   const project = state.project;
-  const totalBookWords = Math.max(1, getProjectWordCount(project));
+  const actualBookWords = getProjectWordCount(project);
+  const totalBookWords = Math.max(1, actualBookWords);
   const allScenes = getAllScenes(project);
 
   const searchInput = el('input', {
@@ -145,7 +146,7 @@ export function renderOutlineView(container: HTMLElement, actions: AppActions): 
       el('span', { className: 'bv-panel-title', text: 'Outline & Pacing Matrix' }),
       el('span', {
         className: 'bv-mono-tag',
-        text: `${allScenes.length} scenes · ${totalBookWords.toLocaleString()} words`,
+        text: `${allScenes.length} ${allScenes.length === 1 ? 'scene' : 'scenes'} · ${actualBookWords.toLocaleString()} ${actualBookWords === 1 ? 'word' : 'words'}`,
       }),
     ),
     el(

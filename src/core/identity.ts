@@ -375,7 +375,7 @@ export async function verifyProjectAuthorKeyIntegrity(
     const fp = await computeSha256Hex(identity.publicKeyJwk);
     const expectedPrefix = identity.authorKeyId.startsWith('BVK-') ? 'BVK-' : 'QVK-';
     const expectedId = `${expectedPrefix}${fp.slice(0, 12).toUpperCase()}`;
-    if (identity.authorKeyId !== expectedId && !identity.publicKeyJwk.includes('QV-LOCAL') && !identity.publicKeyJwk.includes('BV-LOCAL')) {
+    if (identity.authorKeyId !== expectedId) {
       return {
         ok: false,
         reason: `Author Key ID (${identity.authorKeyId}) does not match embedded public key fingerprint (${expectedId}).`,
@@ -391,50 +391,55 @@ export async function verifyProjectAuthorKeyIntegrity(
     };
   }
 
-  if (
-    identity.manuscriptDigest &&
-    identity.manuscriptDigest.includes('.') &&
-    identity.publicKeyJwk &&
-    typeof crypto !== 'undefined' &&
-    crypto.subtle
-  ) {
+  if (identity.manuscriptDigest && identity.manuscriptDigest.includes('.')) {
+    if (!identity.publicKeyJwk || typeof crypto === 'undefined' || !crypto.subtle) {
+      return {
+        ok: false,
+        reason: 'Signed manuscript seal cannot be verified without a valid EC public key.',
+      };
+    }
     const [digestHex, sigHex] = identity.manuscriptDigest.split('.');
-    if (sigHex && sigHex.length >= 64) {
-      try {
-        const parsedPub = JSON.parse(identity.publicKeyJwk) as JsonWebKey;
-        if (parsedPub.kty === 'EC') {
-          const pubKey = await crypto.subtle.importKey(
-            'jwk',
-            parsedPub,
-            { name: 'ECDSA', namedCurve: 'P-256' },
-            false,
-            ['verify'],
-          );
-          const sigBytes = hexToBytes(sigHex);
-          const sigCopy = new Uint8Array(sigBytes.byteLength);
-          sigCopy.set(sigBytes);
-          const msgBytes = new TextEncoder().encode(digestHex);
-          const msgCopy = new Uint8Array(msgBytes.byteLength);
-          msgCopy.set(msgBytes);
-          const validSig = await crypto.subtle.verify(
-            { name: 'ECDSA', hash: 'SHA-256' },
-            pubKey,
-            sigCopy.buffer,
-            msgCopy.buffer,
-          );
-          if (!validSig) {
-            return {
-              ok: false,
-              reason: 'Cryptographic ECDSA author seal verification failed.',
-            };
-          }
-        }
-      } catch {
+    if (!sigHex || sigHex.length < 64) {
+      return { ok: false, reason: 'Invalid Author Key signature length.' };
+    }
+    try {
+      const parsedPub = JSON.parse(identity.publicKeyJwk) as JsonWebKey;
+      if (parsedPub.kty !== 'EC') {
         return {
           ok: false,
-          reason: 'Malformed public Author Key JWK.',
+          reason: 'Signed manuscript seal requires an ECDSA P-256 public key.',
         };
       }
+      const pubKey = await crypto.subtle.importKey(
+        'jwk',
+        parsedPub,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['verify'],
+      );
+      const sigBytes = hexToBytes(sigHex);
+      const sigCopy = new Uint8Array(sigBytes.byteLength);
+      sigCopy.set(sigBytes);
+      const msgBytes = new TextEncoder().encode(digestHex);
+      const msgCopy = new Uint8Array(msgBytes.byteLength);
+      msgCopy.set(msgBytes);
+      const validSig = await crypto.subtle.verify(
+        { name: 'ECDSA', hash: 'SHA-256' },
+        pubKey,
+        sigCopy.buffer,
+        msgCopy.buffer,
+      );
+      if (!validSig) {
+        return {
+          ok: false,
+          reason: 'Cryptographic ECDSA author seal verification failed.',
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        reason: 'Malformed public Author Key JWK.',
+      };
     }
   }
 

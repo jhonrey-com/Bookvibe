@@ -57,7 +57,7 @@ import { TabDragController } from './core/tab-drag-controller';
 import { loadCustomFonts } from './core/fonts';
 import { COLLABORATOR_ROLE_LABELS } from './core/collab';
 import { resolveEffectiveFontCss } from './core/fonts';
-import { ensureAuthorIdentity } from './core/identity';
+import { ensureAuthorIdentity, stripPrivateAuthorSecrets } from './core/identity';
 import {
   addBookToLibrary,
   createInitialLibrary,
@@ -133,6 +133,7 @@ import {
   replayFullWalkthrough,
 } from './ui/onboarding';
 import { createVerticalResizer } from './ui/resizer';
+import { hideTooltip } from './ui/tooltip';
 import { TOOLTIP_CATALOG } from './ui/tooltips-catalog';
 import { renderBibleView } from './views/bible';
 import { renderBinder } from './views/binder';
@@ -311,7 +312,21 @@ const tabDragController = new TabDragController({
     if (state.openBookTabIds.length > 1) {
       actions.closeBookTab(tabId);
     } else {
-      window.setTimeout(() => void closeDesktopWindow(), 120);
+      if (persistTimer !== null) {
+        window.clearTimeout(persistTimer);
+        persistTimer = null;
+      }
+      const serializedBook = serializeExtensionFile('.qv', state.project);
+      const libForDisk: BookLibraryState = {
+        ...state.library,
+        books: state.library.books.map(stripPrivateAuthorSecrets),
+      };
+      void Promise.all([
+        persistProject(serializedBook),
+        persistLibrary(JSON.stringify(libForDisk)),
+      ]).finally(() => {
+        window.setTimeout(() => void closeDesktopWindow(), 120);
+      });
     }
   },
 });
@@ -537,16 +552,21 @@ function schedulePersist(options?: { authoritativeLibrary?: boolean }): void {
     : upsertBookInLibrary(state.library, state.project);
   if (authoritative && typeof window !== 'undefined' && window.localStorage) {
     try {
-      window.localStorage.setItem('quillvibe.library.v2', JSON.stringify(state.library));
+      const safeLib: BookLibraryState = {
+        ...state.library,
+        books: state.library.books.map(stripPrivateAuthorSecrets),
+      };
+      window.localStorage.setItem('quillvibe.library.v2', JSON.stringify(safeLib));
     } catch {
       // Ignore storage quota errors
     }
   }
   state.saveStatusLabel = 'Saving…';
   if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
-  windowSync?.broadcastBookUpdated(state.project.id, state.project);
+  windowSync?.broadcastBookUpdated(state.project.id, stripPrivateAuthorSecrets(state.project));
   if (persistTimer !== null) window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(async () => {
+    persistTimer = null;
     // Re-read latest localStorage right before atomic write so parallel window edits to other books are preserved
     let libToWrite = state.library;
     if (!authoritative && typeof window !== 'undefined' && window.localStorage) {
@@ -567,7 +587,11 @@ function schedulePersist(options?: { authoritativeLibrary?: boolean }): void {
       }
     }
     const serializedBook = serializeExtensionFile('.qv', state.project);
-    const serializedLib = JSON.stringify(libToWrite);
+    const safeLibToWrite: BookLibraryState = {
+      ...libToWrite,
+      books: libToWrite.books.map(stripPrivateAuthorSecrets),
+    };
+    const serializedLib = JSON.stringify(safeLibToWrite);
     await Promise.all([persistProject(serializedBook), persistLibrary(serializedLib)]);
     state.saveStatusLabel = 'Saved';
     if (saveStatusEl) saveStatusEl.textContent = state.saveStatusLabel;
@@ -823,6 +847,7 @@ function rebuildHeaderNavControl(): void {
 
 function renderActiveView(): void {
   if (!shellEl) return;
+  hideTooltip();
   const effTier = getEffectiveTier();
   if (lastRenderedTier !== effTier) {
     rebuildHeaderNavControl();
@@ -892,7 +917,6 @@ function renderActiveView(): void {
         } else {
           state.openBookTabIds = state.openBookTabIds.map((id) => (id === emptyId ? bookId : id));
         }
-        state.activeTabId = bookId;
         actions.switchBook(bookId);
       },
       onCreateBlankBook: (title, penName) => {
@@ -1286,9 +1310,10 @@ const actions: AppActions = {
 
   updateActiveSceneTextQuietly(field, value) {
     if (!isApplyingHistory) {
+      const activeTitle = findSceneContext(state.project, state.activeSceneId)?.scene.title || 'Scene';
       projectHistory.pushSnapshot(
         state.project,
-        field === 'content' ? `Scene ${state.activeSceneId} prose` : `Scene ${state.activeSceneId} title`,
+        field === 'content' ? `${activeTitle} prose` : `${activeTitle} title`,
         900,
       );
     }
@@ -1492,13 +1517,14 @@ const actions: AppActions = {
 
   openBookInTab(bookId: string) {
     if (!state.library.books.some((b) => b.id === bookId)) return;
+    const wasEmpty = isEmptyTabId(state.activeTabId);
     if (!state.openBookTabIds.includes(bookId)) {
       state.openBookTabIds = [...state.openBookTabIds, bookId];
     }
-    state.activeTabId = bookId;
-    if (state.project.id !== bookId || isEmptyTabId(state.activeTabId)) {
+    if (state.project.id !== bookId || wasEmpty) {
       actions.switchBook(bookId);
     } else {
+      state.activeTabId = bookId;
       windowSync?.publishPresence();
       renderDesktopTabBar();
       renderActiveView();
@@ -1726,6 +1752,10 @@ const actions: AppActions = {
   },
 
   async exportEpub() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Building EPUB 3 eBook…', async () => {
         const coverPng = await renderCoverToPngDataUrl(state.project, 1200, 1920);
@@ -1739,6 +1769,10 @@ const actions: AppActions = {
   },
 
   async exportDocx() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Generating Word-Compatible .docx…', () =>
         exportBookAsDocx(state.project),
@@ -1751,6 +1785,10 @@ const actions: AppActions = {
   },
 
   async exportPdf() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Generating Print Interior PDF…', () =>
         exportBookAsPdf(state.project),
@@ -1763,6 +1801,10 @@ const actions: AppActions = {
   },
 
   async exportMarkdown() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Exporting Markdown (.md)…', () =>
         exportBookAsMarkdown(state.project),
@@ -1775,6 +1817,10 @@ const actions: AppActions = {
   },
 
   async exportHtml() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Exporting HTML Book (.html)…', () =>
         exportBookAsHtml(state.project),
@@ -1787,6 +1833,10 @@ const actions: AppActions = {
   },
 
   async exportPlainText() {
+    if (!getActiveSessionPermissions(state.project).canExportFiles) {
+      actions.notify('Exporting is disabled for your collaborator role.');
+      return;
+    }
     try {
       const out = await runWithExportLoading('Exporting Plain Text (.txt)…', () =>
         exportBookAsPlainText(state.project),
@@ -3266,7 +3316,8 @@ async function bootstrap(): Promise<void> {
           }
           if (state.activeView === 'editor' && proseEl) {
             const ctx = findSceneContext(state.project, state.activeSceneId);
-            if (ctx && proseEl.value !== ctx.scene.content) {
+            const hasPendingLocalInput = wasFocused && persistTimer !== null;
+            if (ctx && !hasPendingLocalInput && proseEl.value !== ctx.scene.content) {
               proseEl.value = ctx.scene.content;
               if (wasFocused) {
                 const maxLen = proseEl.value.length;
@@ -3419,14 +3470,14 @@ async function bootstrap(): Promise<void> {
 
   let forceSplashFromRoute = false;
   if (!isTauriRuntime()) {
+    const initialSearchQ = new URLSearchParams(window.location.search).get('q');
     const initialRoute = readInitialBrowserRoute(!hasSeenSplash);
     const effTier = getEffectiveTier();
     state.activeView = allowedViewsForTier(effTier).includes(initialRoute.view)
       ? initialRoute.view
       : 'editor';
-    if (initialRoute.view === 'help') {
-      const q = new URLSearchParams(window.location.search).get('q');
-      if (q) setHelpPageSearch(q);
+    if (initialRoute.view === 'help' && initialSearchQ) {
+      setHelpPageSearch(initialSearchQ);
     }
     if (initialRoute.typesetSubTab) {
       state.typesetSubTab = initialRoute.typesetSubTab;

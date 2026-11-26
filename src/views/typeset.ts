@@ -1,5 +1,5 @@
 import type { AppActions, TypesetSubTab } from '../core/app-context';
-import { COLLABORATOR_ROLE_LABELS } from '../core/collab';
+import { COLLABORATOR_ROLE_LABELS, getActiveSessionPermissions } from '../core/collab';
 import {
   TRIM_SPECS,
   applySmartTypography,
@@ -65,7 +65,7 @@ function appendInlineStyledText(target: HTMLElement, text: string): void {
   }
 }
 
-export function renderTypesetView(container: HTMLElement, actions: AppActions): void {
+export function renderTypesetView(container: HTMLElement, rawActions: AppActions): void {
   const prevCtrl = container.querySelector('.bv-typeset-controls') as HTMLElement | null;
   const prevStage = container.querySelector('.bv-typeset-preview-stage') as HTMLElement | null;
   if (prevCtrl) savedControlsScrollTop = prevCtrl.scrollTop;
@@ -76,6 +76,16 @@ export function renderTypesetView(container: HTMLElement, actions: AppActions): 
     activeTypesetGlass = null;
   }
   clearNode(container);
+
+  const typesetPerms = getActiveSessionPermissions(rawActions.getState().project);
+  const actions: AppActions = typesetPerms.canEditCoverAndTypeset
+    ? rawActions
+    : {
+        ...rawActions,
+        mutateProject: () => {
+          rawActions.notify('Typeset & Publishing settings are disabled for your collaborator role.');
+        },
+      };
 
   const state = actions.getState();
   const subSwitcher = new LiquidGlassControl<TypesetSubTab>({
@@ -461,7 +471,8 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
                 attrs: { src: identity.signatureSvgDataUrl, alt: 'Signature' },
                 style: { height: '32px', marginTop: '14px', filter: 'invert(1)' },
               })
-            : identity.signatureText
+            : identity.signatureText &&
+                identity.signatureText.trim().toLowerCase() !== penName.trim().toLowerCase()
               ? el('p', {
                   text: identity.signatureText,
                   style: { fontStyle: 'italic', color: '#5c5850', marginTop: '12px' },
@@ -490,11 +501,15 @@ function renderInteriorTypeset(container: HTMLElement, actions: AppActions): voi
     if (sheet.kind === 'toc') {
       const tocList = el('div', { className: 'bv-book-toc-list' });
       for (const entry of paginated.tocEntries) {
+        const sameLabel =
+          entry.chapterTitle.trim().toLowerCase() === entry.chapterLabel.trim().toLowerCase();
         tocList.appendChild(
           el(
             'div',
             { className: 'bv-book-toc-row' },
-            el('span', { text: `${entry.chapterLabel} — ${entry.chapterTitle}` }),
+            el('span', {
+              text: sameLabel ? entry.chapterTitle : `${entry.chapterLabel} — ${entry.chapterTitle}`,
+            }),
             el('span', { className: 'bv-book-toc-dots' }),
             el('span', { text: String(entry.pageNumber), style: { fontVariantNumeric: 'tabular-nums' } }),
           ),

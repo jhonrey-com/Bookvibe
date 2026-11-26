@@ -15,8 +15,8 @@ export const QUILLVIBE_ERROR_CATALOG: readonly QuillvibeErrorEntry[] = [
     platform: 'both',
     category: 'File & Open',
     title: 'Unsupported or Legacy File Extension',
-    cause: 'You attempted to open a file whose extension is not one of the four active Quillvibe formats (.qv, .qvbible, .qvscene, .qvstyle) or an older legacy archive (.quillvibe, .bookvibe, .bv*).',
-    fix: 'Use Settings -> Publishing & Archive -> Import Legacy Archive to upgrade older files into .qv, or use Import .docx / .html / .md for external manuscripts.',
+    cause: 'You attempted to open a file whose extension is not one of the supported Quillvibe formats (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign, or .qvext) or an older legacy archive (.quillvibe, .bookvibe, .bv*).',
+    fix: 'Use Settings -> Publishing, .docx & Backups -> Import Legacy Archive to upgrade older files into .qv, or use Import .docx / .html / .md for external manuscripts.',
   },
   {
     code: 'QV-102',

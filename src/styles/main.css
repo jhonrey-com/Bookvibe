@@ -519,19 +519,19 @@ button {
   display: none !important;
 }
 
-.bv-shell.is-standalone-page .bv-workspace-grid,
-.bv-shell.is-typeset-studio .bv-workspace-grid {
+.bv-shell.is-standalone-page > .bv-workspace-grid,
+.bv-shell.is-typeset-studio > .bv-workspace-grid {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.bv-shell.is-standalone-page .bv-binder,
-.bv-shell.is-standalone-page .bv-inspector,
-.bv-shell.is-standalone-page .qv-resizer,
-.bv-shell.is-standalone-page .bv-drawer-backdrop,
-.bv-shell.is-typeset-studio .bv-binder,
-.bv-shell.is-typeset-studio .bv-inspector,
-.bv-shell.is-typeset-studio .qv-resizer,
-.bv-shell.is-typeset-studio .bv-drawer-backdrop {
+.bv-shell.is-standalone-page > .bv-workspace-grid > .bv-binder,
+.bv-shell.is-standalone-page > .bv-workspace-grid > .bv-inspector,
+.bv-shell.is-standalone-page > .bv-workspace-grid > .qv-resizer,
+.bv-shell.is-standalone-page > .bv-workspace-grid > .bv-drawer-backdrop,
+.bv-shell.is-typeset-studio > .bv-workspace-grid > .bv-binder,
+.bv-shell.is-typeset-studio > .bv-workspace-grid > .bv-inspector,
+.bv-shell.is-typeset-studio > .bv-workspace-grid > .qv-resizer,
+.bv-shell.is-typeset-studio > .bv-workspace-grid > .bv-drawer-backdrop {
   display: none !important;
 }
 
@@ -621,7 +621,7 @@ button {
   flex: 1 1 70px;
   width: auto;
   min-width: 56px;
-  max-width: 240px;
+  max-width: clamp(160px, 24vw, 340px);
 }
 
 .bv-book-title-input:hover,
@@ -1541,6 +1541,8 @@ body.is-col-resizing {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .bv-field-row {
@@ -1640,6 +1642,9 @@ body.is-col-resizing {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .bv-cork-card.is-active {
@@ -1691,18 +1696,19 @@ body.is-col-resizing {
 
 .bv-table th {
   text-align: left;
-  padding: 10px 12px;
-  font-size: 11px;
+  padding: 8px 8px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-hairline);
   background: var(--bg-bar);
+  white-space: nowrap;
 }
 
 .bv-table td {
-  padding: 10px 12px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
@@ -2004,8 +2010,9 @@ body.is-col-resizing {
 
 .bv-graph-node {
   position: absolute;
+  box-sizing: border-box;
   min-width: 152px;
-  max-width: 200px;
+  max-width: 214px;
   padding: 8px 11px;
   border-radius: 7px;
   background: var(--bg-surface);
@@ -3300,12 +3307,21 @@ select.bv-select,
 }
 
 .bv-check-row {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: 8px;
   cursor: pointer;
   font-size: 12.5px;
   color: var(--text-primary);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bv-check-row > span,
+.bv-check-row > label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .bv-font-dropzone {
@@ -6064,8 +6080,16 @@ select.bv-select,
 
 @media (max-width: 820px) {
   .qv-settings-page-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     padding: 14px 14px 56px;
+    overflow-x: hidden;
+  }
+
+  .qv-settings-page-content .bv-select,
+  .qv-settings-page-content .bv-input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .qv-settings-sidebar {
@@ -6147,18 +6171,18 @@ select.bv-select,
 
 .qv-outline-inline-input {
   width: 100%;
-  min-width: 96px;
-  padding: 4px 6px;
+  min-width: 68px;
+  padding: 4px 5px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .qv-outline-inline-input.is-title {
   font-weight: 600;
-  min-width: 150px;
+  min-width: 116px;
 }
 
 .qv-outline-inline-input:focus:not([readonly]) {

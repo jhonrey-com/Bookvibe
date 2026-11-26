@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quillvibe",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "identifier": "app.quillvibe.studio",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -51,35 +51,45 @@
     },
     "fileAssociations": [
       {
-        "ext": ["qv"],
+        "ext": [
+          "qv"
+        ],
         "name": "Quillvibe Book Workspace",
         "description": "Protected Quillvibe book workspace archive (manuscript, bible, graph, cover, copyright seal, and typography)",
         "mimeType": "application/vnd.quillvibe.workspace",
         "role": "Editor"
       },
       {
-        "ext": ["qvbible"],
+        "ext": [
+          "qvbible"
+        ],
         "name": "Quillvibe Story Bible Database",
         "description": "Portable worldbuilding database of characters, locations, and lore",
         "mimeType": "application/vnd.quillvibe.bible",
         "role": "Editor"
       },
       {
-        "ext": ["qvscene"],
+        "ext": [
+          "qvscene"
+        ],
         "name": "Quillvibe Standalone Scene Draft",
         "description": "Individual scene draft and revision snapshots for Quillvibe",
         "mimeType": "application/vnd.quillvibe.scene",
         "role": "Editor"
       },
       {
-        "ext": ["qvstyle"],
+        "ext": [
+          "qvstyle"
+        ],
         "name": "Quillvibe Typeset Preset",
         "description": "Shareable Quillvibe print and book typography specification",
         "mimeType": "application/vnd.quillvibe.style",
         "role": "Editor"
       },
       {
-        "ext": ["qvdesign"],
+        "ext": [
+          "qvdesign"
+        ],
         "name": "Quillvibe Cover Design Package",
         "description": "Shareable Book Cover Studio vector artwork, blend layers, draft variants, and collaboration pins",
         "mimeType": "application/vnd.quillvibe.design",

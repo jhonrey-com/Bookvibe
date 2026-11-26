@@ -4,7 +4,7 @@ import {
   getOrCreateLocalDeviceId,
 } from './identity';
 import { normalizeProjectDefaults } from './library';
-import { countWords, findSceneContext, newId } from './manuscript';
+import { countWords, findSceneContext, isSceneLocked, newId } from './manuscript';
 import type {
   BookProject,
   Collaborator,
@@ -103,14 +103,28 @@ export function getActiveSessionPermissions(project: BookProject): CollaboratorP
       canModifyAuthorKey: !project.authorIdentity?.keyLockedForever,
     };
   }
-  const match = (project.collaborators ?? []).find(
+  const collaborators = project.collaborators ?? [];
+  const match = collaborators.find(
     (c) => (c.penName || c.name).trim().toLowerCase() === activeName || c.name.trim().toLowerCase() === activeName,
   );
   if (!match) {
+    // Only single-author local projects with zero collaborators grant owner fallback
+    if (collaborators.length === 0) {
+      return {
+        ...OWNER_FULL_PERMISSIONS,
+        isOwner: true,
+        canModifyAuthorKey: !project.authorIdentity?.keyLockedForever,
+      };
+    }
     return {
-      ...OWNER_FULL_PERMISSIONS,
-      isOwner: true,
-      canModifyAuthorKey: !project.authorIdentity?.keyLockedForever,
+      canEditProse: false,
+      canProofreadOnly: true,
+      canEditBibleAndGraph: false,
+      canEditCoverAndTypeset: false,
+      canExportFiles: false,
+      canManageCollaborators: false,
+      isOwner: false,
+      canModifyAuthorKey: false,
     };
   }
   return {
@@ -326,13 +340,8 @@ export async function parseAndVerifyCoAuthorToken(
     if (!ok) {
       throw new Error('Co-author cryptographic device signature failed verification.');
     }
-  } else if (payload.signature.startsWith('sha256.')) {
-    const expected = await computeSha256Hex(`${signBase}:LOCAL`);
-    if (`sha256.${expected}` !== payload.signature) {
-      throw new Error('Co-author token checksum mismatch.');
-    }
   } else {
-    throw new Error('Unsupported co-author token signature scheme.');
+    throw new Error('Co-author token requires a verifiable ECDSA P-256 device signature.');
   }
 
   const hostDevice = options?.hostDeviceId || getOrCreateLocalDeviceId();
@@ -472,6 +481,9 @@ export function acceptSceneAnnotation(
   sceneId: string,
   annotationId: string,
 ): { project: BookProject; appliedReplacement: boolean } {
+  if (isSceneLocked(project, sceneId).locked) {
+    return { project, appliedReplacement: false };
+  }
   const next = normalizeProjectDefaults(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return { project: next, appliedReplacement: false };
@@ -614,8 +626,9 @@ export function mergeBookRevisions(
         if (localScene.content !== incScene.content) {
           const localTime = Date.parse(localScene.updatedAt) || 0;
           const incTime = Date.parse(incScene.updatedAt) || 0;
+          const locked = isSceneLocked(local, localScene.id).locked;
 
-          if (incTime > localTime) {
+          if (!locked && incTime > localTime) {
             // Preserve local content in snapshot before taking newer peer draft
             localScene.snapshots.unshift({
               id: newId('snap'),
@@ -646,9 +659,8 @@ export function mergeBookRevisions(
     }
   }
 
-  const prevCollabCount = local.collaborators?.length ?? 0;
-  local.collaborators = mergeById(local.collaborators, incoming.collaborators);
-  const mergedCollaborators = (local.collaborators?.length ?? 0) - prevCollabCount;
+  const mergedCollaborators = 0;
+  // Do not merge remote collaborator lists automatically without owner authorization; preserve local collaborator ACLs.
 
   local.bible = {
     characters: mergeById(local.bible.characters, incoming.bible.characters),

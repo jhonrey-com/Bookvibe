@@ -19,6 +19,14 @@ OUTDATED_WARNING = """\
 """
 
 HIGHLIGHT_OVERRIDES: dict[str, List[str]] = {
+    "v3.1.2": [
+        "Fixed Book Cover Studio artboard collapse in the workspace layout so center canvases and Full Wrap previews display at full size.",
+        "Fixed Story Graph node placement (`Sync Now` and `Auto Layout`) so storyboard cards stay separated without overlap.",
+        "Fixed Outline word count grammar on empty and single-word manuscripts, clipped top-bar book titles, duplicate author signatures in Interior Typeset, `/settings` horizontal overflow on mobile viewports, and stuck hover tooltips across navigation switches.",
+        "Rendered GitHub release notes in **Quillvibe Software Updates** as formatted headings and lists instead of raw Markdown.",
+        "Enforced locked-chapter/scene guards across manuscript edits, scene moves, proofread mark accepts, snapshots, collaborator annotations, and graph sync.",
+        "Hardened SVG/image sanitization, base64 SVG payload scanning, plugin CSS font and regex validation, XML entity decoding, ECDSA-only collaborator token checks, and desktop LAN/single-instance networking.",
+    ],
     "v3.1.1": [
         "Collapsed left Binder, right Inspector, and resizers cleanly across all full-page views (`/settings`, `/manual`, `/course`, `/help`, `/developer`, and **New Tab**).",
         "Removed the 50 MB size restriction and restrictive upload limits across book files (`.qv*`), LAN/sync transfers, cover artwork, scene images, and custom fonts.",

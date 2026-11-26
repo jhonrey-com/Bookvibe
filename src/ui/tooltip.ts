@@ -274,6 +274,7 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
 
   target.addEventListener('focus', () => {
     if (activeState?.pinned) return;
+    if (!target.matches(':focus-visible')) return;
     showTooltipNow(target, spec, false);
   });
 
@@ -293,6 +294,14 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   });
 
   target.addEventListener('pointerdown', () => {
+    clearTimers();
+    if (activeState && !activeState.pinned) {
+      hideTooltip();
+    }
+  });
+
+  target.addEventListener('click', () => {
+    clearTimers();
     if (activeState && !activeState.pinned) {
       hideTooltip();
     }

@@ -1,3 +1,4 @@
+import { safeJsonParse } from './extensions';
 import { newId } from './manuscript';
 import type {
   GraphAnchorSide,
@@ -210,7 +211,7 @@ export function exportStoryGraphToJsonCanvas(graph: StoryGraph): string {
 }
 
 export function importJsonCanvasToStoryGraph(rawJson: string): StoryGraph {
-  const parsed = JSON.parse(rawJson) as Partial<JsonCanvasDocument>;
+  const parsed = safeJsonParse<Partial<JsonCanvasDocument>>(rawJson);
   const rawNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
   const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
 

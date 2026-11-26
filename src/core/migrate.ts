@@ -168,6 +168,9 @@ export function importWebHtmlToBookProject(
     const mdLines: string[] = [`# ${title}`, ''];
     const blocks = doc.body.querySelectorAll('h1, h2, h3, p, blockquote, li');
     blocks.forEach((blk) => {
+      if (blk.closest('script, style, noscript')) return;
+      const parentBlock = blk.parentElement?.closest('blockquote, li');
+      if (parentBlock) return;
       const tag = blk.tagName.toLowerCase();
       const txt = domNodeToInlineMarkdown(blk).trim();
       if (!txt) return;
@@ -206,11 +209,19 @@ export function importRtfToBookProject(rawRtf: string, filename = 'Draft.rtf'): 
 
 function decodeXmlEntities(input: string): string {
   return input
-    .replace(/&amp;/g, '&')
+    .replace(/&#(\d+);/g, (_m, code) => {
+      const n = Number(code);
+      return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => {
+      const n = parseInt(hex, 16);
+      return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
+    })
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 export function extractDocxParagraphsFromXml(xml: string): Array<{ headingLevel: number; text: string }> {
@@ -243,14 +254,35 @@ async function readStoredOrDeflateEntry(bytes: Uint8Array, method: number): Prom
     return new TextDecoder('utf-8').decode(bytes);
   }
   if (method === 8 && typeof DecompressionStream !== 'undefined') {
+    const MAX_DOCX_XML_BYTES = 128 * 1024 * 1024;
     const ds = new DecompressionStream('deflate-raw');
     const writer = ds.writable.getWriter();
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
-    void writer.write(copy);
-    void writer.close();
-    const res = await new Response(ds.readable).arrayBuffer();
-    return new TextDecoder('utf-8').decode(res);
+    const writePromise = writer.write(copy).then(() => writer.close());
+    const reader = ds.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.byteLength;
+        if (total > MAX_DOCX_XML_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new Error('Decompressed .docx XML entry exceeds safe boundary.');
+        }
+        chunks.push(value);
+      }
+    }
+    await writePromise;
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+      merged.set(c, offset);
+      offset += c.byteLength;
+    }
+    return new TextDecoder('utf-8').decode(merged);
   }
   throw new Error('Unable to decompress .docx deflate entry in this environment.');
 }

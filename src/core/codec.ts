@@ -221,8 +221,9 @@ export function inspectQuillvibeBinary(bytes: Uint8Array): QvbxHeaderInfo {
   };
 }
 
-const SCRIPT_THREAT_RE = /<script\b|<\/script>|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|data\s*:\s*application\/javascript/i;
-const INLINE_HANDLER_RE = /\bon(?:load|error|click|mouseover|focus|blur|animationstart|pointerdown)\s*=/i;
+const SCRIPT_THREAT_RE =
+  /<script\b|<\/script>|<foreignobject\b|<animate(?:motion|transform)?\b|<set\b|<iframe\b|<object\b|<embed\b|<style\b|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html|data\s*:\s*application\/javascript/i;
+const INLINE_HANDLER_RE = /\bon[a-z]+\s*=/i;
 
 function decodeDataUrlHeaderBytes(dataUrl: string): Uint8Array | null {
   const comma = dataUrl.indexOf(',');
@@ -271,6 +272,7 @@ export function scanPayloadForThreats(value: unknown, depth = 0, parentKey = '')
       parentKey === 'imageDataUrl' ||
       parentKey === 'signatureSvgDataUrl';
 
+    const isSvgDataUri = value.slice(0, 24).toLowerCase().startsWith('data:image/svg+xml');
     if (isMediaField && value.startsWith('data:')) {
       const lowerPrefix = value.slice(0, 64).toLowerCase();
       const safeMedia =
@@ -292,13 +294,40 @@ export function scanPayloadForThreats(value: unknown, depth = 0, parentKey = '')
           'Blocked embedded executable binary disguised inside media field.',
         );
       }
-      if (lowerPrefix.startsWith('data:image/svg+xml')) {
-        if (SCRIPT_THREAT_RE.test(value) || INLINE_HANDLER_RE.test(value)) {
-          throw new QuillvibeCodecError(
-            'MALWARE_DETECTED',
-            'Blocked SVG payload containing active script or event handlers.',
-          );
+    }
+    if (isSvgDataUri) {
+      const lowerPrefix = value.slice(0, 64).toLowerCase();
+      let svgInspect = value;
+      const commaIdx = value.indexOf(',');
+      if (commaIdx >= 0) {
+        const rawBody = value.slice(commaIdx + 1);
+        if (lowerPrefix.includes(';base64')) {
+          try {
+            const cleanB64 = rawBody.replace(/\s+/g, '');
+            svgInspect += '\n' + (typeof atob === 'function' ? atob(cleanB64) : '');
+          } catch {
+            throw new QuillvibeCodecError(
+              'MALWARE_DETECTED',
+              'Blocked malformed base64 SVG payload.',
+            );
+          }
+        } else {
+          try {
+            svgInspect += '\n' + decodeURIComponent(rawBody);
+          } catch {
+            svgInspect += '\n' + rawBody;
+          }
         }
+      }
+      if (
+        SCRIPT_THREAT_RE.test(svgInspect) ||
+        INLINE_HANDLER_RE.test(svgInspect) ||
+        /<a\b|\s(?:xlink:)?href\s*=\s*["']\s*(?:https?:|data:text\/html)/i.test(svgInspect)
+      ) {
+        throw new QuillvibeCodecError(
+          'MALWARE_DETECTED',
+          'Blocked SVG payload containing active script or event handlers.',
+        );
       }
     } else if (parentKey !== 'content' && parentKey !== 'notes' && parentKey !== 'synopsis') {
       if (SCRIPT_THREAT_RE.test(value) || INLINE_HANDLER_RE.test(value)) {

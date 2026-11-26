@@ -1,4 +1,4 @@
-import { countWords, findSceneContext, newId } from './manuscript';
+import { countWords, findSceneContext, isSceneLocked, newId } from './manuscript';
 import type { BookProject, SceneSnapshot } from './types';
 
 export interface DiffToken {
@@ -42,6 +42,7 @@ export function restoreSnapshotToScene(
   sceneId: string,
   snapshotId: string,
 ): BookProject {
+  if (isSceneLocked(project, sceneId).locked) return project;
   const next = structuredClone(project);
   const ctx = findSceneContext(next, sceneId);
   if (!ctx) return next;

@@ -14,8 +14,10 @@ use lan_sync::{
     update_lan_sync_host_book, LanSessionInfo,
 };
 use serde::Serialize;
+use std::collections::hash_map::RandomState;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::hash::{BuildHasher, Hasher};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -169,12 +171,18 @@ fn write_atomic_bytes(target: &Path, payload: &[u8]) -> Result<(), String> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed creating directory: {e}"))?;
     }
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
     let tmp_name = format!(
-        ".{}.tmp",
+        ".{}.{}.{}.tmp",
         target
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("quillvibe")
+            .unwrap_or("quillvibe"),
+        std::process::id(),
+        nanos
     );
     let tmp_path = target.with_file_name(tmp_name);
     fs::write(&tmp_path, payload).map_err(|e| format!("Failed writing temp file: {e}"))?;
@@ -338,7 +346,7 @@ fn export_epub_file(payload: EpubExportPayload, suggested_name: String) -> Resul
             if path.extension().and_then(|e| e.to_str()) != Some("epub") {
                 path.set_extension("epub");
             }
-            fs::write(&path, &epub_bytes).map_err(|e| format!("Failed saving EPUB: {e}"))?;
+            write_atomic_bytes(&path, &epub_bytes)?;
             Ok(Some(path.to_string_lossy().into_owned()))
         }
         None => Ok(None),
@@ -487,21 +495,26 @@ pub struct DesktopWindowBounds {
 
 #[tauri::command]
 fn list_desktop_window_bounds(app: AppHandle) -> Vec<DesktopWindowBounds> {
-    let mut out = Vec::new();
+    let mut entries: Vec<(bool, DesktopWindowBounds)> = Vec::new();
     for (label, win) in app.webview_windows() {
         let scale = win.scale_factor().unwrap_or(1.0).max(0.5);
+        let focused = win.is_focused().unwrap_or(false);
         if let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) {
-            out.push(DesktopWindowBounds {
-                label,
-                x: (pos.x as f64) / scale,
-                y: (pos.y as f64) / scale,
-                width: (size.width as f64) / scale,
-                height: (size.height as f64) / scale,
-                scale_factor: scale,
-            });
+            entries.push((
+                focused,
+                DesktopWindowBounds {
+                    label,
+                    x: (pos.x as f64) / scale,
+                    y: (pos.y as f64) / scale,
+                    width: (size.width as f64) / scale,
+                    height: (size.height as f64) / scale,
+                    scale_factor: scale,
+                },
+            ));
         }
     }
-    out
+    entries.sort_by_key(|(focused, _)| std::cmp::Reverse(*focused));
+    entries.into_iter().map(|(_, b)| b).collect()
 }
 
 #[tauri::command]
@@ -623,7 +636,22 @@ fn find_startup_file_from_args() -> Option<OpenedFilePayload> {
 }
 
 fn instance_lock_path() -> PathBuf {
-    std::env::temp_dir().join("quillvibe-single-instance.lock")
+    #[cfg(target_os = "windows")]
+    let base = std::env::var_os("LOCALAPPDATA")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let base = std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join("Library").join("Application Support"));
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")));
+    let dir = base
+        .unwrap_or_else(std::env::temp_dir)
+        .join("com.jhonrey.quillvibe");
+    let _ = fs::create_dir_all(&dir);
+    dir.join("quillvibe-single-instance.lock")
 }
 
 fn try_forward_file_to_running_instance(file_path: &Path) -> bool {
@@ -653,7 +681,7 @@ fn try_forward_file_to_running_instance(file_path: &Path) -> bool {
     }
     let mut resp = String::new();
     let mut reader = BufReader::new(stream);
-    if reader.read_line(&mut resp).is_ok() && resp.trim() == "OK" {
+    if reader.by_ref().take(1024).read_line(&mut resp).is_ok() && resp.trim() == "OK" {
         return true;
     }
     false
@@ -670,9 +698,18 @@ fn start_single_instance_listener(app: AppHandle) {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let token = format!("qv{:x}{:x}", std::process::id(), nanos);
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u128(nanos);
+    hasher.write_u32(std::process::id());
+    let rand_mix = hasher.finish();
+    let token = format!("qv{:x}{:x}{:x}", std::process::id(), nanos, rand_mix);
     let lock_path = instance_lock_path();
     let _ = fs::write(&lock_path, format!("{}\n{}\n", local_addr.port(), token));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600));
+    }
 
     std::thread::spawn(move || {
         for conn in listener.incoming().flatten() {
@@ -680,7 +717,9 @@ fn start_single_instance_listener(app: AppHandle) {
             let mut reader = BufReader::new(conn);
             let mut recv_token = String::new();
             let mut recv_path = String::new();
-            if reader.read_line(&mut recv_token).is_err() || reader.read_line(&mut recv_path).is_err() {
+            if reader.by_ref().take(1024).read_line(&mut recv_token).is_err()
+                || reader.by_ref().take(4096).read_line(&mut recv_path).is_err()
+            {
                 continue;
             }
             if recv_token.trim() != token {

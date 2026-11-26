@@ -47,14 +47,21 @@ export const ENTERPRISE_SERVER_CONTRACT_DOC = `Quillvibe Self-Hosted / Website S
    Response 200/201/204 OK`;
 
 function isPrivateOrLocalHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase();
+  const lower = hostname.toLowerCase().replace(/\.+$/, '');
   if (lower === 'localhost' || lower === '127.0.0.1' || lower === '[::1]' || lower === '::1') {
     return true;
   }
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(lower);
+  const stripped = lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower;
+  if (stripped.startsWith('fe80:') || stripped.startsWith('fc') || stripped.startsWith('fd') || stripped === '::ffff:127.0.0.1') {
+    return true;
+  }
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(stripped);
   if (!m) return false;
   const a = Number(m[1]);
   const b = Number(m[2]);
+  const c = Number(m[3]);
+  const d = Number(m[4]);
+  if (a > 255 || b > 255 || c > 255 || d > 255) return false;
   if (a === 10 || a === 127) return true;
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
@@ -261,9 +268,15 @@ export async function pullBookFromEnterpriseServer(
   }
 
   const text = await res.text();
-  const parsedJson = safeJsonParse<Record<string, unknown>>(text);
+  const parsedJson = safeJsonParse<unknown>(text);
   const candidateRaw =
-    typeof parsedJson.content === 'string' && !parsedJson.magic ? parsedJson.content : text;
+    parsedJson &&
+    typeof parsedJson === 'object' &&
+    !Array.isArray(parsedJson) &&
+    typeof (parsedJson as Record<string, unknown>).content === 'string' &&
+    !(parsedJson as Record<string, unknown>).magic
+      ? ((parsedJson as Record<string, unknown>).content as string)
+      : text;
   // Validate envelope structure before returning to caller
   parseExtensionFile(candidateRaw, 'enterprise-sync.qv');
   const sha256 = await computeSha256Hex(candidateRaw);

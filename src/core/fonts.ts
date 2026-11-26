@@ -179,7 +179,9 @@ export async function installFontPackFromExtension(
 
   for (const def of defs) {
     const family = sanitizeFontFamilyName(def.family);
-    const cssStack = def.cssStack?.trim() ? def.cssStack : quoteCssFamily(family);
+    const rawStack = def.cssStack?.trim() ?? '';
+    const cssStack =
+      rawStack && /^[a-zA-Z0-9\s,'"-]+$/.test(rawStack) ? rawStack : quoteCssFamily(family);
     const entry: CustomFontEntry = {
       id: newId('font'),
       family,

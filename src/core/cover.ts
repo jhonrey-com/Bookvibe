@@ -123,10 +123,28 @@ export function sanitizeSvgMarkup(rawSvg: string): string {
       throw new Error('Malformed SVG XML structure.');
     }
 
-    const blockedTags = new Set(['script', 'foreignobject', 'iframe', 'object', 'embed', 'link', 'meta']);
+    const blockedTags = new Set([
+      'script',
+      'foreignobject',
+      'iframe',
+      'object',
+      'embed',
+      'link',
+      'meta',
+      'style',
+      'animate',
+      'animatemotion',
+      'animatetransform',
+      'set',
+      'a',
+      'audio',
+      'video',
+      'handler',
+    ]);
     const allNodes = Array.from(root.querySelectorAll('*'));
     for (const node of allNodes) {
-      if (blockedTags.has(node.tagName.toLowerCase())) {
+      const tag = node.tagName.toLowerCase();
+      if (blockedTags.has(tag)) {
         node.remove();
         continue;
       }
@@ -135,13 +153,19 @@ export function sanitizeSvgMarkup(rawSvg: string): string {
         const lval = attr.value.trim().toLowerCase();
         if (lname.startsWith('on')) {
           node.removeAttribute(attr.name);
+        } else if (lname === 'href' || lname === 'xlink:href' || lname === 'src' || lname === 'action' || lname === 'formaction') {
+          const safeInternalRef = tag === 'use' && lval.startsWith('#');
+          const safeRasterDataUrl =
+            tag === 'image' && /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,/i.test(lval);
+          if (!safeInternalRef && !safeRasterDataUrl) {
+            node.removeAttribute(attr.name);
+          }
         } else if (
-          (lname === 'href' || lname === 'xlink:href') &&
-          node.tagName.toLowerCase() === 'use' &&
-          !lval.startsWith('#')
+          lname === 'style' &&
+          (lval.includes('url(') || lval.includes('expression(') || lval.includes('@import') || lval.includes('behavior'))
         ) {
           node.removeAttribute(attr.name);
-        } else if (lval.includes('javascript:') || lval.includes('vbscript:')) {
+        } else if (lval.includes('javascript:') || lval.includes('vbscript:') || lval.includes('data:text/html')) {
           node.removeAttribute(attr.name);
         }
       }
@@ -159,9 +183,11 @@ export function sanitizeSvgMarkup(rawSvg: string): string {
   return trimmed
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
-    .replace(/<(?:iframe|object|embed|link)[^>]*\/?>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<\/?(?:animate(?:Motion|Transform)?|set|a|iframe|object|embed|link|meta|audio|video|handler)\b[^>]*>/gi, '')
     .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/javascript\s*:/gi, '');
+    .replace(/\s(?:xlink:)?href\s*=\s*(?:"\s*(?:https?:[^"]*|data:(?!image\/(?:png|jpeg|jpg|webp|gif);base64,)[^"]*|javascript:[^"]*|vbscript:[^"]*)"|'\s*(?:https?:[^']*|data:(?!image\/(?:png|jpeg|jpg|webp|gif);base64,)[^']*|javascript:[^']*|vbscript:[^']*)')/gi, '')
+    .replace(/javascript\s*:|vbscript\s*:|data\s*:\s*text\/html/gi, '');
 }
 
 export async function sanitizeAndEncodeSvgFile(file: File): Promise<string> {
@@ -311,8 +337,23 @@ export function loadImageUrlAsDataUrl(rawUrl: string, maxDimension = 1400): Prom
     return Promise.reject(new Error('Enter an HTTPS image URL or data:image URI first.'));
   }
   if (trimmed.startsWith('data:image/')) {
-    if (/^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(trimmed)) {
+    if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(trimmed)) {
       return Promise.resolve(trimmed);
+    }
+    if (/^data:image\/svg\+xml;base64,/i.test(trimmed)) {
+      try {
+        const b64 = trimmed.slice(trimmed.indexOf(',') + 1).replace(/\s+/g, '');
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const decodedSvg = new TextDecoder().decode(bytes);
+        const cleanSvg = sanitizeSvgMarkup(decodedSvg);
+        return Promise.resolve(encodeSvgStringToDataUrl(cleanSvg));
+      } catch {
+        return Promise.reject(new Error('Blocked malformed or unsafe SVG data URI.'));
+      }
     }
     return Promise.reject(new Error('Only safe PNG, JPEG, WebP, GIF, or SVG data URIs are allowed.'));
   }
@@ -1116,7 +1157,12 @@ export function renderCoverToVectorSvg(
       const cy = (g.yPct / 100) * heightPx;
       const sx = g.flipX ? -1 : 1;
       const sy = g.flipY ? -1 : 1;
-      return `<g transform="translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) rotate(${g.rotationDeg}) scale(${sx}, ${sy})" opacity="${g.opacity}"><image href="${escapeXml(g.dataUrl)}" x="${(-w / 2).toFixed(1)}" y="${(-w / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" preserveAspectRatio="xMidYMid meet" /></g>`;
+      const safeRotation = Number(g.rotationDeg) || 0;
+      const safeOpacity = Math.max(0, Math.min(1, Number(g.opacity ?? 1)));
+      const safeHref = /^(?:data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,|blob:)/i.test(g.dataUrl)
+        ? g.dataUrl
+        : '';
+      return `<g transform="translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) rotate(${safeRotation}) scale(${sx}, ${sy})" opacity="${safeOpacity}"><image href="${escapeXml(safeHref)}" x="${(-w / 2).toFixed(1)}" y="${(-w / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${w.toFixed(1)}" preserveAspectRatio="xMidYMid meet" /></g>`;
     })
     .join('\n  ');
 
@@ -1133,7 +1179,9 @@ export function renderCoverToVectorSvg(
     const y = (placement.yPct / 100) * heightPx;
     const anchor = placement.align === 'left' ? 'start' : placement.align === 'right' ? 'end' : 'middle';
     const pxSize = Math.round(placement.fontSize * scaleFactor);
-    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${escapeXml(placement.color ?? fallbackColor)}" font-family="${escapeXml(fontStack)}" font-size="${pxSize}" font-weight="${placement.fontWeight ?? fallbackWeight}" text-anchor="${anchor}" dominant-baseline="central">${escapeXml(content)}</text>`;
+    const safeFont = fontStack.replace(/[;{}<>]/g, '');
+    const safeWeight = Math.max(100, Math.min(900, Math.round(Number(placement.fontWeight ?? fallbackWeight) || 600)));
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${escapeXml(placement.color ?? fallbackColor)}" font-family="${escapeXml(safeFont)}" font-size="${Number(pxSize) || 24}" font-weight="${safeWeight}" text-anchor="${escapeXml(anchor)}" dominant-baseline="central">${escapeXml(content)}</text>`;
   };
 
   const customTextsMarkup = [...(cover.textLayers ?? [])]
@@ -1144,9 +1192,12 @@ export function renderCoverToVectorSvg(
       const y = (tl.yPct / 100) * heightPx;
       const anchor = tl.align === 'left' ? 'start' : tl.align === 'right' ? 'end' : 'middle';
       const pxSize = Math.round(tl.fontSize * scaleFactor);
-      const tf = `translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${tl.rotationDeg})`;
+      const tf = `translate(${x.toFixed(1)}, ${y.toFixed(1)}) rotate(${Number(tl.rotationDeg) || 0})`;
       const content = tl.uppercase ? tl.text.toUpperCase() : tl.text;
-      return `<text transform="${tf}" x="0" y="0" fill="${escapeXml(tl.color)}" opacity="${tl.opacity}" font-family="${escapeXml(fontStack)}" font-size="${pxSize}" font-weight="${tl.fontWeight}" font-style="${tl.italic ? 'italic' : 'normal'}" text-anchor="${anchor}" dominant-baseline="central">${escapeXml(content)}</text>`;
+      const safeFont = fontStack.replace(/[;{}<>]/g, '');
+      const safeOpacity = Math.max(0, Math.min(1, Number(tl.opacity ?? 1)));
+      const safeWeight = Math.max(100, Math.min(900, Math.round(Number(tl.fontWeight) || 600)));
+      return `<text transform="${tf}" x="0" y="0" fill="${escapeXml(tl.color)}" opacity="${safeOpacity}" font-family="${escapeXml(safeFont)}" font-size="${Number(pxSize) || 24}" font-weight="${safeWeight}" font-style="${tl.italic ? 'italic' : 'normal'}" text-anchor="${escapeXml(anchor)}" dominant-baseline="central">${escapeXml(content)}</text>`;
     })
     .join('\n  ');
 
@@ -1161,8 +1212,23 @@ export function renderCoverToVectorSvg(
       const fill = p.fillColor && p.fillColor !== 'transparent' ? escapeXml(p.fillColor) : 'none';
       const stroke = p.strokeWidth > 0 && p.strokeColor ? escapeXml(p.strokeColor) : 'none';
       const sw = p.strokeWidth > 0 ? (p.strokeWidth * scaleFactor).toFixed(1) : '0';
-      const blendStyle = p.blendMode && p.blendMode !== 'normal' ? ` style="mix-blend-mode:${p.blendMode}"` : '';
-      return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" opacity="${p.opacity}"${blendStyle} />`;
+      const safeBlendModes = new Set([
+        'multiply',
+        'screen',
+        'overlay',
+        'darken',
+        'lighten',
+        'soft-light',
+        'hard-light',
+        'difference',
+        'exclusion',
+        'hue',
+        'saturation',
+        'color',
+        'luminosity',
+      ]);
+      const blendStyle = p.blendMode && safeBlendModes.has(p.blendMode) ? ` style="mix-blend-mode:${p.blendMode}"` : '';
+      return `<path d="${escapeXml(d)}" fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${Number(sw) || 0}" stroke-linecap="round" stroke-linejoin="round" opacity="${Math.max(0, Math.min(1, Number(p.opacity ?? 1)))}"${blendStyle} />`;
     })
     .join('\n  ');
 

@@ -180,7 +180,9 @@ export function applySmartTypography(text: string): string {
 }
 
 export function escapeXmlText(input: string): string {
+  // Strip invalid XML 1.0 control characters (\x00-\x08, \x0B, \x0C, \x0E-\x1F)
   return input
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -312,13 +314,14 @@ export function buildHtmlExport(project: BookProject): string {
     }
   }
 
+  const safeFont = sanitizeCssFontStack(font);
   return `<!doctype html>
 <html lang="${escapeXmlText(project.language || 'en')}">
 <head>
 <meta charset="UTF-8" />
 <title>${escapeXmlText(project.title)}</title>
 <style>
-  body { background: #faf8f3; color: #16171b; font-family: ${font}; font-size: ${project.typography.fontSizePt}pt; line-height: ${project.typography.lineHeight}; max-width: 40em; margin: 48px auto; padding: 0 24px; }
+  body { background: #faf8f3; color: #16171b; font-family: ${safeFont}; font-size: ${Number(project.typography.fontSizePt) || 11.5}pt; line-height: ${Number(project.typography.lineHeight) || 1.55}; max-width: 40em; margin: 48px auto; padding: 0 24px; }
   header { text-align: center; margin-bottom: 56px; border-bottom: 1px solid #ddd7ca; padding-bottom: 32px; }
   h1 { font-size: 2.2em; margin: 0 0 8px; font-weight: 500; }
   .subtitle { font-style: italic; color: #57534a; margin: 0 0 18px; }
@@ -439,8 +442,9 @@ export function buildEpubExportPayload(
     project.typography.fontFamily,
     project.typography.customFontFamily,
   );
+  const safeFont = sanitizeCssFontStack(font);
   const stylesheet = [
-    `body { font-family: ${font}; font-size: ${project.typography.fontSizePt}pt; line-height: ${project.typography.lineHeight}; margin: 0 auto; max-width: 38em; padding: 1.5em; color: #141414; }`,
+    `body { font-family: ${safeFont}; font-size: ${Number(project.typography.fontSizePt) || 11.5}pt; line-height: ${Number(project.typography.lineHeight) || 1.55}; margin: 0 auto; max-width: 38em; padding: 1.5em; color: #141414; }`,
     '.cover-wrap { text-align: center; padding: 0; margin: 0; }',
     '.cover-wrap img { max-width: 100%; max-height: 98vh; height: auto; }',
     '.front-matter { text-align: center; margin-top: 15%; }',
@@ -572,7 +576,15 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+export function sanitizeCssFontStack(rawFont: string): string {
+  const clean = rawFont.replace(/[{};<>\\]/g, '').trim();
+  return clean || 'Georgia, serif';
+}
+
 export function buildStoredZip(entries: Array<{ name: string; data: Uint8Array }>): Uint8Array {
+  if (entries.length > 0xffff) {
+    throw new Error('Archive exceeds maximum standard ZIP entry count (65,535).');
+  }
   const encoder = new TextEncoder();
   const localChunks: Uint8Array[] = [];
   const centralChunks: Uint8Array[] = [];
@@ -637,6 +649,9 @@ export function buildStoredZip(entries: Array<{ name: string; data: Uint8Array }
   ev.setUint16(20, 0, true);
 
   const totalLength = offset + centralSize + eocd.length;
+  if (totalLength > 0xffffffff) {
+    throw new Error('Archive exceeds 4 GiB standard ZIP size boundary.');
+  }
   const out = new Uint8Array(totalLength);
   let cursor = 0;
   for (const chunk of localChunks) {
@@ -652,12 +667,17 @@ export function buildStoredZip(entries: Array<{ name: string; data: Uint8Array }
 }
 
 function decodeBase64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    arr[i] = bin.charCodeAt(i);
+  try {
+    const clean = b64.replace(/\s+/g, '');
+    const bin = atob(clean);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      arr[i] = bin.charCodeAt(i);
+    }
+    return arr;
+  } catch {
+    return new Uint8Array(0);
   }
-  return arr;
 }
 
 export function buildEpubBlobBytes(project: BookProject, coverPngDataUrl?: string): Uint8Array {
@@ -991,9 +1011,9 @@ export function buildPrintableBookHtml(project: BookProject): string {
     padding: 0;
     background: #ffffff;
     color: #141414;
-    font-family: ${font};
-    font-size: ${typo.fontSizePt}pt;
-    line-height: ${typo.lineHeight};
+    font-family: ${sanitizeCssFontStack(font)};
+    font-size: ${Number(typo.fontSizePt) || 11.5}pt;
+    line-height: ${Number(typo.lineHeight) || 1.55};
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

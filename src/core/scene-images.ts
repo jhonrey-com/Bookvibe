@@ -86,11 +86,22 @@ export function computeSnappedImagePosition(
   };
 }
 
+const ALLOWED_SCENE_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+]);
+
 export async function readImageFileToSceneImage(
   file: File,
   anchorParagraph = 0,
 ): Promise<SceneImageItem> {
-  if (!file.type.startsWith('image/')) {
+  const mime = (file.type || '').toLowerCase();
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const hasAllowedExt = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext);
+  if (mime ? !ALLOWED_SCENE_IMAGE_TYPES.has(mime) : !hasAllowedExt) {
     throw new Error('Please choose a valid PNG, JPEG, WebP, or GIF image.');
   }
 
