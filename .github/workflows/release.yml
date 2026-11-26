@@ -66,7 +66,63 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Quillvibe v__VERSION__'
-          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb / .rpm) with official Quillvibe QVBX file extensions (.qv, .qvbible, .qvscene, .qvstyle). Also available directly in the browser at https://quillvibe.jhonrey.com/.'
+          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb / .rpm) with official Quillvibe QVBX file extensions (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign). Also available directly in the browser at https://quillvibe.jhonrey.com/.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  mark-older-releases:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Mark previous releases as pre-release with outdated warning
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import tempfile
+
+          current_tag = os.environ["CURRENT_TAG"]
+          banner = (
+              "> [!WARNING]\n"
+              "> **Outdated Release — Not Recommended for Download**\n"
+              "> This is an older build of Quillvibe and may contain bugs that have already been fixed. "
+              "Please download the newest version from the [**Latest Release**](https://github.com/jhonrey-com/Quillvibe/releases/latest) "
+              "or use the web app at **https://quillvibe.jhonrey.com/**.\n\n"
+              "---\n\n"
+          )
+
+          raw = subprocess.check_output(
+              ["gh", "release", "list", "--limit", "100", "--json", "tagName"],
+              text=True,
+          )
+          for item in json.loads(raw):
+              tag = item["tagName"]
+              if tag == current_tag:
+                  continue
+              body = subprocess.check_output(
+                  ["gh", "release", "view", tag, "--json", "body", "-q", ".body"],
+                  text=True,
+              )
+              if "Outdated Release — Not Recommended for Download" not in body:
+                  new_body = banner + body.lstrip()
+              else:
+                  new_body = body
+              with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+                  tmp.write(new_body)
+                  tmp_path = tmp.name
+              try:
+                  subprocess.run(
+                      ["gh", "release", "edit", tag, "--prerelease", "--notes-file", tmp_path],
+                      check=True,
+                  )
+              finally:
+                  os.unlink(tmp_path)
+          PY
