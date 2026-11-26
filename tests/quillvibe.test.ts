@@ -94,13 +94,14 @@ import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../src/core/settings';
 import { COURSE_MODULES, getCourseCompletionSummary } from '../src/ui/course';
 
 describe('Quillvibe Core Rebrand & Formats', () => {
-  it('registers the 4 official .qv formats and moves legacy extensions to import-only', () => {
-    expect(QUILLVIBE_EXTENSIONS).toHaveLength(4);
+  it('registers the 5 official .qv formats and moves legacy extensions to import-only', () => {
+    expect(QUILLVIBE_EXTENSIONS).toHaveLength(5);
     expect(QUILLVIBE_EXTENSIONS.map((e) => e.extension)).toEqual([
       '.qv',
       '.qvbible',
       '.qvscene',
       '.qvstyle',
+      '.qvdesign',
     ]);
     expect(EXPORT_FORMAT_OPTIONS.some((opt) => opt.id === '.pdf')).toBe(true);
     expect(EXPORT_FORMAT_OPTIONS.some((opt) => (opt.id as string) === '.bookvibe')).toBe(false);
@@ -364,7 +365,7 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     expect(resolvePathToRoute('/course', false).view).toBe('course');
     expect(routeForState('course')).toBe('/course');
     expect(COURSE_MODULES).toHaveLength(10);
-    expect(getCourseCompletionSummary().total).toBe(28);
+    expect(getCourseCompletionSummary().total).toBe(31);
   });
 
   it('verifies Origin Device ID, Copyright Seal, Verified Multi-Device Co-Author tokens, PDF 1.4 export, and History Stack', async () => {

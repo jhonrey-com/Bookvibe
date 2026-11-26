@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quillvibe",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "identifier": "app.quillvibe.studio",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://10.* http://192.168.* http://172.*; script-src 'self'"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://10.* http://192.168.* http://172.*; script-src 'self'"
     }
   },
   "bundle": {
@@ -40,6 +40,15 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
     "fileAssociations": [
       {
         "ext": ["qv"],
@@ -67,6 +76,13 @@
         "name": "Quillvibe Typeset Preset",
         "description": "Shareable Quillvibe print and book typography specification",
         "mimeType": "application/vnd.quillvibe.style",
+        "role": "Editor"
+      },
+      {
+        "ext": ["qvdesign"],
+        "name": "Quillvibe Cover Design Package",
+        "description": "Shareable Book Cover Studio vector artwork, blend layers, draft variants, and collaboration pins",
+        "mimeType": "application/vnd.quillvibe.design",
         "role": "Editor"
       }
     ]

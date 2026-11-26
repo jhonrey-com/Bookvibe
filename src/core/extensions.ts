@@ -13,9 +13,11 @@ import { countWords, findSceneContext, newId } from './manuscript';
 import { getPublisherProvenance } from './provenance';
 import type {
   AnyQuillvibeOrLegacyExtension,
+  BookCoverConfig,
   BookProject,
   LegacyImportExtension,
   QuillvibeBiblePayload,
+  QuillvibeDesignPayload,
   QuillvibeEnvelope,
   QuillvibeExtension,
   QuillvibeManuscriptPayload,
@@ -79,6 +81,16 @@ export const QUILLVIBE_EXTENSIONS: readonly ExtensionDefinition[] = [
     uti: 'app.quillvibe.style',
     progId: 'Quillvibe.Style.2',
     purpose: 'Shareable book layout preset (trim size, margins, serif typeface, drop caps).',
+  },
+  {
+    extension: '.qvdesign',
+    bareExtension: 'qvdesign',
+    name: 'Quillvibe Cover Design Package',
+    shortLabel: 'Cover Design',
+    mimeType: 'application/vnd.quillvibe.design',
+    uti: 'app.quillvibe.design',
+    progId: 'Quillvibe.Design.1',
+    purpose: 'Shareable Book Cover Studio vector artwork, blend layers, draft variants, and collaboration pins.',
   },
 ] as const;
 
@@ -288,6 +300,20 @@ export function buildQuillvibeEnvelope(
       payload = stylePayload;
       break;
     }
+    case '.qvdesign': {
+      if (!project.cover) {
+        throw new Error('No Book Cover Studio layout available to export.');
+      }
+      const designPayload: QuillvibeDesignPayload = {
+        designName: options?.presetName?.trim() || `${project.title} Cover`,
+        bookTitle: project.title,
+        author: project.authorIdentity?.penName || project.author || 'Author',
+        trimSize: project.typography.trimSize,
+        cover: structuredClone(project.cover),
+      };
+      payload = designPayload;
+      break;
+    }
   }
 
   return {
@@ -336,7 +362,8 @@ export type ParsedQuillvibeFile =
   | { extension: '.qvbook' | '.bvbook'; payload: QuillvibeManuscriptPayload }
   | { extension: '.qvbible' | '.bvbible'; payload: QuillvibeBiblePayload }
   | { extension: '.qvscene' | '.bvscene'; payload: QuillvibeScenePayload }
-  | { extension: '.qvstyle' | '.bvstyle'; payload: QuillvibeStylePayload };
+  | { extension: '.qvstyle' | '.bvstyle'; payload: QuillvibeStylePayload }
+  | { extension: '.qvdesign'; payload: QuillvibeDesignPayload };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -421,6 +448,12 @@ function validateDecodedEnvelope(
         throw new Error('Typeset style payload requires a typography object.');
       }
       return { extension, payload: payload as unknown as QuillvibeStylePayload };
+    }
+    case '.qvdesign': {
+      if (!isRecord(payload.cover) || !isRecord(payload.cover.elements)) {
+        throw new Error('Cover design payload requires a valid cover layout object.');
+      }
+      return { extension, payload: payload as unknown as QuillvibeDesignPayload };
     }
   }
 }
@@ -651,5 +684,79 @@ export function applyOpenedExtensionFile(
         summaryMessage: `Applied ${parsed.extension} preset “${parsed.payload.presetName}”`,
       };
     }
+
+    case '.qvdesign': {
+      const incomingCover = structuredClone(parsed.payload.cover) as BookCoverConfig;
+      const existingComments = currentProject.cover?.comments ?? [];
+      const incomingComments = incomingCover.comments ?? [];
+      const commentMap = new Map(existingComments.map((c) => [c.id, c]));
+      for (const c of incomingComments) {
+        commentMap.set(c.id, c);
+      }
+      incomingCover.comments = Array.from(commentMap.values());
+
+      const existingVariants = currentProject.cover?.variants ?? [];
+      const incomingVariants = incomingCover.variants ?? [];
+      const variantMap = new Map(existingVariants.map((v) => [v.id, v]));
+      for (const v of incomingVariants) {
+        variantMap.set(v.id, v);
+      }
+      incomingCover.variants = Array.from(variantMap.values());
+
+      const next: BookProject = normalizeProjectDefaults({
+        ...structuredClone(currentProject),
+        cover: incomingCover,
+      });
+      return {
+        project: next,
+        focusView: 'typeset',
+        summaryMessage: `Loaded .qvdesign cover “${parsed.payload.designName}” (${incomingComments.length} review pin${incomingComments.length === 1 ? '' : 's'})`,
+      };
+    }
   }
+}
+
+export async function exportCoverDesignArchive(
+  project: BookProject,
+  designName?: string,
+  password?: string,
+): Promise<Uint8Array> {
+  return serializeQuillvibeBinary('.qvdesign', project, {
+    presetName: designName,
+    password,
+  });
+}
+
+export async function importCoverDesignArchive(
+  input: Uint8Array | string,
+  currentProject: BookProject,
+  options?: { mergeCommentsOnly?: boolean; filenameHint?: string; password?: string },
+): Promise<{ project: BookProject; summaryMessage: string }> {
+  const decoded = await parseQuillvibeInput(input, {
+    filenameHint: options?.filenameHint ?? 'cover.qvdesign',
+    password: options?.password,
+  });
+  if (decoded.parsed.extension !== '.qvdesign') {
+    throw new Error(`Expected a .qvdesign file, got ${decoded.parsed.extension}.`);
+  }
+  if (options?.mergeCommentsOnly) {
+    const next = normalizeProjectDefaults(currentProject);
+    const currentCover = next.cover;
+    if (currentCover) {
+      const merged = new Map((currentCover.comments ?? []).map((c) => [c.id, c]));
+      for (const c of decoded.parsed.payload.cover.comments ?? []) {
+        merged.set(c.id, c);
+      }
+      currentCover.comments = Array.from(merged.values());
+    }
+    return {
+      project: next,
+      summaryMessage: `Merged review comments from “${decoded.parsed.payload.designName}”`,
+    };
+  }
+  const applied = applyOpenedExtensionFile(decoded.parsed, currentProject);
+  return {
+    project: applied.project,
+    summaryMessage: applied.summaryMessage,
+  };
 }

@@ -307,3 +307,56 @@ export const SCENE_STATUS_LABELS: Record<SceneStatus, string> = {
   revision: 'Revision',
   final: 'Final Polish',
 };
+
+export interface SceneLockStatus {
+  locked: boolean;
+  reason: string;
+  scope?: 'part' | 'chapter';
+  partId?: string;
+  chapterId?: string;
+}
+
+export function isSceneLocked(project: BookProject, sceneId: string): SceneLockStatus {
+  const ctx = findSceneContext(project, sceneId);
+  if (!ctx) return { locked: false, reason: '' };
+  if (ctx.part.locked) {
+    return {
+      locked: true,
+      reason: `Locked by Part "${ctx.part.title}"`,
+      scope: 'part',
+      partId: ctx.part.id,
+      chapterId: ctx.chapter.id,
+    };
+  }
+  if (ctx.chapter.locked) {
+    return {
+      locked: true,
+      reason: `Locked by Chapter "${ctx.chapter.title}"`,
+      scope: 'chapter',
+      partId: ctx.part.id,
+      chapterId: ctx.chapter.id,
+    };
+  }
+  return { locked: false, reason: '', partId: ctx.part.id, chapterId: ctx.chapter.id };
+}
+
+export function togglePartLock(project: BookProject, partId: string, locked?: boolean): BookProject {
+  const next = structuredClone(project);
+  const part = next.parts.find((p) => p.id === partId);
+  if (part) {
+    part.locked = locked !== undefined ? locked : !part.locked;
+  }
+  return next;
+}
+
+export function toggleChapterLock(project: BookProject, chapterId: string, locked?: boolean): BookProject {
+  const next = structuredClone(project);
+  for (const part of next.parts) {
+    const chap = part.chapters.find((c) => c.id === chapterId);
+    if (chap) {
+      chap.locked = locked !== undefined ? locked : !chap.locked;
+      break;
+    }
+  }
+  return next;
+}

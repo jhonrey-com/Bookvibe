@@ -19,7 +19,11 @@ import { getAllScenes } from '../core/manuscript';
 import { buildEditorialHandoffReport, importAnyExternalDocumentFile } from '../core/migrate';
 import { loadExtensionAuditLog } from '../core/plugins';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../core/provenance';
-import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../core/settings';
+import {
+  DEFAULT_SETTINGS,
+  formatAppWindowTitle,
+  mapAppThemeToPaperTheme,
+} from '../core/settings';
 import type {
   AlarmRingtoneId,
   AppThemeId,
@@ -29,15 +33,21 @@ import type {
   ToolTier,
   WindowTitleMode,
 } from '../core/types';
-import { el, icon } from '../ui/dom';
+import { el, icon, clearNode } from '../ui/dom';
 
 export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
 
-const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
-  { id: 'fonts', label: 'Typefaces & Fonts' },
-  { id: 'editor', label: 'Workspace & Editor' },
-  { id: 'publishing', label: 'Publishing & Archive' },
-  { id: 'developer', label: 'Developer Tools' },
+let currentSettingsTab: SettingsTab = 'editor';
+
+export function setSettingsPageTab(tab: SettingsTab): void {
+  currentSettingsTab = tab;
+}
+
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; desc: string }> = [
+  { id: 'editor', label: 'Themes, Layout & Behavior', desc: 'Application theme, theme linking, layout presets, animations, and updates' },
+  { id: 'fonts', label: 'Typefaces & Fonts', desc: 'Install custom fonts for your writing sheet and book interior' },
+  { id: 'publishing', label: 'Publishing, .docx & Backups', desc: 'ISBN metadata, .docx migration, and portable book archives' },
+  { id: 'developer', label: 'Developer & Diagnostics', desc: 'Diagnostics snapshot, provenance check, and extension tools' },
 ];
 
 const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
@@ -49,16 +59,145 @@ const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
   { id: 'print-ready', label: 'Print & Press Ready' },
 ];
 
-export function showSettingsModal(actions: AppActions, initialTab: SettingsTab = 'fonts'): void {
-  const existing = document.getElementById('bv-settings-modal');
-  if (existing) existing.remove();
+const CURRENT_QUILLVIBE_VERSION = '3.1.0';
 
-  let activeTab: SettingsTab = initialTab;
-  const tabBar = el('div', { className: 'bv-modal-tab-strip', attrs: { role: 'tablist' } });
-  const bodyWrap = el('div', { className: 'bv-modal-scroll-area' });
+function showUpdateCheckDialog(actions: AppActions): void {
+  document.getElementById('qv-update-dialog')?.remove();
+
+  const statusText = el('p', {
+    className: 'bv-label',
+    text: `Installed version: Quillvibe v${CURRENT_QUILLVIBE_VERSION}. Checking latest release notes…`,
+  });
+  const notesBox = el('div', {
+    className: 'bv-cork-card',
+    style: { display: 'none', gap: '6px' },
+  });
+  const downloadBtn = el(
+    'a',
+    {
+      className: 'bv-btn bv-btn-primary',
+      attrs: {
+        href: 'https://github.com/jhonrey-com/Quillvibe/releases/latest',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+      style: { display: 'none', textDecoration: 'none' },
+    },
+    icon('download', 14),
+    'Open Release Download',
+  );
+
+  const close = () => backdrop.remove();
+  const modal = el(
+    'div',
+    {
+      className: 'bv-modal',
+      style: { maxWidth: '520px' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Software Updates' },
+    },
+    el(
+      'div',
+      { className: 'bv-panel-head' },
+      el('span', { className: 'bv-panel-title', text: 'Quillvibe Updates' }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Close',
+        attrs: { type: 'button' },
+        on: { click: close },
+      }),
+    ),
+    el(
+      'div',
+      { className: 'bv-modal-body', style: { gap: '12px' } },
+      statusText,
+      notesBox,
+      el(
+        'div',
+        { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' } },
+        downloadBtn,
+        el('button', {
+          className: 'bv-btn',
+          text: 'Done',
+          attrs: { type: 'button' },
+          on: { click: close },
+        }),
+      ),
+    ),
+  );
+
+  const backdrop = el(
+    'div',
+    {
+      className: 'bv-modal-backdrop',
+      id: 'qv-update-dialog',
+      on: {
+        click: (e) => {
+          if (e.target === backdrop) close();
+        },
+      },
+    },
+    modal,
+  );
+  document.body.appendChild(backdrop);
+
+  fetch('https://api.github.com/repos/jhonrey-com/Quillvibe/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json' },
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as {
+        tag_name?: string;
+        name?: string;
+        body?: string;
+        html_url?: string;
+      };
+    })
+    .then((data) => {
+      const latestTag = (data.tag_name || '').replace(/^v/i, '').trim() || CURRENT_QUILLVIBE_VERSION;
+      const upToDate = latestTag === CURRENT_QUILLVIBE_VERSION;
+      statusText.textContent = upToDate
+        ? `Quillvibe v${CURRENT_QUILLVIBE_VERSION} is up to date.`
+        : `New release available: Quillvibe v${latestTag} (installed: v${CURRENT_QUILLVIBE_VERSION}).`;
+      if (data.html_url) downloadBtn.setAttribute('href', data.html_url);
+      downloadBtn.style.display = 'inline-flex';
+      if (data.body) {
+        notesBox.style.display = 'flex';
+        notesBox.replaceChildren(
+          el('strong', { text: data.name || `Release ${latestTag}`, style: { fontSize: '12.5px' } }),
+          el('pre', {
+            text: data.body.slice(0, 700),
+            style: {
+              margin: '0',
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'var(--font-sans)',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+            },
+          }),
+        );
+      }
+      actions.notify(upToDate ? 'Quillvibe is up to date' : `Quillvibe v${latestTag} is available`);
+    })
+    .catch(() => {
+      statusText.textContent = `Current version: v${CURRENT_QUILLVIBE_VERSION}. Unable to reach the release feed right now—you can check manually below.`;
+      downloadBtn.style.display = 'inline-flex';
+    });
+}
+
+export function showSettingsModal(actions: AppActions, initialTab: SettingsTab = 'editor'): void {
+  currentSettingsTab = initialTab;
+  actions.openSettingsModal(initialTab);
+}
+
+export function renderSettingsPageView(container: HTMLElement, actions: AppActions): void {
+  clearNode(container);
+
+  let activeTab: SettingsTab = currentSettingsTab;
+  const tabBar = el('div', { className: 'qv-settings-sidebar-nav', attrs: { role: 'tablist' } });
+  const bodyWrap = el('div', { className: 'qv-settings-page-content' });
 
   const closeModal = () => {
-    backdrop.remove();
+    actions.setState({ activeView: 'editor' }, true);
   };
 
   const renderTabs = () => {
@@ -66,17 +205,20 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
     for (const tab of SETTINGS_TABS) {
       tabBar.appendChild(
         el('button', {
-          className: `bv-fmt-btn${activeTab === tab.id ? ' is-active' : ''}`,
-          text: tab.label,
+          className: `qv-settings-nav-item${activeTab === tab.id ? ' is-active' : ''}`,
           attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
           on: {
             click: () => {
               activeTab = tab.id;
+              currentSettingsTab = tab.id;
               renderTabs();
               renderBody();
             },
           },
-        }),
+          },
+          el('span', { text: tab.label, style: { fontWeight: '600', fontSize: '13px' } }),
+          el('span', { className: 'bv-label', text: tab.desc }),
+        ),
       );
     }
   };
@@ -479,6 +621,25 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
         on: { change: () => actions.updateSettings({ showOnboardingHints: tourChk.checked }) },
       });
 
+      const linkThemeChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-link-theme',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.linkPaperThemeToAppTheme },
+        on: {
+          change: () => {
+            const linked = linkThemeChk.checked;
+            actions.updateSettings({ linkPaperThemeToAppTheme: linked });
+            if (linked) {
+              const targetPaper = mapAppThemeToPaperTheme(actions.getState().settings.appTheme);
+              actions.mutateProject((p) => ({ ...p, paperTheme: targetPaper }), false);
+              actions.notify(`Linked App Theme and Manuscript Paper (${targetPaper})`);
+            } else {
+              actions.notify('Unlinked App Theme and Manuscript Paper');
+            }
+          },
+        },
+      });
+
       const smoothAnimChk = el('input', {
         className: 'bv-lever',
         id: 'qv-set-smooth-anim',
@@ -624,6 +785,12 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             { className: 'bv-cork-card' },
             el('span', { className: 'bv-panel-title', text: 'Theme & Workspace Layout' }),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-theme' }, text: 'Application Theme' }), themeSel),
+            el(
+              'label',
+              { className: 'bv-check-row', attrs: { for: 'qv-set-link-theme' } },
+              linkThemeChk,
+              el('span', { text: 'Link Manuscript Paper Theme & Application Theme (changing one updates the other)' }),
+            ),
             ...(typeof window === 'undefined' || window.innerWidth > 768
               ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Workspace Layout' }), tierCardsGrid)]
               : [el('p', { className: 'bv-label', text: 'Small / mobile screens automatically use Focused layout for distraction-free writing.' })]),
@@ -1037,6 +1204,20 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
                 attrs: { type: 'button' },
                 on: {
                   click: async () => {
+                    await actions.exportDocx();
+                  },
+                },
+              },
+              icon('download', 14),
+              'Export Word-Compatible (.docx)',
+            ),
+            el(
+              'button',
+              {
+                className: 'bv-btn',
+                attrs: { type: 'button' },
+                on: {
+                  click: async () => {
                     const md = buildPortableMigrationMarkdown(actions.getState().project);
                     const saved = await exportGenericFile({
                       suggestedName: `${project.title || 'book'}-portable-migration`,
@@ -1133,7 +1314,21 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: 'v3.0.0', style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: `v${CURRENT_QUILLVIBE_VERSION}`, style: { color: 'var(--accent-emerald)' } }),
+        ),
+        el(
+          'div',
+          { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' } },
+          el(
+            'button',
+            {
+              className: 'bv-btn bv-btn-primary',
+              attrs: { type: 'button' },
+              on: { click: () => showUpdateCheckDialog(actions) },
+            },
+            icon('download', 14),
+            'Check for Quillvibe Updates',
+          ),
         ),
       ),
       el(
@@ -1152,7 +1347,7 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               on: {
                 click: () => {
                   const snapshot = {
-                    version: '3.0.0',
+                    version: CURRENT_QUILLVIBE_VERSION,
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,
@@ -1183,7 +1378,6 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
               attrs: { type: 'button' },
               on: {
                 click: () => {
-                  closeModal();
                   actions.openExtensionsModal('external');
                 },
               },
@@ -1196,41 +1390,56 @@ export function showSettingsModal(actions: AppActions, initialTab: SettingsTab =
     );
   };
 
-  const modal = el(
-    'div',
-    {
-      className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Settings and Preferences' },
-    },
+  const header = el(
+    'header',
+    { className: 'qv-standalone-header' },
     el(
       'div',
-      { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Settings, Custom Fonts & Publishing Setup' }),
-      el('button', {
-        className: 'bv-mini-btn',
-        text: 'Close',
-        attrs: { type: 'button' },
-        on: { click: closeModal },
-      }),
-    ),
-    el('div', { className: 'bv-modal-body' }, tabBar, bodyWrap),
-  );
-
-  const backdrop = el(
-    'div',
-    {
-      className: 'bv-modal-backdrop',
-      id: 'bv-settings-modal',
-      on: {
-        click: (e) => {
-          if (e.target === backdrop) closeModal();
+      { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          on: { click: closeModal },
         },
-      },
-    },
-    modal,
+        icon('draft-sheet', 14),
+        'Back to Writing',
+      ),
+      el('h1', { text: 'Settings, Layouts & Themes', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+    ),
+    el(
+      'div',
+      { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          attrs: { type: 'button' },
+          on: { click: () => showUpdateCheckDialog(actions) },
+        },
+        `v${CURRENT_QUILLVIBE_VERSION} · Check Updates`,
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          text: 'Help & Manual',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openHelpModal('course') },
+        },
+      ),
+    ),
   );
 
-  document.body.appendChild(backdrop);
+  const pageShell = el(
+    'div',
+    { className: 'qv-settings-page' },
+    header,
+    el('div', { className: 'qv-settings-page-grid' }, el('aside', { className: 'qv-settings-sidebar' }, tabBar), bodyWrap),
+  );
+
+  container.appendChild(pageShell);
   renderTabs();
   renderBody();
 }

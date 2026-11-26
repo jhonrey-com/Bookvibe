@@ -3,6 +3,7 @@ import type {
   AlarmRingtoneId,
   AppThemeId,
   BookProject,
+  PaperTheme,
   QuillvibeSettings,
   StudioViewId,
   ToolbarDisplayMode,
@@ -42,6 +43,7 @@ export const DEFAULT_SETTINGS: QuillvibeSettings = {
   enableSpellcheck: false,
   enableDesktopBookTabs: true,
   enableSmoothAnimations: true,
+  linkPaperThemeToAppTheme: false,
   immersiveHudX: -1,
   immersiveHudY: 12,
   immersiveHudCollapsed: false,
@@ -131,6 +133,7 @@ export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSett
     enableSpellcheck: raw.enableSpellcheck !== undefined ? Boolean(raw.enableSpellcheck) : false,
     enableDesktopBookTabs: raw.enableDesktopBookTabs !== undefined ? Boolean(raw.enableDesktopBookTabs) : true,
     enableSmoothAnimations: raw.enableSmoothAnimations !== undefined ? Boolean(raw.enableSmoothAnimations) : true,
+    linkPaperThemeToAppTheme: raw.linkPaperThemeToAppTheme !== undefined ? Boolean(raw.linkPaperThemeToAppTheme) : false,
     immersiveHudX: Number.isFinite(Number(raw.immersiveHudX)) ? Math.round(Number(raw.immersiveHudX)) : -1,
     immersiveHudY: Number.isFinite(Number(raw.immersiveHudY)) ? clampInt(raw.immersiveHudY, 0, 2400, 12) : 12,
     immersiveHudCollapsed: Boolean(raw.immersiveHudCollapsed),
@@ -195,6 +198,12 @@ export function resolveSectionDisplayName(
       return 'Book Writing Course';
     case 'help':
       return 'Help & FAQ';
+    case 'developer':
+      return 'Developer Portal';
+    case 'settings':
+      return 'Settings, Layouts & Themes';
+    case 'manual':
+      return 'Help, Course & Manual';
     case 'typeset':
       if (typesetSubTab === 'cover') return 'Book Cover Studio';
       if (typesetSubTab === 'publish') return 'Publish & Author Seal';
@@ -239,6 +248,19 @@ export function formatAppWindowTitle(
     default:
       return isDesktop ? `Quillvibe - ${bookName}` : `${bookName} — Quillvibe`;
   }
+}
+
+export function mapAppThemeToPaperTheme(theme: AppThemeId): PaperTheme {
+  const effective = resolveEffectiveTheme(theme);
+  if (effective === 'obsidian') return 'obsidian';
+  if (effective === 'parchment') return 'parchment';
+  return 'ivory';
+}
+
+export function mapPaperThemeToAppTheme(paper: PaperTheme): AppThemeId {
+  if (paper === 'obsidian') return 'obsidian';
+  if (paper === 'parchment') return 'parchment';
+  return 'ivory';
 }
 
 export function applySettingsToDocument(settings: QuillvibeSettings): void {

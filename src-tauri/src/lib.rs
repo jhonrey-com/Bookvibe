@@ -269,11 +269,12 @@ fn open_quillvibe_file_dialog() -> Result<Option<OpenedFilePayload>, String> {
     let exts: Vec<&str> = QUILLVIBE_EXTENSION_SPECS.iter().map(|s| s.bare_ext).collect();
     let picked = rfd::FileDialog::new()
         .set_title("Open Quillvibe File")
-        .add_filter("All Quillvibe Formats (.qv, .qvbible, .qvscene, .qvstyle)", &exts)
+        .add_filter("All Quillvibe Formats (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign)", &exts)
         .add_filter("Quillvibe Book Workspace (.qv)", &["qv"])
         .add_filter("Quillvibe Story Bible (.qvbible)", &["qvbible"])
         .add_filter("Quillvibe Scene Draft (.qvscene)", &["qvscene"])
         .add_filter("Quillvibe Typeset Style (.qvstyle)", &["qvstyle"])
+        .add_filter("Quillvibe Cover Design (.qvdesign)", &["qvdesign"])
         .pick_file();
 
     match picked {
@@ -391,7 +392,7 @@ fn export_generic_file(
     description: String,
 ) -> Result<Option<String>, String> {
     let clean_ext = extension.trim().trim_start_matches('.').to_ascii_lowercase();
-    let allowed = ["pdf", "epub", "md", "html", "txt", "rtf", "png", "svg", "json", "canvas", "qvext"];
+    let allowed = ["pdf", "epub", "docx", "md", "html", "txt", "rtf", "png", "svg", "json", "canvas", "qvext", "qvdesign"];
     if !allowed.contains(&clean_ext.as_str()) {
         return Err(format!("Unsupported export extension: .{clean_ext}"));
     }

@@ -37,6 +37,7 @@ const EXT_TO_CODE: Partial<Record<AnyQuillvibeOrLegacyExtension, number>> = {
   '.qvbible': 4,
   '.qvscene': 5,
   '.qvstyle': 6,
+  '.qvdesign': 8,
   '.quillvibe': 1,
   '.qvibe': 2,
   '.qvbook': 3,
@@ -50,6 +51,7 @@ const CODE_TO_EXT: Record<number, AnyQuillvibeOrLegacyExtension> = {
   5: '.qvscene',
   6: '.qvstyle',
   7: '.qv',
+  8: '.qvdesign',
 };
 
 // Internal format key seed used to keep non-password QVBX files opaque outside Quillvibe
@@ -353,12 +355,13 @@ export async function encodeQuillvibeBinary(
     envelope.extension === '.qv' ||
     envelope.extension === '.qvbible' ||
     envelope.extension === '.qvscene' ||
-    envelope.extension === '.qvstyle';
+    envelope.extension === '.qvstyle' ||
+    envelope.extension === '.qvdesign';
   const extCode = isOfficialOut ? EXT_TO_CODE[envelope.extension as QuillvibeExtension] : undefined;
   if (!extCode) {
     throw new QuillvibeCodecError(
       'INVALID_FORMAT',
-      `Only official Quillvibe extensions (.qv, .qvbible, .qvscene, .qvstyle) can be encoded to QVBX. Received "${envelope.extension}".`,
+      `Only official Quillvibe extensions (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign) can be encoded to QVBX. Received "${envelope.extension}".`,
     );
   }
 

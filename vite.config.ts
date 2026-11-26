@@ -26,6 +26,8 @@ export default defineConfig(() => ({
         help: resolve(rootDir, 'help/index.html'),
         faq: resolve(rootDir, 'faq/index.html'),
         developer: resolve(rootDir, 'developer/index.html'),
+        settings: resolve(rootDir, 'settings/index.html'),
+        manual: resolve(rootDir, 'manual/index.html'),
       },
     },
   },

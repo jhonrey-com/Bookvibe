@@ -44,6 +44,14 @@ pub const QUILLVIBE_EXTENSION_SPECS: &[ExtensionSpec] = &[
         mime_type: "application/vnd.quillvibe.style",
         uti: "app.quillvibe.style",
     },
+    ExtensionSpec {
+        dot_ext: ".qvdesign",
+        bare_ext: "qvdesign",
+        prog_id: "Quillvibe.Design.1",
+        name: "Quillvibe Cover Design Package",
+        mime_type: "application/vnd.quillvibe.design",
+        uti: "app.quillvibe.design",
+    },
 ];
 
 pub const LEGACY_IMPORT_EXTENSIONS: &[&str] = &[
@@ -391,9 +399,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_only_four_official_quillvibe_extensions() {
-        assert_eq!(QUILLVIBE_EXTENSION_SPECS.len(), 4);
-        for ext in ["qv", ".qvbible", "QVSCENE", ".qvstyle"] {
+    fn validates_official_quillvibe_extensions() {
+        assert_eq!(QUILLVIBE_EXTENSION_SPECS.len(), 5);
+        for ext in ["qv", ".qvbible", "QVSCENE", ".qvstyle", ".qvdesign"] {
             assert!(find_spec_by_extension(ext).is_some(), "missing spec for {ext}");
         }
         // Consolidated / legacy extensions must NOT register as supported double-click paths

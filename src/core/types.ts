@@ -23,7 +23,9 @@ export type StudioViewId =
   | 'typeset'
   | 'course'
   | 'help'
-  | 'developer';
+  | 'developer'
+  | 'settings'
+  | 'manual';
 
 export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom';
 
@@ -79,7 +81,8 @@ export type QuillvibeExtension =
   | '.qv'
   | '.qvbible'
   | '.qvscene'
-  | '.qvstyle';
+  | '.qvstyle'
+  | '.qvdesign';
 
 export type LegacyImportExtension =
   | '.quillvibe'
@@ -94,7 +97,7 @@ export type LegacyImportExtension =
 
 export type AnyQuillvibeOrLegacyExtension = QuillvibeExtension | LegacyImportExtension;
 
-export type ExportFormatId = QuillvibeExtension | '.pdf' | '.epub' | '.md' | '.html' | '.txt';
+export type ExportFormatId = QuillvibeExtension | '.pdf' | '.epub' | '.docx' | '.md' | '.html' | '.txt';
 
 export type ProofreadMarkKind =
   | 'delete'
@@ -243,6 +246,7 @@ export interface QuillvibeSettings {
   enableSpellcheck: boolean;
   enableDesktopBookTabs: boolean;
   enableSmoothAnimations: boolean;
+  linkPaperThemeToAppTheme: boolean;
   immersiveHudX: number;
   immersiveHudY: number;
   immersiveHudCollapsed: boolean;
@@ -313,6 +317,7 @@ export interface ChapterNode {
   title: string;
   subtitle: string;
   collapsed: boolean;
+  locked?: boolean;
   scenes: SceneNode[];
 }
 
@@ -320,6 +325,7 @@ export interface PartNode {
   id: string;
   title: string;
   collapsed: boolean;
+  locked?: boolean;
   chapters: ChapterNode[];
 }
 
@@ -505,11 +511,20 @@ export interface StoryGraphColorRule {
   color: string;
 }
 
+export type GraphBoardTheme =
+  | 'obsidian-dots'
+  | 'slate-blueprint'
+  | 'warm-paper'
+  | 'charcoal-solid'
+  | 'ivory-grid';
+
 export interface StoryGraph {
   nodes: StoryGraphNode[];
   edges: StoryGraphEdge[];
   groups?: StoryGraphGroup[];
   colorRules?: StoryGraphColorRule[];
+  boardTheme?: GraphBoardTheme;
+  autoSyncWithBook?: boolean;
 }
 
 export interface CoverElementPlacement {
@@ -532,6 +547,64 @@ export interface CoverElementPlacement {
   locked?: boolean;
 }
 
+export type CoverBlendMode =
+  | 'normal'
+  | 'multiply'
+  | 'screen'
+  | 'overlay'
+  | 'soft-light'
+  | 'darken'
+  | 'lighten';
+
+export interface CoverPathPoint {
+  xPct: number;
+  yPct: number;
+}
+
+export interface CoverPathLayer {
+  id: string;
+  face: CoverFaceId;
+  name: string;
+  points: CoverPathPoint[];
+  closed: boolean;
+  strokeColor: string;
+  strokeWidth: number;
+  fillColor: string;
+  opacity: number;
+  blendMode?: CoverBlendMode;
+  rotationDeg?: number;
+  locked?: boolean;
+  visible?: boolean;
+  groupId?: string;
+  zIndex?: number;
+}
+
+export interface CoverReviewComment {
+  id: string;
+  face: CoverFaceId;
+  xPct: number;
+  yPct: number;
+  author: string;
+  text: string;
+  resolved: boolean;
+  createdAt: string;
+}
+
+export interface CoverDesignVariant {
+  id: string;
+  name: string;
+  createdAt: string;
+  snapshot: Omit<BookCoverConfig, 'variants' | 'comments'>;
+}
+
+export interface QuillvibeDesignPayload {
+  designName: string;
+  bookTitle: string;
+  author: string;
+  trimSize: TrimSize;
+  cover: BookCoverConfig;
+}
+
 export interface CoverGraphicLayer {
   id: string;
   face: CoverFaceId;
@@ -552,6 +625,7 @@ export interface CoverGraphicLayer {
   saturationPct?: number;
   blurPx?: number;
   borderRadiusPct?: number;
+  blendMode?: CoverBlendMode;
   groupId?: string;
   zIndex?: number;
 }
@@ -584,6 +658,7 @@ export interface CoverShapeLayer {
   cornerRadius: number;
   rotationDeg: number;
   opacity: number;
+  blendMode?: CoverBlendMode;
   locked?: boolean;
   visible?: boolean;
   groupId?: string;
@@ -613,6 +688,7 @@ export interface CoverTextLayer {
   textDecoration?: 'none' | 'underline' | 'line-through';
   rotationDeg: number;
   opacity: number;
+  blendMode?: CoverBlendMode;
   locked?: boolean;
   visible?: boolean;
   groupId?: string;
@@ -649,6 +725,9 @@ export interface BookCoverConfig {
   graphicLayers?: CoverGraphicLayer[];
   shapeLayers?: CoverShapeLayer[];
   textLayers?: CoverTextLayer[];
+  pathLayers?: CoverPathLayer[];
+  variants?: CoverDesignVariant[];
+  comments?: CoverReviewComment[];
   editionLabel: string;
   elements: {
     title: CoverElementPlacement;

@@ -98,6 +98,8 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
   ],
   help: [],
   developer: [],
+  settings: [],
+  manual: [],
 };
 
 let activeTourOverlay: {

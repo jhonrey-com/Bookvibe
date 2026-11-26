@@ -98,6 +98,7 @@ export function seedGraphFromProject(project: BookProject): StoryGraph {
     const col = i % cols;
     const row = Math.floor(i / cols);
     seededNodes.push({
+      ...(prev ?? {}),
       id: prev?.id ?? `gnode-${entry.refId}`,
       kind: prev?.kind ?? entry.kind,
       refId: entry.refId,
@@ -106,7 +107,7 @@ export function seedGraphFromProject(project: BookProject): StoryGraph {
       x: prev ? prev.x : 36 + col * colStep,
       y: prev ? prev.y : 36 + row * rowStep,
       color: prev?.color ?? GRAPH_KIND_COLORS[entry.kind],
-      notes: prev?.notes || entry.notes,
+      notes: entry.notes || prev?.notes || '',
     });
   });
 
@@ -166,7 +167,62 @@ export function seedGraphFromProject(project: BookProject): StoryGraph {
   return {
     nodes: seededNodes,
     edges: edges.filter((e) => validIds.has(e.sourceId) && validIds.has(e.targetId)),
+    groups: project.storyGraph?.groups,
+    colorRules: project.storyGraph?.colorRules,
+    boardTheme: project.storyGraph?.boardTheme ?? 'obsidian-dots',
+    autoSyncWithBook: project.storyGraph?.autoSyncWithBook ?? true,
   };
+}
+
+/**
+ * Propagates edits made on a linked Story Graph node back into the corresponding
+ * Character, Location, Lore, or Scene record in the BookProject.
+ */
+export function syncGraphNodeBackToBook(
+  project: BookProject,
+  nodeId: string,
+  patch: { label?: string; subtitle?: string; notes?: string },
+): BookProject {
+  const node = project.storyGraph?.nodes.find((n) => n.id === nodeId);
+  if (!node?.refId) return project;
+  const next = structuredClone(project);
+  const refId = node.refId;
+
+  if (node.kind === 'character') {
+    const ch = next.bible.characters.find((c) => c.id === refId);
+    if (ch) {
+      if (patch.label !== undefined && patch.label.trim()) ch.name = patch.label.trim();
+      if (patch.subtitle !== undefined) ch.role = patch.subtitle;
+      if (patch.notes !== undefined) ch.motivation = patch.notes;
+    }
+  } else if (node.kind === 'location') {
+    const loc = next.bible.locations.find((l) => l.id === refId);
+    if (loc) {
+      if (patch.label !== undefined && patch.label.trim()) loc.name = patch.label.trim();
+      if (patch.subtitle !== undefined) loc.region = patch.subtitle;
+      if (patch.notes !== undefined) loc.atmosphere = patch.notes;
+    }
+  } else if (node.kind === 'lore') {
+    const lore = next.bible.lore.find((l) => l.id === refId);
+    if (lore) {
+      if (patch.label !== undefined && patch.label.trim()) lore.name = patch.label.trim();
+      if (patch.subtitle !== undefined) lore.category = patch.subtitle;
+      if (patch.notes !== undefined) lore.summary = patch.notes;
+    }
+  } else if (node.kind === 'scene') {
+    for (const part of next.parts) {
+      for (const chap of part.chapters) {
+        const sc = chap.scenes.find((s) => s.id === refId);
+        if (sc) {
+          if (patch.label !== undefined && patch.label.trim()) sc.title = patch.label.trim();
+          if (patch.notes !== undefined) sc.synopsis = patch.notes;
+          sc.updatedAt = new Date().toISOString();
+          return next;
+        }
+      }
+    }
+  }
+  return next;
 }
 
 export function addGraphNode(

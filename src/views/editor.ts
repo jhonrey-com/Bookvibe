@@ -4,7 +4,10 @@ import {
   countWords,
   findSceneContext,
   getAllScenes,
+  isSceneLocked,
   splitSceneAtOffset,
+  toggleChapterLock,
+  togglePartLock,
 } from '../core/manuscript';
 import { loadInstalledExtensions, runExtensionRulesOnScene } from '../core/plugins';
 import {
@@ -150,6 +153,8 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const isProofMode = allowIntermediate && state.editorSubMode === 'proofread';
 
   const sessionPerms = getActiveSessionPermissions(state.project);
+  const lockStatus = isSceneLocked(state.project, scene.id);
+  const canEditThisScene = sessionPerms.canEditProse && !lockStatus.locked;
 
   const proseTextarea = el('textarea', {
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
@@ -158,10 +163,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       spellcheck: state.settings.enableSpellcheck ? 'true' : 'false',
       autocorrect: state.settings.enableSpellcheck ? 'on' : 'off',
       'aria-label': 'Scene prose editor',
-      ...(sessionPerms.canEditProse ? {} : { readonly: '' }),
+      ...(canEditThisScene ? {} : { readonly: '' }),
     },
   });
-  proseTextarea.readOnly = !sessionPerms.canEditProse;
+  proseTextarea.readOnly = !canEditThisScene;
   proseTextarea.value = scene.content;
 
   const syncTextareaHeight = () => {
@@ -175,6 +180,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   });
 
   proseTextarea.addEventListener('keydown', (e) => {
+    if (!canEditThisScene) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
       wrapSelection(proseTextarea, '**', '**', actions);
@@ -331,9 +337,13 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       value: scene.title,
       placeholder: 'Scene Title',
       'aria-label': 'Scene title',
+      ...(canEditThisScene ? {} : { readonly: '' }),
     },
     on: {
-      input: () => actions.updateActiveSceneTextQuietly('title', sceneHeading.value),
+      input: () => {
+        if (!canEditThisScene) return;
+        actions.updateActiveSceneTextQuietly('title', sceneHeading.value);
+      },
     },
   });
 
@@ -402,6 +412,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   }
 
   const ensureDraftEditable = (): boolean => {
+    if (lockStatus.locked) {
+      actions.notify(`${lockStatus.reason}. Unlock it first to edit prose.`);
+      return false;
+    }
     if (isProofMode || state.editorSubMode === 'diff') {
       actions.setState({ editorSubMode: 'draft' }, true);
       actions.notify('Switched to Draft mode for text editing.');
@@ -648,21 +662,49 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     return;
   }
 
-  const readOnlyBanner = !sessionPerms.canEditProse
+  const readOnlyBanner = lockStatus.locked
     ? el(
         'div',
-        { className: 'qv-readonly-banner', attrs: { role: 'status' } },
+        { className: 'qv-readonly-banner qv-chapter-locked-banner', attrs: { role: 'status' } },
+        icon('lock', 14),
         el('span', {
-          text: 'Prose editing is locked for your current collaborator role. You can read or add proofread marks and notes.',
+          text: `Finalized · ${lockStatus.reason}. Prose and title are read-only until unlocked.`,
         }),
-        el('button', {
-          className: 'bv-mini-btn',
-          text: 'Switch to Proofread Mode',
-          attrs: { type: 'button' },
-          on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
-        }),
+        el(
+          'button',
+          {
+            className: 'bv-mini-btn',
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                if (lockStatus.scope === 'part' && lockStatus.partId) {
+                  actions.mutateProject((prev) => togglePartLock(prev, lockStatus.partId!, false));
+                } else if (lockStatus.chapterId) {
+                  actions.mutateProject((prev) => toggleChapterLock(prev, lockStatus.chapterId!, false));
+                }
+                actions.notify('Unlocked for editing');
+              },
+            },
+          },
+          icon('unlock', 12),
+          'Unlock',
+        ),
       )
-    : null;
+    : !sessionPerms.canEditProse
+      ? el(
+          'div',
+          { className: 'qv-readonly-banner', attrs: { role: 'status' } },
+          el('span', {
+            text: 'Prose editing is locked for your current collaborator role. You can read or add proofread marks and notes.',
+          }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: 'Switch to Proofread Mode',
+            attrs: { type: 'button' },
+            on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
+          }),
+        )
+      : null;
 
   const sceneImagesStudio = renderSceneImageComposer(scene, actions, () => {
     proseTextarea.focus();

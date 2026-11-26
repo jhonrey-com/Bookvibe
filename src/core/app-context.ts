@@ -79,6 +79,7 @@ export interface AppActions {
     options?: { sceneId?: string; password?: string; skipPartialConfirm?: boolean },
   ): Promise<void>;
   exportEpub(): Promise<void>;
+  exportDocx(): Promise<void>;
   exportPdf(): Promise<void>;
   exportMarkdown(): Promise<void>;
   exportHtml(): Promise<void>;

@@ -10,6 +10,8 @@ import {
   countWords,
   moveScene,
   newId,
+  toggleChapterLock,
+  togglePartLock,
 } from '../core/manuscript';
 import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
@@ -102,10 +104,34 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         },
         icon(part.collapsed ? 'chevron-right' : 'chevron-down', 13),
         el('span', { className: 'bv-tree-label bv-tree-part-label', text: part.title }),
+        part.locked
+          ? el('span', { className: 'qv-binder-lock-badge', attrs: { title: 'Part locked (finalized)' } }, icon('lock', 11))
+          : null,
       ),
       el(
         'div',
         { className: 'bv-row-hover-tools' },
+        el(
+          'button',
+          {
+            className: 'bv-icon-tiny',
+            tooltip: {
+              title: part.locked ? 'Unlock Part' : 'Lock Part (Finalized)',
+              short: part.locked
+                ? 'Allow editing inside all chapters of this Part again.'
+                : 'Prevent accidental edits to finalized prose in this Part.',
+            },
+            attrs: { type: 'button', 'aria-label': part.locked ? 'Unlock Part' : 'Lock Part' },
+            on: {
+              click: (e) => {
+                e.stopPropagation();
+                actions.mutateProject((prev) => togglePartLock(prev, part.id));
+                actions.notify(part.locked ? `Unlocked Part “${part.title}”` : `Locked Part “${part.title}” (finalized)`);
+              },
+            },
+          },
+          icon(part.locked ? 'unlock' : 'lock', 12),
+        ),
         el(
           'button',
           {
@@ -125,6 +151,31 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         ),
       ),
     );
+
+    attachContextMenu(partRow, () => [
+      {
+        heading: part.title,
+        items: [
+          {
+            label: part.locked ? 'Unlock Part for Editing' : 'Lock Part (Final / Proofread)',
+            icon: part.locked ? 'unlock' : 'lock',
+            onSelect: () => {
+              actions.mutateProject((prev) => togglePartLock(prev, part.id));
+              actions.notify(part.locked ? `Unlocked Part “${part.title}”` : `Locked Part “${part.title}” (finalized)`);
+            },
+          },
+          {
+            label: 'Add Chapter to Part',
+            icon: 'plus',
+            onSelect: () => {
+              const res = addChapterToPart(actions.getState().project, part.id);
+              actions.mutateProject(() => res.project, false);
+              actions.selectScene(res.sceneId, true);
+            },
+          },
+        ],
+      },
+    ]);
 
     partWrap.appendChild(partRow);
 
@@ -180,6 +231,9 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
             },
             icon(chapter.collapsed ? 'chevron-right' : 'chevron-down', 12),
             el('span', { className: 'bv-tree-label bv-tree-chapter-label', text: chapter.title }),
+            chapter.locked
+              ? el('span', { className: 'qv-binder-lock-badge', attrs: { title: 'Chapter locked (finalized)' } }, icon('lock', 11))
+              : null,
           ),
           el(
             'span',
@@ -192,6 +246,27 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           el(
             'div',
             { className: 'bv-row-hover-tools' },
+            el(
+              'button',
+              {
+                className: 'bv-icon-tiny',
+                tooltip: {
+                  title: chapter.locked ? 'Unlock Chapter' : 'Lock Chapter (Finalized)',
+                  short: chapter.locked
+                    ? 'Allow editing scenes in this chapter again.'
+                    : 'Protect finalized proofread scenes in this chapter.',
+                },
+                attrs: { type: 'button', 'aria-label': chapter.locked ? 'Unlock Chapter' : 'Lock Chapter' },
+                on: {
+                  click: (e) => {
+                    e.stopPropagation();
+                    actions.mutateProject((prev) => toggleChapterLock(prev, chapter.id));
+                    actions.notify(chapter.locked ? `Unlocked “${chapter.title}”` : `Locked “${chapter.title}” (finalized)`);
+                  },
+                },
+              },
+              icon(chapter.locked ? 'unlock' : 'lock', 12),
+            ),
             el(
               'button',
               {
@@ -249,6 +324,14 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           {
             heading: chapter.title,
             items: [
+              {
+                label: chapter.locked ? 'Unlock Chapter for Editing' : 'Lock Chapter (Final / Proofread)',
+                icon: chapter.locked ? 'unlock' : 'lock',
+                onSelect: () => {
+                  actions.mutateProject((prev) => toggleChapterLock(prev, chapter.id));
+                  actions.notify(chapter.locked ? `Unlocked “${chapter.title}”` : `Locked “${chapter.title}” (finalized)`);
+                },
+              },
               {
                 label: 'Add Scene to Chapter',
                 icon: 'plus',

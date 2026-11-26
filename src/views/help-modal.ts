@@ -11,10 +11,16 @@ import {
   openInteractiveCourseDrawer,
   readCompletedCourseLessons,
 } from '../ui/course';
-import { el, icon } from '../ui/dom';
+import { clearNode, el, icon } from '../ui/dom';
 import { ICON_DIRECTORY, type IconDirectoryEntry } from '../ui/icon-directory';
 
 export type HelpTab = 'controls' | 'course' | 'tour' | 'icons' | 'guides' | 'reference';
+
+let currentManualTab: HelpTab = 'course';
+
+export function setManualPageTab(tab: HelpTab): void {
+  currentManualTab = tab;
+}
 
 const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
   { id: 'course', label: 'Book Writing Course' },
@@ -38,11 +44,15 @@ const SHORTCUT_LIST: Array<{ keys: string; action: string }> = [
   { keys: 'Drag Node Port ● (Graph)', action: 'Draw a live relationship line directly onto another graph card' },
 ];
 
-export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour'): void {
-  const existing = document.getElementById('bv-help-modal');
-  if (existing) existing.remove();
+export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'course'): void {
+  currentManualTab = initialTab;
+  actions.openHelpModal(initialTab);
+}
 
-  let activeTab: HelpTab = initialTab;
+export function renderManualPageView(container: HTMLElement, actions: AppActions): void {
+  clearNode(container);
+
+  let activeTab: HelpTab = currentManualTab;
   let globalSearchQuery = '';
   let controlCatFilter: 'All' | ControlCategory = 'All';
   let locationFilter: 'All' | IconDirectoryEntry['location'] = 'All';
@@ -51,7 +61,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     className: 'bv-input bv-help-search-input',
     attrs: {
       type: 'search',
-      placeholder: 'Search any slider, lever, button, dropdown (e.g. 15m, reset, sprint, barcode, font, lock)…',
+      placeholder: 'Search any slider, lever, button, dropdown (e.g. 15m, reset, sprint, barcode, font, lock, docx, qvdesign)…',
       'aria-label': 'Search all Quillvibe help topics, controls, icons, and shortcuts',
       value: globalSearchQuery,
     },
@@ -84,10 +94,10 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
   );
 
   const tabBar = el('div', { className: 'bv-modal-tab-strip', attrs: { role: 'tablist' } });
-  const bodyWrap = el('div', { className: 'bv-modal-scroll-area' });
+  const bodyWrap = el('div', { className: 'qv-manual-page-content' });
 
   const closeModal = () => {
-    backdrop.remove();
+    actions.setState({ activeView: 'editor' }, true);
   };
 
   const renderTabs = () => {
@@ -101,6 +111,7 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
           on: {
             click: () => {
               activeTab = tab.id;
+              currentManualTab = tab.id;
               globalSearchQuery = '';
               globalSearchIn.value = '';
               renderTabs();
@@ -126,12 +137,15 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     const matchedShortcuts = SHORTCUT_LIST.filter((s) =>
       `${s.keys} ${s.action}`.toLowerCase().includes(query),
     );
+    const matchedFormats = QUILLVIBE_EXTENSIONS.filter((ext) =>
+      `${ext.extension} ${ext.name} ${ext.shortLabel} ${ext.purpose} ${ext.mimeType}`.toLowerCase().includes(query),
+    );
 
-    const total = matchedControls.length + matchedIcons.length + matchedShortcuts.length;
+    const total = matchedControls.length + matchedIcons.length + matchedShortcuts.length + matchedFormats.length;
     bodyWrap.appendChild(
       el('div', {
         className: 'bv-mono-tag',
-        text: `${total} matching result(s) for “${globalSearchIn.value.trim()}” across Controls, Icons & Shortcuts`,
+        text: `${total} matching result(s) for “${globalSearchIn.value.trim()}” across Controls, Icons, Shortcuts & Formats`,
         style: { color: 'var(--accent-amber)' },
       }),
     );
@@ -197,6 +211,27 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
       bodyWrap.append(
         el('span', { className: 'bv-panel-title', text: `Matching Icons (${matchedIcons.length})` }),
         grid,
+      );
+    }
+
+    if (matchedFormats.length > 0) {
+      const fmtWrap = el('div', { className: 'bv-snap-list' });
+      for (const item of matchedFormats) {
+        fmtWrap.appendChild(
+          el(
+            'div',
+            { className: 'bv-list-card', style: { flexDirection: 'column', alignItems: 'flex-start', gap: '4px' } },
+            el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+              el('strong', { text: item.extension, style: { fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--accent-ivory)' } }),
+              el('span', { text: item.name, style: { fontWeight: '600', fontSize: '12.5px' } }),
+            ),
+            el('span', { className: 'bv-label', text: item.purpose }),
+          ),
+        );
+      }
+      bodyWrap.append(
+        el('span', { className: 'bv-panel-title', text: `File Formats (${matchedFormats.length})` }),
+        fmtWrap,
       );
     }
 
@@ -711,41 +746,66 @@ export function showHelpModal(actions: AppActions, initialTab: HelpTab = 'tour')
     );
   };
 
-  const modal = el(
-    'div',
-    {
-      className: 'bv-modal',
-      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Help, Course and Icon Directory' },
-    },
+  const header = el(
+    'header',
+    { className: 'qv-standalone-header' },
     el(
       'div',
-      { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Quillvibe Book Course, Controls, Icons & Reference' }),
-      el('button', {
-        className: 'bv-mini-btn',
-        text: 'Close',
-        attrs: { type: 'button' },
-        on: { click: closeModal },
-      }),
-    ),
-    el('div', { className: 'bv-modal-body' }, searchBar, tabBar, bodyWrap),
-  );
-
-  const backdrop = el(
-    'div',
-    {
-      className: 'bv-modal-backdrop',
-      id: 'bv-help-modal',
-      on: {
-        click: (e) => {
-          if (e.target === backdrop) closeModal();
+      { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          on: { click: closeModal },
         },
-      },
-    },
-    modal,
+        icon('draft-sheet', 14),
+        'Back to Writing',
+      ),
+      el('h1', { text: 'Help, Course & Reference Manual', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+    ),
+    el(
+      'div',
+      { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          text: 'Interactive Course Page',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openCoursePage() },
+        },
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          text: 'Help & Error FAQ',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openHelpPage() },
+        },
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          text: 'Settings & Themes',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openSettingsModal('editor') },
+        },
+      ),
+    ),
   );
 
-  document.body.appendChild(backdrop);
+  const pageShell = el(
+    'div',
+    { className: 'qv-manual-page' },
+    header,
+    el('div', { className: 'qv-manual-toolbar' }, searchBar, tabBar),
+    bodyWrap,
+  );
+
+  container.appendChild(pageShell);
   renderTabs();
   renderBody();
 }

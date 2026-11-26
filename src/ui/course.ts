@@ -747,6 +747,122 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         targetView: 'typeset',
         targetTypesetTab: 'cover',
       },
+      {
+        id: 'm6-vector-draw-urls',
+        title: 'Desktop Vector Pen, Freehand Brush, Blend Modes & Artwork URLs',
+        durationMin: 6,
+        instruction:
+          'In the Desktop App, use Cover Studio -> Draw for freehand brush strokes and multi-point vector paths, switch layer Blend Modes (Multiply, Screen, Overlay, Soft Light), or paste an https:// artwork URL in Uploads.',
+        objective: 'Combine custom vector illustration strokes, blended shapes, and embedded remote photography inside print-ready covers.',
+        concepts: [
+          'The Draw tool rail tab (Desktop App only) provides two drawing modes: Freehand Brush sketches organic strokes as you drag across the front, spine, or back cover; Vector Pen places crisp straight-segment polygon/polyline anchors you commit as an editable SVG path layer.',
+          'Every vector path, shape, graphic, and custom text layer supports per-layer Opacity plus 7 optical Blend Modes (Normal, Multiply, Screen, Overlay, Soft Light, Darken, Lighten) so textures, foil accents, and photography fuse naturally cleanly in live preview, PNG, JPEG, and Vector SVG exports.',
+          'Under Uploads, Paste Image URL accepts clean https:// links or safe data:image URIs and downloads/embeds the raster pixels locally inside your project so exported Print wraps and .qv archives keep working completely offline. If an external image host disables cross-origin headers (CORS), Quillvibe reports it cleanly so you can save locally and upload instead.',
+        ],
+        steps: [
+          'Open Studio -> Book Cover Studio (Full Studio layout in the Desktop App) and open the Draw tab.',
+          'Draw a freehand accent curve or switch to Vector Pen, place 4+ anchor points on the cover, and click Commit Vector Path.',
+          'Select the created path (or any uploaded photo/shape), adjust Stroke Width, Opacity, and try Multiply or Overlay Blend Mode in the right Properties panel.',
+          'Open Uploads, paste an https:// image URL into Paste Image URL, and click Add as Layer or Set as Backdrop.',
+        ],
+        example: {
+          heading: 'Soft Foil Glow Overlay',
+          body: 'Draw a wide closed polygon across the upper third of a photographic cover, set its Fill Color to warm brass (#c7a97b), lower Opacity to 35%, and pick Overlay blend mode to cast atmospheric golden warmth over skies without obscuring details.',
+        },
+        proTip:
+          'All vector paths scale cleanly when exporting Vector SVG (.svg) or ultra-high-res 3x PNG (1800 x 2880).',
+        checkpoint: {
+          question: 'Why does Paste Image URL convert a pasted https:// image into local embedded pixels inside your cover project?',
+          options: [
+            'So your cover exports and offline .qv / .qvdesign backups remain self-contained even without internet access',
+            'So the image is deleted from your hard drive',
+            'To lock the cover permanently against editing',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Embedding the image locally ensures Print wraps, EPUB covers, and .qvdesign files never break if a website link goes offline later.',
+        },
+        actionLabel: 'Open Cover Draw Tools',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+      },
+      {
+        id: 'm6-variants-compare',
+        title: 'Drafting Cover Concepts & Running Side-by-Side Comparisons',
+        durationMin: 4,
+        instruction:
+          'Save each stylistic direction inside the Drafts tab (Desktop App), then open Compare Side-by-Side to judge typography scale, contrast, and mood directly against rival drafts.',
+        objective: 'Explore multiple strong cover compositions without losing earlier typography or color arrangements.',
+        concepts: [
+          'Strong book covers rarely succeed on the very first pass. Save early typography concepts as named Draft Variants (e.g., "Dark Serif Minimal", "Full-Bleed Landscape", "Editorial Band") inside Cover Studio.',
+          'Side-by-Side Comparison renders any two drafts—or compares a saved draft against your current working canvas—at identical scale, displaying layer counts and template family so you can promote the sharpest direction in one click.',
+        ],
+        steps: [
+          'Build your first clean cover layout, open the Drafts tool tab, enter a short name, and click Save Current as Draft.',
+          'Experiment freely with a different backdrop gradient, ornament, or palette and save a second draft.',
+          'Click Compare Side-by-Side, pick Left and Right concepts, evaluate title legibility at thumbnail scale, and click Promote Winner on the stronger design.',
+        ],
+        example: {
+          heading: 'Thumbnail Contrast Audit',
+          body: 'Store readers first see book covers at tiny ~120px thumbnails. Compare a serif-on-dark draft against a stark ivory draft side-by-side to see whose title remains readable across room distance.',
+        },
+        proTip:
+          'Save your active layout as a Draft Variant right before testing bold gradient experiments so returning takes one click.',
+        checkpoint: {
+          question: 'What happens when you click Promote Winner in Side-by-Side Comparison?',
+          options: [
+            'The chosen draft becomes your active cover while keeping your saved variants and review pins intact',
+            'All other scenes in your book are deleted',
+            'Your font size resets to 8px',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Promoting a draft swaps the active artwork layout safely while keeping your library of saved variants and collaboration pins.',
+        },
+        actionLabel: 'Compare Cover Drafts',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+      },
+      {
+        id: 'm6-qvdesign-collab',
+        title: 'Collaborating with Designers & Co-Authors Using .qvdesign',
+        durationMin: 5,
+        instruction:
+          'Open Collab in Cover Studio (Desktop App) to drop numbered feedback pins directly on cover faces and export/merge editable .qvdesign packages.',
+        objective: 'Exchange cover layouts and art critiques without shipping your private manuscript prose.',
+        concepts: [
+          'The official .qvdesign extension bundles your editable Cover Studio configuration—templates, typography, vector paths, shapes, embedded artwork, draft variants, and numbered review pins—without including manuscript chapters or Story Bible secrets.',
+          'Co-authors and cover illustrators can open your .qvdesign in Quillvibe Desktop, add numbered canvas review pins on Front, Spine, or Back cover faces, edit vector layers, and send back an updated .qvdesign. When it arrives, choose Import .qvdesign to load their full design or Merge Pins Only to pull feedback notes onto your current canvas.',
+        ],
+        steps: [
+          'Open the Collab tab in Cover Studio, enter your name, click Click Cover to Drop Pin, and click any region on the canvas.',
+          'Click Export .qvdesign to save a shareable design archive for an illustrator, publisher, or co-author.',
+          'When updated feedback arrives back, click Import .qvdesign or Merge Pins Only and resolve each pin as edits land.',
+        ],
+        example: {
+          heading: 'Separate Art & Manuscript Handoff',
+          body: 'Send an illustrator only .qvdesign (cover + spine width + pins) and .qvbible (character appearance notes) while keeping unpublished ending chapters strictly inside your sealed .qv file.',
+        },
+        proTip:
+          'Double-clicking a .qvdesign file on Windows, macOS, or Linux desktop opens it directly into the Quillvibe Desktop window.',
+        checkpoint: {
+          question: 'When receiving feedback notes from an editor inside a .qvdesign file while keeping your own newer cover layout, which option should you use?',
+          options: [
+            'Merge Pins Only',
+            'Delete All Layers',
+            'Export Plain Text (.txt)',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Merge Pins Only imports review pins without overwriting your local layer artwork edits.',
+        },
+        actionLabel: 'Open Cover Collaboration',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+      },
     ],
   },
   {

@@ -4,6 +4,7 @@ import {
   LEGACY_IMPORT_EXTENSIONS,
   getExtensionDefinition,
 } from './extensions';
+import { buildDocxBytes } from './docx-export';
 import {
   buildEpubBlobBytes,
   buildEpubExportPayload,
@@ -33,8 +34,10 @@ const VALID_EXPORT_FORMATS = new Set<string>([
   '.qvbible',
   '.qvscene',
   '.qvstyle',
+  '.qvdesign',
   '.pdf',
   '.epub',
+  '.docx',
   '.md',
   '.html',
   '.txt',
@@ -342,6 +345,17 @@ export async function exportBookAsPdf(project: BookProject): Promise<string | nu
     extension: 'pdf',
     description: 'Print-Ready Interior PDF',
     mimeType: 'application/pdf',
+    binaryBytes: bytes,
+  });
+}
+
+export async function exportBookAsDocx(project: BookProject): Promise<string | null> {
+  const bytes = buildDocxBytes(project);
+  return exportGenericFile({
+    suggestedName: project.title,
+    extension: 'docx',
+    description: 'Standard Word-Compatible Document (.docx)',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     binaryBytes: bytes,
   });
 }

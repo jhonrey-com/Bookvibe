@@ -24,6 +24,7 @@ import {
   GRAPH_KIND_LABELS,
   reverseGraphEdge,
   seedGraphFromProject,
+  syncGraphNodeBackToBook,
   updateGraphEdge,
   updateGraphGroup,
   updateGraphNode,
@@ -38,6 +39,7 @@ import { newId } from '../core/manuscript';
 import type {
   GraphAnchorSide,
   GraphArrowHead,
+  GraphBoardTheme,
   GraphLineStyle,
   GraphNodeKind,
   GraphRoutingMode,
@@ -144,7 +146,8 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
 
   const state = actions.getState();
   const project = normalizeProjectDefaults(state.project);
-  const graph = project.storyGraph!;
+  const rawGraph = project.storyGraph!;
+  const graph = rawGraph.autoSyncWithBook !== false ? seedGraphFromProject(project) : rawGraph;
 
   if (state.activeGraphNodeId && !graph.nodes.some((n) => n.id === state.activeGraphNodeId)) {
     state.activeGraphNodeId = graph.nodes[0]?.id ?? '';
@@ -555,9 +558,48 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
           },
         },
       }),
+      (() => {
+        const boardThemeSel = el(
+          'select',
+          {
+            className: 'bv-select',
+            attrs: { 'aria-label': 'Story Graph board background' },
+            tooltip: { title: 'Board Surface', short: 'Choose background style for the Story Graph canvas.' },
+            on: {
+              change: () =>
+                withGraph(actions, (g) => ({
+                  ...g,
+                  boardTheme: boardThemeSel.value as GraphBoardTheme,
+                })),
+            },
+          },
+          el('option', { text: 'Board: Obsidian Dots', attrs: { value: 'obsidian-dots', selected: (graph.boardTheme ?? 'obsidian-dots') === 'obsidian-dots' } }),
+          el('option', { text: 'Board: Slate Blueprint', attrs: { value: 'slate-blueprint', selected: graph.boardTheme === 'slate-blueprint' } }),
+          el('option', { text: 'Board: Warm Paper', attrs: { value: 'warm-paper', selected: graph.boardTheme === 'warm-paper' } }),
+          el('option', { text: 'Board: Charcoal Solid', attrs: { value: 'charcoal-solid', selected: graph.boardTheme === 'charcoal-solid' } }),
+          el('option', { text: 'Board: Ivory Grid', attrs: { value: 'ivory-grid', selected: graph.boardTheme === 'ivory-grid' } }),
+        );
+        return boardThemeSel;
+      })(),
+      el('button', {
+        className: `bv-mini-btn${graph.autoSyncWithBook !== false ? ' is-active' : ''}`,
+        text: graph.autoSyncWithBook !== false ? 'Auto-Sync: On' : 'Auto-Sync: Off',
+        tooltip: {
+          title: 'Two-Way Book Sync',
+          short: 'Keep linked Scene and Story Bible titles/notes synchronized with Story Graph edits.',
+        },
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            const nextAuto = !(graph.autoSyncWithBook !== false);
+            withGraph(actions, (g) => ({ ...g, autoSyncWithBook: nextAuto }));
+            actions.notify(nextAuto ? 'Two-way Story Graph sync enabled' : 'Two-way Story Graph sync paused');
+          },
+        },
+      }),
       el('button', {
         className: 'bv-fmt-btn',
-        text: 'Sync Book',
+        text: 'Sync Now',
         attrs: { type: 'button' },
         on: {
           click: () => {
@@ -655,7 +697,10 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   };
   window.addEventListener('keydown', activeGraphKeyHandler);
 
-  canvasWrap = el('div', { className: 'bv-graph-canvas-wrap' });
+  canvasWrap = el('div', {
+    className: 'bv-graph-canvas-wrap',
+    dataset: { boardTheme: graph.boardTheme ?? 'obsidian-dots' },
+  });
 
   if (graphViewMode === 'force') {
     // ================= FORCE-DIRECTED GRAPH MODE (2D CANVAS @ 60FPS) =================
@@ -1829,18 +1874,31 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   };
 
   if (selectedNode) {
+    const applyNodeEditWithSync = (patch: { label?: string; subtitle?: string; notes?: string }) => {
+      actions.mutateProject((prev) => {
+        const base = normalizeProjectDefaults(prev);
+        const updatedGraph = updateGraphNode(base.storyGraph!, selectedNode.id, patch);
+        let nextProj = { ...base, storyGraph: updatedGraph };
+        if (updatedGraph.autoSyncWithBook !== false && selectedNode.refId) {
+          const synced = syncGraphNodeBackToBook(nextProj, selectedNode.id, patch);
+          nextProj = { ...synced, storyGraph: synced.storyGraph ?? updatedGraph };
+        }
+        return nextProj;
+      });
+    };
+
     const labelIn = el('input', {
       className: 'bv-input',
       attrs: { type: 'text', value: selectedNode.label },
       on: {
-        change: () => withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { label: labelIn.value })),
+        change: () => applyNodeEditWithSync({ label: labelIn.value }),
       },
     });
     const subIn = el('input', {
       className: 'bv-input',
       attrs: { type: 'text', value: selectedNode.subtitle },
       on: {
-        change: () => withGraph(actions, (g) => updateGraphNode(g, selectedNode.id, { subtitle: subIn.value })),
+        change: () => applyNodeEditWithSync({ subtitle: subIn.value }),
       },
     });
     const kindSel = el(
@@ -1861,7 +1919,16 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
       attrs: { rows: 6, placeholder: 'Write Markdown notes with [[Entity Links]] and #tags…' },
       on: {
         change: () =>
-          withGraph(actions, (g) => syncWikilinkEdgesInGraph(g, selectedNode.id, notesIn.value)),
+          actions.mutateProject((prev) => {
+            const base = normalizeProjectDefaults(prev);
+            const updatedGraph = syncWikilinkEdgesInGraph(base.storyGraph!, selectedNode.id, notesIn.value);
+            let nextProj = { ...base, storyGraph: updatedGraph };
+            if (updatedGraph.autoSyncWithBook !== false && selectedNode.refId) {
+              const synced = syncGraphNodeBackToBook(nextProj, selectedNode.id, { notes: notesIn.value });
+              nextProj = { ...synced, storyGraph: synced.storyGraph ?? updatedGraph };
+            }
+            return nextProj;
+          }),
       },
     });
     notesIn.value = selectedNode.notes;
@@ -2045,18 +2112,31 @@ export function renderGraphView(container: HTMLElement, actions: AppActions): vo
   }
 
   if (propsCollapsed) {
+    const reopenSvg = svgEl('svg', { viewBox: '0 0 20 20', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    reopenSvg.append(
+      svgEl('rect', { x: '2.5', y: '3', width: '15', height: '14', rx: '2.5' }),
+      svgEl('line', { x1: '12.5', y1: '3', x2: '12.5', y2: '17' }),
+      svgEl('polyline', { points: '9 7.5 6.2 10 9 12.5' }),
+    );
     canvasWrap.appendChild(
-      el('button', {
-        className: 'bv-mini-btn bv-graph-reopen-props',
-        text: 'Show Properties',
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            propsCollapsed = false;
-            renderGraphView(container, actions);
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn bv-graph-reopen-props',
+          attrs: {
+            type: 'button',
+            'aria-label': 'Open Graph Properties',
+            title: 'Open Graph Properties',
+          },
+          on: {
+            click: () => {
+              propsCollapsed = false;
+              renderGraphView(container, actions);
+            },
           },
         },
-      }),
+        reopenSvg,
+      ),
     );
   } else if (propsDetached) {
     canvasWrap.appendChild(propsPanel);

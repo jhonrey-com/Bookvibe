@@ -4,6 +4,7 @@ import { AlarmController, playRingtonePreview } from './core/alarm';
 import type { AppActions, AppState, ExtensionsModalTab } from './core/app-context';
 import {
   closeDesktopWindow,
+  exportBookAsDocx,
   exportBookAsEpub,
   exportBookAsHtml,
   exportBookAsMarkdown,
@@ -90,6 +91,8 @@ import {
   formatAppWindowTitle,
   formatWorkspaceLayoutName,
   loadSettings,
+  mapAppThemeToPaperTheme,
+  mapPaperThemeToAppTheme,
   saveSettings,
 } from './core/settings';
 import { createSnapshotForScene } from './core/snapshots';
@@ -97,6 +100,8 @@ import {
   COURSE_TAB_ID,
   EMPTY_TAB_PREFIX,
   HELP_TAB_ID,
+  MANUAL_TAB_ID,
+  SETTINGS_TAB_ID,
   WorkspaceWindowSync,
   createEmptyTabId,
   isEmptyTabId,
@@ -136,13 +141,13 @@ import { renderDeveloperPageView } from './views/developer-page';
 import { renderEditorView } from './views/editor';
 import { showExtensionsModal } from './views/extensions-modal';
 import { renderGraphView } from './views/graph';
-import { showHelpModal } from './views/help-modal';
 import { renderHelpPageView, setHelpPageSearch } from './views/help-page';
 import { renderInspector } from './views/inspector';
 import { showLibraryModal } from './views/library-modal';
 import { renderNewTabView } from './views/new-tab';
 import { renderOutlineView } from './views/outline';
-import { showSettingsModal } from './views/settings-modal';
+import { renderManualPageView, setManualPageTab } from './views/help-modal';
+import { renderSettingsPageView, setSettingsPageTab } from './views/settings-modal';
 import { renderTypesetView } from './views/typeset';
 import { hasCoverHistory, performCoverRedo, performCoverUndo } from './views/cover';
 
@@ -249,6 +254,18 @@ function activateDesktopTab(tabId: string): void {
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
+  } else if (tabId === SETTINGS_TAB_ID) {
+    state.activeTabId = SETTINGS_TAB_ID;
+    state.activeView = 'settings';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
+  } else if (tabId === MANUAL_TAB_ID) {
+    state.activeTabId = MANUAL_TAB_ID;
+    state.activeView = 'manual';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
   } else if (isEmptyTabId(tabId)) {
     state.activeTabId = tabId;
     state.activeView = 'editor';
@@ -257,7 +274,11 @@ function activateDesktopTab(tabId: string): void {
     renderActiveView();
   } else {
     state.activeView =
-      state.activeView === 'course' || state.activeView === 'help' || state.activeView === 'developer'
+      state.activeView === 'course' ||
+      state.activeView === 'help' ||
+      state.activeView === 'developer' ||
+      state.activeView === 'settings' ||
+      state.activeView === 'manual'
         ? 'editor'
         : state.activeView;
     actions.switchBook(tabId);
@@ -337,7 +358,15 @@ function syncWindowAndDocumentTitle(): void {
           : 'Quillvibe Help Center, FAQ & Error Guide'
         : state.activeView === 'developer'
           ? 'Quillvibe Developer Portal — Build .qvext Extension Add-ons'
-          : formatAppWindowTitle(
+          : state.activeTabId === SETTINGS_TAB_ID || state.activeView === 'settings'
+            ? isTauriRuntime()
+              ? 'Quillvibe - Settings, Layouts & Themes'
+              : 'Settings, Layouts & Themes — Quillvibe'
+            : state.activeTabId === MANUAL_TAB_ID || state.activeView === 'manual'
+              ? isTauriRuntime()
+                ? 'Quillvibe - Help, Course & Manual'
+                : 'Help, Course & Manual — Quillvibe'
+              : formatAppWindowTitle(
               state.settings,
               state.project,
               state.activeView,
@@ -561,7 +590,9 @@ function syncResponsiveDrawerClasses(): void {
 }
 
 function allowedViewsForTier(tier: ToolTier): StudioViewId[] {
-  const extra: StudioViewId[] = isTauriRuntime() ? ['course', 'help'] : ['course', 'help', 'developer'];
+  const extra: StudioViewId[] = isTauriRuntime()
+    ? ['course', 'help', 'settings', 'manual']
+    : ['course', 'help', 'developer', 'settings', 'manual'];
   if (tier === 'basic') return ['editor', ...extra];
   if (tier === 'intermediate') return ['editor', 'corkboard', 'outline', 'typeset', ...extra];
   return ['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset', ...extra];
@@ -579,7 +610,7 @@ function syncExportSelectWidth(): void {
       textWidth = ctx.measureText(optText).width;
     }
   }
-  const widthPx = Math.max(46, Math.ceil(textWidth + 24));
+  const widthPx = Math.max(76, Math.ceil(textWidth + 52));
   exportFormatSelectEl.style.width = `${widthPx}px`;
 }
 
@@ -592,7 +623,9 @@ function confirmPartialQuillvibeExport(
         ? 'saves only the currently open scene (prose, scene images, snapshots, and proofreading marks)—not the other chapters, Story Bible, Story Graph, or cover.'
         : ext === '.qvbible'
           ? 'saves only the Story Bible database (Characters, Locations, Lore, and custom categories)—not manuscript chapters or cover artwork.'
-          : 'saves only the Interior Typeset & Paper Style preset (trim size, typeface, margins, and drop caps)—not book chapters or Story Bible.';
+          : ext === '.qvdesign'
+            ? 'saves only the editable Book Cover Studio package (layers, vector paths, draft variants, and collaboration pins)—not the manuscript chapters.'
+            : 'saves only the Interior Typeset & Paper Style preset (trim size, typeface, margins, and drop caps)—not book chapters or Story Bible.';
 
     const close = (choice: 'proceed' | 'full' | 'cancel') => {
       document.removeEventListener('keydown', onEsc);
@@ -760,8 +793,10 @@ function renderActiveView(): void {
   const isNewTab = isEmptyTabId(state.activeTabId);
   const isCourseTab = state.activeTabId === COURSE_TAB_ID || state.activeView === 'course';
   const isHelpTab = state.activeTabId === HELP_TAB_ID || state.activeView === 'help';
+  const isSettingsTab = state.activeTabId === SETTINGS_TAB_ID || state.activeView === 'settings';
+  const isManualTab = state.activeTabId === MANUAL_TAB_ID || state.activeView === 'manual';
   const isDevTab = !isTauriRuntime() && state.activeView === 'developer';
-  const isStandalonePage = isCourseTab || isHelpTab || isDevTab;
+  const isStandalonePage = isCourseTab || isHelpTab || isDevTab || isSettingsTab || isManualTab;
   const isFullStagePage = isNewTab || isStandalonePage || state.activeView === 'typeset';
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
@@ -776,9 +811,13 @@ function renderActiveView(): void {
         ? 'Book Writing Course'
         : isHelpTab
           ? 'Help & FAQ'
-          : isDevTab
-            ? 'Developer Portal'
-            : state.project.title;
+          : isSettingsTab
+            ? 'Settings, Layouts & Themes'
+            : isManualTab
+              ? 'Help, Course & Manual'
+              : isDevTab
+                ? 'Developer Portal'
+                : state.project.title;
     if (bookTitleInputEl.value !== desiredTitle) bookTitleInputEl.value = desiredTitle;
     bookTitleInputEl.disabled = isNewTab || isStandalonePage;
   }
@@ -861,6 +900,24 @@ function renderActiveView(): void {
     clearNode(binderEl);
     clearNode(inspectorEl);
     renderDeveloperPageView(mainStageEl, actions);
+    syncWindowAndDocumentTitle();
+    immersiveHud?.sync();
+    return;
+  }
+
+  if (isSettingsTab) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderSettingsPageView(mainStageEl, actions);
+    syncWindowAndDocumentTitle();
+    immersiveHud?.sync();
+    return;
+  }
+
+  if (isManualTab) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderManualPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
     immersiveHud?.sync();
     return;
@@ -1131,6 +1188,16 @@ const actions: AppActions = {
     const prevDesktopTabs = state.settings.enableDesktopBookTabs;
     state.settings = saveSettings({ ...state.settings, ...patch });
     applySettingsToDocument(state.settings);
+    if (
+      state.settings.linkPaperThemeToAppTheme &&
+      (patch.appTheme !== undefined || patch.linkPaperThemeToAppTheme === true)
+    ) {
+      const targetPaper = mapAppThemeToPaperTheme(state.settings.appTheme);
+      if (state.project.paperTheme !== targetPaper) {
+        state.project = normalizeProjectDefaults({ ...state.project, paperTheme: targetPaper });
+        schedulePersist();
+      }
+    }
     syncWindowAndDocumentTitle();
     immersiveHud?.sync();
     if (patch.enableDesktopBookTabs !== undefined && patch.enableDesktopBookTabs !== prevDesktopTabs) {
@@ -1149,7 +1216,18 @@ const actions: AppActions = {
     if (!isApplyingHistory) {
       projectHistory.pushSnapshot(state.project, `Edit ${state.activeView}`);
     }
+    const prevPaper = state.project.paperTheme;
     state.project = normalizeProjectDefaults(updater(state.project));
+    if (
+      state.settings.linkPaperThemeToAppTheme &&
+      state.project.paperTheme !== prevPaper
+    ) {
+      const nextAppTheme = mapPaperThemeToAppTheme(state.project.paperTheme);
+      if (state.settings.appTheme !== nextAppTheme) {
+        state.settings = saveSettings({ ...state.settings, appTheme: nextAppTheme });
+        applySettingsToDocument(state.settings);
+      }
+    }
     schedulePersist();
     syncWindowAndDocumentTitle();
     renderDesktopTabBar();
@@ -1218,12 +1296,42 @@ const actions: AppActions = {
     showCollabModal(actions);
   },
 
-  openSettingsModal(initialTab = 'fonts') {
-    showSettingsModal(actions, initialTab);
+  openSettingsModal(initialTab = 'editor') {
+    setSettingsPageTab(initialTab);
+    if (!isTauriRuntime()) {
+      actions.setState({ activeView: 'settings' }, true);
+      return;
+    }
+    if (isEmptyTabId(state.activeTabId)) {
+      state.openBookTabIds = state.openBookTabIds
+        .filter((id) => id !== SETTINGS_TAB_ID)
+        .map((id) => (id === state.activeTabId ? SETTINGS_TAB_ID : id));
+    } else if (!state.openBookTabIds.includes(SETTINGS_TAB_ID)) {
+      state.openBookTabIds = [...state.openBookTabIds, SETTINGS_TAB_ID];
+    }
+    state.activeTabId = SETTINGS_TAB_ID;
+    state.activeView = 'settings';
+    renderDesktopTabBar();
+    renderActiveView();
   },
 
   openHelpModal(initialTab = 'course') {
-    showHelpModal(actions, initialTab);
+    setManualPageTab(initialTab);
+    if (!isTauriRuntime()) {
+      actions.setState({ activeView: 'manual' }, true);
+      return;
+    }
+    if (isEmptyTabId(state.activeTabId)) {
+      state.openBookTabIds = state.openBookTabIds
+        .filter((id) => id !== MANUAL_TAB_ID)
+        .map((id) => (id === state.activeTabId ? MANUAL_TAB_ID : id));
+    } else if (!state.openBookTabIds.includes(MANUAL_TAB_ID)) {
+      state.openBookTabIds = [...state.openBookTabIds, MANUAL_TAB_ID];
+    }
+    state.activeTabId = MANUAL_TAB_ID;
+    state.activeView = 'manual';
+    renderDesktopTabBar();
+    renderActiveView();
   },
 
   openCoursePage(moduleId?: string) {
@@ -1375,7 +1483,15 @@ const actions: AppActions = {
         if (isNonBookTabId(fallbackId)) {
           state.activeTabId = fallbackId;
           state.activeView =
-            fallbackId === COURSE_TAB_ID ? 'course' : fallbackId === HELP_TAB_ID ? 'help' : 'editor';
+            fallbackId === COURSE_TAB_ID
+              ? 'course'
+              : fallbackId === HELP_TAB_ID
+                ? 'help'
+                : fallbackId === SETTINGS_TAB_ID
+                  ? 'settings'
+                  : fallbackId === MANUAL_TAB_ID
+                    ? 'manual'
+                    : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -1483,6 +1599,7 @@ const actions: AppActions = {
     const fmt = state.defaultExportFormat;
     if (fmt === '.pdf') return actions.exportPdf();
     if (fmt === '.epub') return actions.exportEpub();
+    if (fmt === '.docx') return actions.exportDocx();
     if (fmt === '.md') return actions.exportMarkdown();
     if (fmt === '.html') return actions.exportHtml();
     if (fmt === '.txt') return actions.exportPlainText();
@@ -1566,6 +1683,18 @@ const actions: AppActions = {
       if (out) actions.notify('Exported EPUB 3 eBook with Cover & Credits');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'EPUB export failed.';
+      actions.notify(msg);
+    }
+  },
+
+  async exportDocx() {
+    try {
+      const out = await runWithExportLoading('Generating Word-Compatible .docx…', () =>
+        exportBookAsDocx(state.project),
+      );
+      if (out) actions.notify('Exported complete .docx manuscript');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Document (.docx) export failed.';
       actions.notify(msg);
     }
   },
@@ -2084,6 +2213,8 @@ function renderDesktopTabBar(): void {
     const isEmpty = isEmptyTabId(id);
     const isCourse = id === COURSE_TAB_ID;
     const isHelp = id === HELP_TAB_ID;
+    const isSettings = id === SETTINGS_TAB_ID;
+    const isManual = id === MANUAL_TAB_ID;
     const book = isNonBookTabId(id) ? null : byId.get(id);
     if (!isNonBookTabId(id) && !book) return;
     const isActive = id === state.activeTabId;
@@ -2094,7 +2225,11 @@ function renderDesktopTabBar(): void {
         ? 'Book Writing Course'
         : isHelp
           ? 'Help & FAQ'
-          : book?.title?.trim() || 'Untitled Book';
+          : isSettings
+            ? 'Settings'
+            : isManual
+              ? 'Manual & Reference'
+              : book?.title?.trim() || 'Untitled Book';
 
     const closeBtn = canClose
       ? el(
@@ -3111,7 +3246,16 @@ async function bootstrap(): Promise<void> {
         const nextId = remaining[0];
         if (isNonBookTabId(nextId)) {
           state.activeTabId = nextId;
-          state.activeView = nextId === COURSE_TAB_ID ? 'course' : nextId === HELP_TAB_ID ? 'help' : 'editor';
+          state.activeView =
+            nextId === COURSE_TAB_ID
+              ? 'course'
+              : nextId === HELP_TAB_ID
+                ? 'help'
+                : nextId === SETTINGS_TAB_ID
+                  ? 'settings'
+                  : nextId === MANUAL_TAB_ID
+                    ? 'manual'
+                    : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();

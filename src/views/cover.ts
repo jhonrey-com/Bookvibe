@@ -1,5 +1,9 @@
 import type { AppActions } from '../core/app-context';
-import { exportCoverDataUrlDownload } from '../core/bridge';
+import {
+  exportCoverDataUrlDownload,
+  exportGenericFile,
+  isTauriRuntime,
+} from '../core/bridge';
 import {
   renderCoverToJpegDataUrl,
   renderCoverToPngDataUrl,
@@ -8,14 +12,21 @@ import {
   COVER_TEMPLATES,
   computeCoverBackgroundCss,
   computeSmartAlignSnap,
+  createCoverVariantSnapshot,
   createGraphicLayerFromDataUrl,
+  createPathLayer,
   createShapeLayer,
   createTextLayer,
   defaultBookCover,
   downscaleImageFileToDataUrl,
   encodeSvgStringToDataUrl,
   estimateSpineInches,
+  loadImageUrlAsDataUrl,
 } from '../core/cover';
+import {
+  exportCoverDesignArchive,
+  importCoverDesignArchive,
+} from '../core/extensions';
 import {
   alignBoxes,
   computeStudioSmartSnap,
@@ -32,8 +43,10 @@ import { normalizeProjectDefaults } from '../core/library';
 import { newId } from '../core/manuscript';
 import type {
   BookCoverConfig,
+  CoverBlendMode,
   CoverFaceId,
   CoverGraphicLayer,
+  CoverPathPoint,
   CoverShapeKind,
   CoverShapeLayer,
   CoverTemplateId,
@@ -46,15 +59,45 @@ import { createVerticalResizer } from '../ui/resizer';
 
 type CoverPreviewMode = 'front' | 'back' | 'spine' | 'full-wrap' | 'dust-jacket';
 type CoverElementKey = keyof BookCoverConfig['elements'];
-type StudioToolTab = 'templates' | 'text' | 'shapes' | 'ornaments' | 'uploads' | 'background' | 'jacket';
+type StudioToolTab =
+  | 'templates'
+  | 'text'
+  | 'shapes'
+  | 'ornaments'
+  | 'uploads'
+  | 'background'
+  | 'jacket'
+  | 'draw'
+  | 'variants'
+  | 'collab';
 type InspectorTab = 'properties' | 'layers';
+
+const COVER_BLEND_MODES: Array<{ id: CoverBlendMode; label: string }> = [
+  { id: 'normal', label: 'Normal' },
+  { id: 'multiply', label: 'Multiply' },
+  { id: 'screen', label: 'Screen' },
+  { id: 'overlay', label: 'Overlay' },
+  { id: 'soft-light', label: 'Soft Light' },
+  { id: 'darken', label: 'Darken' },
+  { id: 'lighten', label: 'Lighten' },
+];
 
 let coverWrapMode: CoverPreviewMode = 'front';
 let activeToolTab: StudioToolTab = 'templates';
 let activeInspectorTab: InspectorTab = 'properties';
-let activeSelectionKind: 'element' | 'text' | 'shape' | 'graphic' = 'element';
+let activeSelectionKind: 'element' | 'text' | 'shape' | 'graphic' | 'path' = 'element';
 let activeElementKey: CoverElementKey = 'title';
 let activeLayerId = '';
+let drawBrushMode: 'off' | 'freehand' | 'pen' = 'off';
+let drawStrokeColor = '#c7a97b';
+let drawStrokeWidth = 3;
+let drawFillColor = 'transparent';
+let drawClosedPath = false;
+let drawBlendMode: CoverBlendMode = 'normal';
+let pendingPenPoints: CoverPathPoint[] = [];
+let commentPinMode = false;
+let compareLeftVariantId = '';
+let compareRightVariantId = '';
 const selectedLayerKeys = new Set<string>(['element:title']);
 let studioZoom = 1.0;
 let studioPanX = 0;
@@ -75,13 +118,13 @@ const undoStack: BookCoverConfig[] = [];
 const redoStack: BookCoverConfig[] = [];
 const MAX_UNDO = 100;
 
-function layerKeyOf(kind: 'element' | 'text' | 'shape' | 'graphic', idOrKey: string): string {
+function layerKeyOf(kind: 'element' | 'text' | 'shape' | 'graphic' | 'path', idOrKey: string): string {
   return `${kind}:${idOrKey}`;
 }
 
 function setSingleSelection(
   cover: BookCoverConfig,
-  kind: 'element' | 'text' | 'shape' | 'graphic',
+  kind: 'element' | 'text' | 'shape' | 'graphic' | 'path',
   idOrKey: string,
   additive = false,
 ): void {
@@ -231,6 +274,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
   const graphicLayers = cover.graphicLayers ?? [];
   const shapeLayers = cover.shapeLayers ?? [];
   const textLayers = cover.textLayers ?? [];
+  const pathLayers = cover.pathLayers ?? [];
+  const variants = cover.variants ?? [];
+  const comments = cover.comments ?? [];
+  const isDesktopProCover = isTauriRuntime();
+
+  if (!isDesktopProCover && (activeToolTab === 'draw' || activeToolTab === 'variants' || activeToolTab === 'collab')) {
+    activeToolTab = 'templates';
+    drawBrushMode = 'off';
+    commentPinMode = false;
+  }
 
   const frontW = Math.round(trim.widthIn * 64);
   const frontH = Math.round(trim.heightIn * 64);
@@ -250,12 +303,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
   const selectedGraphicLayer = activeSelectionKind === 'graphic'
     ? graphicLayers.find((g) => g.id === activeLayerId) ?? null
     : null;
+  const selectedPathLayer = activeSelectionKind === 'path'
+    ? pathLayers.find((p) => p.id === activeLayerId) ?? null
+    : null;
 
   // Fallback safely if activeLayerId was deleted
   if (
     (activeSelectionKind === 'text' && !selectedTextLayer) ||
     (activeSelectionKind === 'shape' && !selectedShapeLayer) ||
-    (activeSelectionKind === 'graphic' && !selectedGraphicLayer)
+    (activeSelectionKind === 'graphic' && !selectedGraphicLayer) ||
+    (activeSelectionKind === 'path' && !selectedPathLayer)
   ) {
     activeSelectionKind = 'element';
     activeElementKey = 'title';
@@ -429,6 +486,13 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         actions.notify('Exported Vector SVG cover');
       }),
       el('div', { className: 'qv-tab-picker-sep' }),
+      ...(isDesktopProCover
+        ? [
+            addItem('Editable Cover Design (.qvdesign)', () =>
+              actions.exportAsExtension('.qvdesign', { skipPartialConfirm: true }),
+            ),
+          ]
+        : []),
       addItem('Full Print Wrap PNG (Back + Spine + Front)', () => actions.exportFullWrapPng()),
       addItem('Print Interior PDF', () => actions.exportPdf()),
     );
@@ -553,9 +617,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     { id: 'text', ic: 'type-tool', label: 'Text', desc: 'Add display headlines' },
     { id: 'shapes', ic: 'shapes', label: 'Shapes', desc: 'Vector geometry & rules' },
     { id: 'ornaments', ic: 'ornament', label: 'Elements', desc: 'Seals, dividers & crests' },
-    { id: 'uploads', ic: 'image', label: 'Uploads', desc: 'SVG & transparent PNGs' },
+    { id: 'uploads', ic: 'image', label: 'Uploads', desc: 'SVG, PNG & image URLs' },
     { id: 'background', ic: 'palette', label: 'Backdrop', desc: 'Gradients & photo FX' },
     { id: 'jacket', ic: 'book', label: 'Jacket', desc: 'Back, spine & flaps' },
+    ...(isDesktopProCover
+      ? [
+          { id: 'draw' as const, ic: 'draft-sheet' as const, label: 'Draw', desc: 'Vector pen & freehand strokes' },
+          { id: 'variants' as const, ic: 'split' as const, label: 'Drafts', desc: 'Compare cover design variants' },
+          { id: 'collab' as const, ic: 'collab' as const, label: 'Collab', desc: 'Review pins & .qvdesign share' },
+        ]
+      : []),
   ];
 
   const rail = el('nav', { className: 'qv-studio-rail', attrs: { 'aria-label': 'Cover design tools' } });
@@ -780,6 +851,45 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       ),
     );
   } else if (activeToolTab === 'uploads') {
+    const pasteUrlIn = el('input', {
+      className: 'bv-input',
+      attrs: {
+        type: 'url',
+        placeholder: 'https://example.com/artwork.png',
+        'aria-label': 'Paste image URL',
+      },
+    });
+    const pasteStatusEl = el('div', { className: 'bv-label' });
+    const applyPastedUrl = async (asBackground: boolean) => {
+      const raw = pasteUrlIn.value.trim();
+      if (!raw) {
+        pasteStatusEl.textContent = 'Enter an https:// image URL or data:image URI first.';
+        return;
+      }
+      pasteStatusEl.textContent = 'Downloading & embedding image locally…';
+      try {
+        const embeddedUrl = await loadImageUrlAsDataUrl(raw, 1400);
+        if (asBackground) {
+          mutateCover(actions, (c) => ({ ...c, backgroundImageDataUrl: embeddedUrl }));
+          actions.notify('Embedded remote image as cover background');
+        } else {
+          const face = activeTargetFace();
+          const layer = createGraphicLayerFromDataUrl(face, 'Pasted Image', embeddedUrl, 'image');
+          activeSelectionKind = 'graphic';
+          activeLayerId = layer.id;
+          mutateCover(actions, (c) => ({
+            ...c,
+            graphicLayers: [...(c.graphicLayers ?? []), layer],
+          }));
+          actions.notify(`Placed pasted image on ${face} cover`);
+        }
+        pasteUrlIn.value = '';
+        pasteStatusEl.textContent = 'Embedded locally for offline export.';
+      } catch (err) {
+        pasteStatusEl.textContent = err instanceof Error ? err.message : 'Unable to load image URL.';
+      }
+    };
+
     leftBody.append(
       el('span', { className: 'bv-panel-title', text: 'Upload Graphics & Artwork' }),
       el(
@@ -811,8 +921,502 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
             }),
           ]
         : []),
+      ...(isDesktopProCover
+        ? [
+            el('hr', { style: { border: '0', borderTop: '1px solid var(--border-subtle)', margin: '8px 0' } }),
+            el('span', { className: 'bv-panel-title', text: 'Paste Image URL (HTTPS)' }),
+            pasteUrlIn,
+            el(
+              'div',
+              { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+              el('button', {
+                className: 'bv-mini-btn bv-btn-primary',
+                text: 'Add as Layer',
+                attrs: { type: 'button' },
+                on: { click: () => void applyPastedUrl(false) },
+              }),
+              el('button', {
+                className: 'bv-mini-btn',
+                text: 'Set as Backdrop',
+                attrs: { type: 'button' },
+                on: { click: () => void applyPastedUrl(true) },
+              }),
+            ),
+            pasteStatusEl,
+          ]
+        : [
+            el('p', {
+              className: 'bv-label',
+              style: { marginTop: '8px' },
+              text: 'Vector path drawing, blend modes, side-by-side draft comparison, and .qvdesign collaboration packages are available in the free Desktop App.',
+            }),
+          ]),
       artFileInput,
       layerFileInput,
+    );
+  } else if (isDesktopProCover && activeToolTab === 'draw') {
+    const strokeColIn = el('input', {
+      attrs: { type: 'color', value: drawStrokeColor },
+      on: { change: () => { drawStrokeColor = strokeColIn.value; } },
+    });
+    const fillColIn = el('input', {
+      attrs: { type: 'color', value: drawFillColor === 'transparent' ? cover.accentColor : drawFillColor },
+      on: { change: () => { drawFillColor = fillColIn.value; } },
+    });
+    const strokeWIn = el('input', {
+      attrs: { type: 'range', min: 1, max: 24, step: 1, value: drawStrokeWidth },
+      on: { input: () => { drawStrokeWidth = Number(strokeWIn.value); } },
+    });
+    const blendSel = el(
+      'select',
+      {
+        className: 'bv-input',
+        on: { change: () => { drawBlendMode = blendSel.value as CoverBlendMode; } },
+      },
+      ...COVER_BLEND_MODES.map((m) =>
+        el('option', { text: m.label, attrs: { value: m.id, selected: drawBlendMode === m.id } }),
+      ),
+    );
+    const closedChk = el('input', {
+      className: 'bv-lever',
+      attrs: { type: 'checkbox', role: 'switch', checked: drawClosedPath },
+      on: { change: () => { drawClosedPath = closedChk.checked; } },
+    });
+
+    leftBody.append(
+      el('span', { className: 'bv-panel-title', text: 'Vector Drawing & Brush' }),
+      el('p', {
+        className: 'bv-label',
+        text: 'Pick Freehand Brush to sketch directly on the cover, or Vector Pen to place anchor points.',
+      }),
+      el(
+        'div',
+        { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+        el('button', {
+          className: `bv-mini-btn${drawBrushMode === 'freehand' ? ' is-active' : ''}`,
+          text: 'Freehand Brush',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              drawBrushMode = drawBrushMode === 'freehand' ? 'off' : 'freehand';
+              pendingPenPoints = [];
+              commentPinMode = false;
+              renderCoverStudio(container, actions);
+            },
+          },
+        }),
+        el('button', {
+          className: `bv-mini-btn${drawBrushMode === 'pen' ? ' is-active' : ''}`,
+          text: 'Vector Pen',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              drawBrushMode = drawBrushMode === 'pen' ? 'off' : 'pen';
+              pendingPenPoints = [];
+              commentPinMode = false;
+              renderCoverStudio(container, actions);
+            },
+          },
+        }),
+        drawBrushMode !== 'off'
+          ? el('button', {
+              className: 'bv-mini-btn',
+              text: 'Exit Draw',
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  drawBrushMode = 'off';
+                  pendingPenPoints = [];
+                  renderCoverStudio(container, actions);
+                },
+              },
+            })
+          : null,
+      ),
+      ...(drawBrushMode === 'pen' && pendingPenPoints.length >= 2
+        ? [
+            el('button', {
+              className: 'bv-btn bv-btn-primary',
+              text: `Commit Vector Path (${pendingPenPoints.length} pts)`,
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  const created = createPathLayer(activeTargetFace(), pendingPenPoints, {
+                    name: `Vector Path ${(cover.pathLayers?.length ?? 0) + 1}`,
+                    closed: drawClosedPath,
+                    strokeColor: drawStrokeColor,
+                    strokeWidth: drawStrokeWidth,
+                    fillColor: drawClosedPath ? fillColIn.value : 'transparent',
+                    blendMode: drawBlendMode,
+                  });
+                  pendingPenPoints = [];
+                  activeSelectionKind = 'path';
+                  activeLayerId = created.id;
+                  mutateCover(actions, (c) => ({
+                    ...c,
+                    pathLayers: [...(c.pathLayers ?? []), created],
+                  }));
+                },
+              },
+            }),
+          ]
+        : []),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Stroke Color' }), strokeColIn),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Stroke Width (${drawStrokeWidth}px)` }), strokeWIn),
+      el('label', { className: 'bv-check-row' }, closedChk, el('span', { text: 'Close Path & Fill Interior' })),
+      el(
+        'div',
+        { className: 'bv-field' },
+        el('label', { className: 'bv-label', text: 'Fill Color' }),
+        el(
+          'div',
+          { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+          fillColIn,
+          el('button', {
+            className: 'bv-mini-btn',
+            text: 'No Fill',
+            attrs: { type: 'button' },
+            on: { click: () => { drawFillColor = 'transparent'; } },
+          }),
+        ),
+      ),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Blend Mode' }), blendSel),
+    );
+  } else if (isDesktopProCover && activeToolTab === 'variants') {
+    const variantNameIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'text', placeholder: `Draft Concept ${variants.length + 1}` },
+    });
+
+    const openCompareModal = () => {
+      if (variants.length < 1) {
+        actions.notify('Save at least 1 cover draft variant first to compare side-by-side.');
+        return;
+      }
+      document.getElementById('qv-cover-compare-modal')?.remove();
+      const allOptions = [
+        { id: '__current__', name: 'Current Working Cover', snap: createCoverVariantSnapshot(cover) },
+        ...variants.map((v) => ({ id: v.id, name: v.name, snap: v.snapshot })),
+      ];
+      if (!compareLeftVariantId || !allOptions.some((o) => o.id === compareLeftVariantId)) {
+        compareLeftVariantId = allOptions[0].id;
+      }
+      if (!compareRightVariantId || !allOptions.some((o) => o.id === compareRightVariantId)) {
+        compareRightVariantId = allOptions[Math.min(1, allOptions.length - 1)].id;
+      }
+
+      const previewHost = el('div', { className: 'qv-cover-compare-grid' });
+      const closeCmp = () => cmpBackdrop.remove();
+
+      const renderMiniCoverCard = (titleLabel: string, snap: Omit<BookCoverConfig, 'variants' | 'comments'>, canPromote: boolean, onPromote?: () => void) => {
+        const card = el(
+          'div',
+          { className: 'qv-cover-compare-col' },
+          el('div', { className: 'qv-cover-compare-preview', style: { background: computeCoverBackgroundCss({ ...cover, ...snap }, snap.backgroundColor), color: snap.textColor } },
+            snap.backgroundImageDataUrl
+              ? el('img', {
+                  attrs: { src: snap.backgroundImageDataUrl, alt: titleLabel },
+                  style: { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'cover', opacity: String(1 - (snap.imageOverlayOpacity ?? 0.45)) },
+                })
+              : null,
+            el('div', { className: 'qv-cover-compare-meta' },
+              el('span', { style: { fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: snap.accentColor }, text: snap.editionLabel }),
+              el('strong', { style: { fontSize: '18px', lineHeight: '1.2' }, text: project.title }),
+              project.subtitle ? el('span', { style: { fontSize: '11px', opacity: '0.85' }, text: project.subtitle }) : null,
+              el('span', { style: { fontSize: '11px', marginTop: 'auto', letterSpacing: '0.1em' }, text: penName.toUpperCase() }),
+            ),
+          ),
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+            el('div', {},
+              el('strong', { text: titleLabel, style: { fontSize: '12.5px' } }),
+              el('div', { className: 'bv-mono-tag', text: `Template: ${snap.template} · ${(snap.shapeLayers?.length ?? 0) + (snap.textLayers?.length ?? 0) + (snap.graphicLayers?.length ?? 0) + (snap.pathLayers?.length ?? 0)} layers` }),
+            ),
+            canPromote && onPromote
+              ? el('button', {
+                  className: 'bv-mini-btn bv-btn-primary',
+                  text: 'Promote Winner',
+                  attrs: { type: 'button' },
+                  on: {
+                    click: () => {
+                      onPromote();
+                      closeCmp();
+                    },
+                  },
+                })
+              : null,
+          ),
+        );
+        return card;
+      };
+
+      const rebuildCompare = () => {
+        previewHost.textContent = '';
+        const leftItem = allOptions.find((o) => o.id === compareLeftVariantId) ?? allOptions[0];
+        const rightItem = allOptions.find((o) => o.id === compareRightVariantId) ?? allOptions[allOptions.length - 1];
+        previewHost.append(
+          renderMiniCoverCard(leftItem.name, leftItem.snap, leftItem.id !== '__current__', () => {
+            mutateCover(actions, (c) => ({ ...structuredClone(leftItem.snap), variants: c.variants, comments: c.comments }));
+            actions.notify(`Promoted “${leftItem.name}” to active cover`);
+          }),
+          renderMiniCoverCard(rightItem.name, rightItem.snap, rightItem.id !== '__current__', () => {
+            mutateCover(actions, (c) => ({ ...structuredClone(rightItem.snap), variants: c.variants, comments: c.comments }));
+            actions.notify(`Promoted “${rightItem.name}” to active cover`);
+          }),
+        );
+      };
+
+      const leftSel = el(
+        'select',
+        { className: 'bv-input', on: { change: () => { compareLeftVariantId = leftSel.value; rebuildCompare(); } } },
+        ...allOptions.map((o) => el('option', { text: o.name, attrs: { value: o.id, selected: compareLeftVariantId === o.id } })),
+      );
+      const rightSel = el(
+        'select',
+        { className: 'bv-input', on: { change: () => { compareRightVariantId = rightSel.value; rebuildCompare(); } } },
+        ...allOptions.map((o) => el('option', { text: o.name, attrs: { value: o.id, selected: compareRightVariantId === o.id } })),
+      );
+
+      const cmpModal = el(
+        'div',
+        { className: 'bv-modal', style: { maxWidth: '820px' }, attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Compare Cover Design Variants' } },
+        el('div', { className: 'bv-panel-head' },
+          el('span', { className: 'bv-panel-title', text: 'Side-by-Side Cover Comparison' }),
+          el('button', { className: 'bv-mini-btn', text: 'Close', attrs: { type: 'button' }, on: { click: closeCmp } }),
+        ),
+        el('div', { className: 'bv-modal-body', style: { gap: '12px' } },
+          el('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' } },
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Left Concept' }), leftSel),
+            el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Right Concept' }), rightSel),
+          ),
+          previewHost,
+        ),
+      );
+      const cmpBackdrop = el(
+        'div',
+        { className: 'bv-modal-backdrop', id: 'qv-cover-compare-modal', on: { click: (e) => { if (e.target === cmpBackdrop) closeCmp(); } } },
+        cmpModal,
+      );
+      document.body.appendChild(cmpBackdrop);
+      rebuildCompare();
+    };
+
+    leftBody.append(
+      el('span', { className: 'bv-panel-title', text: 'Drafts & Side-by-Side Compare' }),
+      variantNameIn,
+      el(
+        'div',
+        { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+        el('button', {
+          className: 'bv-btn bv-btn-primary',
+          text: 'Save Current as Draft',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              const name = variantNameIn.value.trim() || `Draft Concept ${variants.length + 1}`;
+              const variant = {
+                id: newId('cvar'),
+                name,
+                createdAt: new Date().toISOString(),
+                snapshot: createCoverVariantSnapshot(cover),
+              };
+              variantNameIn.value = '';
+              mutateCover(actions, (c) => ({ ...c, variants: [...(c.variants ?? []), variant] }));
+              actions.notify(`Saved cover variant “${name}”`);
+            },
+          },
+        }),
+        el('button', {
+          className: 'bv-btn',
+          text: 'Compare Side-by-Side',
+          attrs: { type: 'button' },
+          on: { click: openCompareModal },
+        }),
+      ),
+      ...variants.map((v) =>
+        el(
+          'div',
+          { className: 'bv-list-card', style: { flexDirection: 'column', alignItems: 'stretch', gap: '6px' } },
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            el('strong', { text: v.name, style: { fontSize: '12.5px' } }),
+            el('span', { className: 'bv-mono-tag', text: v.snapshot.template }),
+          ),
+          el('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+            el('button', {
+              className: 'bv-mini-btn bv-btn-primary',
+              text: 'Load',
+              attrs: { type: 'button' },
+              on: {
+                click: () => {
+                  mutateCover(actions, (c) => ({ ...structuredClone(v.snapshot), variants: c.variants, comments: c.comments }));
+                  actions.notify(`Loaded cover draft “${v.name}”`);
+                },
+              },
+            }),
+            el('button', {
+              className: 'bv-mini-btn',
+              text: 'Delete',
+              attrs: { type: 'button' },
+              on: {
+                click: () => mutateCover(actions, (c) => ({ ...c, variants: (c.variants ?? []).filter((x) => x.id !== v.id) })),
+              },
+            }),
+          ),
+        ),
+      ),
+    );
+  } else if (isDesktopProCover && activeToolTab === 'collab') {
+    const designImportInput = el('input', {
+      attrs: { type: 'file', accept: '.qvdesign' },
+      style: { display: 'none' },
+      on: {
+        change: async () => {
+          const f = designImportInput.files?.[0];
+          designImportInput.value = '';
+          if (!f) return;
+          try {
+            const bytes = new Uint8Array(await f.arrayBuffer());
+            const res = await importCoverDesignArchive(bytes, project, { filenameHint: f.name });
+            actions.mutateProject(() => res.project);
+            actions.notify(res.summaryMessage);
+          } catch (err) {
+            actions.notify(err instanceof Error ? err.message : 'Unable to import .qvdesign package.');
+          }
+        },
+      },
+    });
+    const mergeCommentsInput = el('input', {
+      attrs: { type: 'file', accept: '.qvdesign' },
+      style: { display: 'none' },
+      on: {
+        change: async () => {
+          const f = mergeCommentsInput.files?.[0];
+          mergeCommentsInput.value = '';
+          if (!f) return;
+          try {
+            const bytes = new Uint8Array(await f.arrayBuffer());
+            const res = await importCoverDesignArchive(bytes, project, { mergeCommentsOnly: true, filenameHint: f.name });
+            actions.mutateProject(() => res.project);
+            actions.notify(res.summaryMessage);
+          } catch (err) {
+            actions.notify(err instanceof Error ? err.message : 'Unable to merge review comments.');
+          }
+        },
+      },
+    });
+    const pinAuthorIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'text', value: project.activeAuthorLabel || penName || 'Reviewer', placeholder: 'Reviewer Name' },
+    });
+    const pinNoteIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'text', placeholder: 'Note for the next pin (or add directly)…' },
+    });
+
+    leftBody.append(
+      el('span', { className: 'bv-panel-title', text: 'Cover Design Collaboration (.qvdesign)' }),
+      el('p', {
+        className: 'bv-label',
+        text: 'Export a standalone .qvdesign package to share editable layers with co-authors or cover designers, or drop review pins directly on the artwork.',
+      }),
+      el(
+        'div',
+        { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+        el('button', {
+          className: 'bv-btn bv-btn-primary',
+          attrs: { type: 'button' },
+          on: {
+            click: async () => {
+              const bytes = await exportCoverDesignArchive(project);
+              const saved = await exportGenericFile({
+                suggestedName: `${project.title || 'cover'}-design`,
+                extension: 'qvdesign',
+                description: 'Quillvibe Cover Design (.qvdesign)',
+                mimeType: 'application/vnd.quillvibe.design',
+                binaryBytes: bytes,
+              });
+              if (saved) actions.notify('Exported .qvdesign cover package');
+            },
+          },
+        }, icon('download', 13), 'Export .qvdesign'),
+        el('button', {
+          className: 'bv-btn',
+          text: 'Import .qvdesign…',
+          attrs: { type: 'button' },
+          on: { click: () => designImportInput.click() },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Merge Pins Only…',
+          attrs: { type: 'button' },
+          on: { click: () => mergeCommentsInput.click() },
+        }),
+      ),
+      designImportInput,
+      mergeCommentsInput,
+      el('hr', { style: { border: '0', borderTop: '1px solid var(--border-subtle)', margin: '8px 0' } }),
+      el('span', { className: 'bv-panel-title', text: `Canvas Review Pins (${comments.length})` }),
+      pinAuthorIn,
+      pinNoteIn,
+      el(
+        'div',
+        { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
+        el('button', {
+          className: `bv-mini-btn${commentPinMode ? ' is-active' : ''}`,
+          text: commentPinMode ? 'Click Cover to Drop Pin (Active)' : 'Click Cover to Drop Pin',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              commentPinMode = !commentPinMode;
+              drawBrushMode = 'off';
+              renderCoverStudio(container, actions);
+            },
+          },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Drop Center Pin',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              const text = pinNoteIn.value.trim() || 'Review note on cover layout';
+              const author = pinAuthorIn.value.trim() || penName || 'Reviewer';
+              pinNoteIn.value = '';
+              mutateCover(actions, (c) => ({
+                ...c,
+                comments: [
+                  ...(c.comments ?? []),
+                  { id: newId('cpin'), face: activeTargetFace(), xPct: 50, yPct: 50, author, text, resolved: false, createdAt: new Date().toISOString() },
+                ],
+              }));
+            },
+          },
+        }),
+      ),
+      ...comments.map((cm, idx) =>
+        el(
+          'div',
+          { className: `bv-list-card${cm.resolved ? ' is-resolved' : ''}`, style: { flexDirection: 'column', alignItems: 'stretch', gap: '4px', opacity: cm.resolved ? '0.65' : '1' } },
+          el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            el('strong', { text: `#${idx + 1} · ${cm.author} (${cm.face})`, style: { fontSize: '12px' } }),
+            el('span', { className: 'bv-mono-tag', text: cm.resolved ? 'Resolved' : 'Open' }),
+          ),
+          el('p', { className: 'bv-label', text: cm.text, style: { margin: '0', color: 'var(--text-primary)' } }),
+          el('div', { style: { display: 'flex', gap: '6px' } },
+            el('button', {
+              className: 'bv-mini-btn',
+              text: cm.resolved ? 'Reopen' : 'Resolve',
+              attrs: { type: 'button' },
+              on: { click: () => mutateCover(actions, (c) => ({ ...c, comments: (c.comments ?? []).map((x) => x.id === cm.id ? { ...x, resolved: !x.resolved } : x) })) },
+            }),
+            el('button', {
+              className: 'bv-mini-btn',
+              text: 'Remove',
+              attrs: { type: 'button' },
+              on: { click: () => mutateCover(actions, (c) => ({ ...c, comments: (c.comments ?? []).filter((x) => x.id !== cm.id) })) },
+            }),
+          ),
+        ),
+      ),
     );
   } else if (activeToolTab === 'background') {
     const bgModeSel = el(
@@ -1522,6 +2126,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           width: `${s.widthPct}%`,
           height: s.shape === 'line' ? `${Math.max(2, s.strokeWidth || 2)}px` : `${s.heightPct}%`,
           opacity: String(s.opacity),
+          mixBlendMode: s.blendMode || 'normal',
           zIndex: String(2 + (s.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${s.rotationDeg}deg)`,
           borderRadius: isPolyVector ? '0px' : s.shape === 'circle' || s.shape === 'badge' ? '999px' : `${s.cornerRadius}px`,
@@ -1608,6 +2213,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
             top: `${gLayer.yPct}%`,
             width: `${gLayer.widthPct}%`,
             opacity: String(gLayer.opacity),
+            mixBlendMode: gLayer.blendMode || 'normal',
             zIndex: String(2 + (gLayer.zIndex ?? 0)),
             transform: `translate(-50%, -50%) rotate(${gLayer.rotationDeg}deg) scale(${sx}, ${sy})`,
             filter: filterStr,
@@ -1695,6 +2301,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           letterSpacing: `${tl.letterSpacingEm}em`,
           lineHeight: String(tl.lineHeight),
           opacity: String(tl.opacity),
+          mixBlendMode: tl.blendMode || 'normal',
           zIndex: String(3 + (tl.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${tl.rotationDeg}deg)`,
           textShadow: tl.shadowBlur ? `0 2px ${tl.shadowBlur}px rgba(0,0,0,0.6)` : 'none',
@@ -1771,14 +2378,212 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
       attachLayerContextMenu(tNode, 'text', tl.id, tl.locked ?? false);
       faceEl.appendChild(tNode);
     }
+
+    // Vector Path / Freehand Layers + Desktop Interactive Drawing & Review Pins
+    const facePaths = [...pathLayers]
+      .filter((p) => p.face === face && p.visible !== false && p.points.length >= 2)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    if (facePaths.length > 0 || (isDesktopProCover && drawBrushMode !== 'off' && activeTargetFace() === face)) {
+      const pathOverlaySvg = svgEl('svg', {
+        className: 'qv-cover-path-overlay',
+        viewBox: '0 0 100 100',
+        preserveAspectRatio: 'none',
+      });
+      pathOverlaySvg.style.position = 'absolute';
+      pathOverlaySvg.style.inset = '0';
+      pathOverlaySvg.style.width = '100%';
+      pathOverlaySvg.style.height = '100%';
+      pathOverlaySvg.style.zIndex = '4';
+      pathOverlaySvg.style.pointerEvents = drawBrushMode === 'off' ? 'none' : 'auto';
+      pathOverlaySvg.style.cursor = drawBrushMode === 'off' ? 'default' : 'crosshair';
+
+      for (const pl of facePaths) {
+        const d =
+          pl.points.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.xPct.toFixed(2)} ${pt.yPct.toFixed(2)}`).join(' ') +
+          (pl.closed ? ' Z' : '');
+        const isSel = activeSelectionKind === 'path' && activeLayerId === pl.id;
+        const pNode = svgEl('path', {
+          d,
+          fill: pl.fillColor && pl.fillColor !== 'transparent' ? pl.fillColor : 'none',
+          stroke: pl.strokeColor,
+          'stroke-width': String(Math.max(0.4, pl.strokeWidth * 0.35)),
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          opacity: String(pl.opacity),
+          'vector-effect': 'non-scaling-stroke',
+        });
+        if (pl.blendMode && pl.blendMode !== 'normal') {
+          pNode.style.mixBlendMode = pl.blendMode;
+        }
+        pNode.style.pointerEvents = 'stroke';
+        pNode.style.cursor = 'pointer';
+        if (isSel) {
+          pNode.setAttribute('filter', 'drop-shadow(0 0 2px #d8b576)');
+        }
+        pNode.addEventListener('click', (e) => {
+          if (drawBrushMode !== 'off') return;
+          e.stopPropagation();
+          setSingleSelection(cover, 'path', pl.id, false);
+          activeInspectorTab = 'properties';
+          renderCoverStudio(container, actions);
+        });
+        pathOverlaySvg.appendChild(pNode);
+      }
+
+      if (drawBrushMode === 'pen' && pendingPenPoints.length > 0 && activeTargetFace() === face) {
+        const draftD = pendingPenPoints.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.xPct.toFixed(2)} ${pt.yPct.toFixed(2)}`).join(' ');
+        pathOverlaySvg.appendChild(
+          svgEl('path', {
+            d: draftD,
+            fill: 'none',
+            stroke: drawStrokeColor,
+            'stroke-width': String(Math.max(1, drawStrokeWidth)),
+            'stroke-dasharray': '3 3',
+            'vector-effect': 'non-scaling-stroke',
+          }),
+        );
+        for (const pt of pendingPenPoints) {
+          pathOverlaySvg.appendChild(
+            svgEl('circle', {
+              cx: pt.xPct,
+              cy: pt.yPct,
+              r: '1.1',
+              fill: '#ffffff',
+              stroke: drawStrokeColor,
+              'stroke-width': '0.4',
+            }),
+          );
+        }
+      }
+
+      if (isDesktopProCover && drawBrushMode !== 'off' && activeTargetFace() === face) {
+        const toPct = (ev: PointerEvent): CoverPathPoint => {
+          const rect = pathOverlaySvg.getBoundingClientRect();
+          return {
+            xPct: Math.max(0, Math.min(100, ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 100)),
+            yPct: Math.max(0, Math.min(100, ((ev.clientY - rect.top) / Math.max(1, rect.height)) * 100)),
+          };
+        };
+
+        if (drawBrushMode === 'pen') {
+          pathOverlaySvg.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            pendingPenPoints.push(toPct(e));
+            renderCoverStudio(container, actions);
+          });
+        } else if (drawBrushMode === 'freehand') {
+          let activeStroke: CoverPathPoint[] = [];
+          let liveEl: SVGPathElement | null = null;
+          pathOverlaySvg.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            pathOverlaySvg.setPointerCapture?.(e.pointerId);
+            activeStroke = [toPct(e)];
+            liveEl = svgEl('path', {
+              d: `M ${activeStroke[0].xPct.toFixed(2)} ${activeStroke[0].yPct.toFixed(2)}`,
+              fill: 'none',
+              stroke: drawStrokeColor,
+              'stroke-width': String(Math.max(1, drawStrokeWidth)),
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+              'vector-effect': 'non-scaling-stroke',
+            });
+            pathOverlaySvg.appendChild(liveEl);
+            const onMove = (mv: PointerEvent) => {
+              const pt = toPct(mv);
+              const last = activeStroke[activeStroke.length - 1];
+              if (Math.hypot(pt.xPct - last.xPct, pt.yPct - last.yPct) >= 1.1) {
+                activeStroke.push(pt);
+                liveEl?.setAttribute(
+                  'd',
+                  activeStroke.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.xPct.toFixed(2)} ${p.yPct.toFixed(2)}`).join(' '),
+                );
+              }
+            };
+            const onUp = () => {
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+              if (activeStroke.length >= 2) {
+                const created = createPathLayer(face, activeStroke, {
+                  name: `Brush Stroke ${pathLayers.length + 1}`,
+                  closed: drawClosedPath,
+                  strokeColor: drawStrokeColor,
+                  strokeWidth: drawStrokeWidth,
+                  fillColor: drawClosedPath ? drawFillColor : 'transparent',
+                  blendMode: drawBlendMode,
+                });
+                activeSelectionKind = 'path';
+                activeLayerId = created.id;
+                mutateCover(actions, (c) => ({ ...c, pathLayers: [...(c.pathLayers ?? []), created] }));
+              }
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          });
+        }
+      }
+      faceEl.appendChild(pathOverlaySvg);
+    }
+
+    if (isDesktopProCover) {
+      if (commentPinMode && activeTargetFace() === face) {
+        faceEl.style.cursor = 'crosshair';
+        faceEl.addEventListener(
+          'click',
+          (ev) => {
+            if (!commentPinMode) return;
+            const rect = faceEl.getBoundingClientRect();
+            const xPct = Math.max(4, Math.min(96, Math.round(((ev.clientX - rect.left) / Math.max(1, rect.width)) * 100)));
+            const yPct = Math.max(4, Math.min(96, Math.round(((ev.clientY - rect.top) / Math.max(1, rect.height)) * 100)));
+            const author = project.activeAuthorLabel || penName || 'Reviewer';
+            commentPinMode = false;
+            mutateCover(actions, (c) => ({
+              ...c,
+              comments: [
+                ...(c.comments ?? []),
+                {
+                  id: newId('cpin'),
+                  face,
+                  xPct,
+                  yPct,
+                  author,
+                  text: `Cover feedback pin (${xPct}%, ${yPct}%)`,
+                  resolved: false,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }));
+          },
+          { once: true },
+        );
+      }
+
+      comments.forEach((cm, idx) => {
+        if (cm.face !== face) return;
+        const pin = el('button', {
+          className: `qv-cover-pin${cm.resolved ? ' is-resolved' : ''}`,
+          text: String(idx + 1),
+          attrs: { type: 'button', title: `${cm.author}: ${cm.text}` },
+          style: { left: `${cm.xPct}%`, top: `${cm.yPct}%` },
+          on: {
+            click: (e) => {
+              e.stopPropagation();
+              activeToolTab = 'collab';
+              renderCoverStudio(container, actions);
+            },
+          },
+        });
+        faceEl.appendChild(pin);
+      });
+    }
   };
 
-  const bumpLayerZ = (kind: 'text' | 'shape' | 'graphic', id: string, delta: number) => {
+  const bumpLayerZ = (kind: 'text' | 'shape' | 'graphic' | 'path', id: string, delta: number) => {
     mutateCover(actions, (c) => ({
       ...c,
       textLayers: (c.textLayers ?? []).map((l) => (kind === 'text' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
       shapeLayers: (c.shapeLayers ?? []).map((l) => (kind === 'shape' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
       graphicLayers: (c.graphicLayers ?? []).map((l) => (kind === 'graphic' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
+      pathLayers: (c.pathLayers ?? []).map((l) => (kind === 'path' && l.id === id ? { ...l, zIndex: (l.zIndex ?? 0) + delta } : l)),
     }));
   };
 
@@ -2477,7 +3282,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
     }),
     el('button', {
       className: `bv-fmt-btn${activeInspectorTab === 'layers' ? ' is-active' : ''}`,
-      text: `Layers (${5 + textLayers.length + shapeLayers.length + graphicLayers.length})`,
+      text: `Layers (${5 + textLayers.length + shapeLayers.length + graphicLayers.length + pathLayers.length})`,
       attrs: { type: 'button' },
       on: {
         click: () => {
@@ -2573,6 +3378,26 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
           () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((x) => x.id === tl.id ? { ...x, visible: !(x.visible !== false) } : x) })),
           () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((x) => x.id === tl.id ? { ...x, locked: !x.locked } : x) })),
           () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).filter((x) => x.id !== tl.id) })),
+        ),
+      );
+    }
+
+    for (const pl of [...pathLayers].reverse()) {
+      rightBody.appendChild(
+        buildLayerRow(
+          pl.name,
+          `PATH · ${pl.face} (${pl.points.length} pts)`,
+          activeSelectionKind === 'path' && activeLayerId === pl.id,
+          pl.visible !== false,
+          Boolean(pl.locked),
+          () => {
+            activeSelectionKind = 'path';
+            activeLayerId = pl.id;
+            renderCoverStudio(container, actions);
+          },
+          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).map((x) => x.id === pl.id ? { ...x, visible: !(x.visible !== false) } : x) })),
+          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).map((x) => x.id === pl.id ? { ...x, locked: !x.locked } : x) })),
+          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).filter((x) => x.id !== pl.id) })),
         ),
       );
     }
@@ -2738,6 +3563,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         el('option', { text: 'Underline', attrs: { value: 'underline', selected: selectedTextLayer.textDecoration === 'underline' } }),
         el('option', { text: 'Strikethrough', attrs: { value: 'line-through', selected: selectedTextLayer.textDecoration === 'line-through' } }),
       );
+      const tBlendSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: { change: () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((l) => l.id === selectedTextLayer.id ? { ...l, blendMode: tBlendSel.value as CoverBlendMode } : l) })) },
+        },
+        ...COVER_BLEND_MODES.map((m) =>
+          el('option', { text: m.label, attrs: { value: m.id, selected: (selectedTextLayer.blendMode || 'normal') === m.id } }),
+        ),
+      );
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: 'Custom Text Layer' }),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Copy' }), txtVal),
@@ -2745,6 +3580,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         el('div', { className: 'bv-field' }, (sizeLbl = el('label', { className: 'bv-label', text: `Font Size (${selectedTextLayer.fontSize}px)` })), sizeRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Color' }), colorIn),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Text Decoration' }), decoSel),
+        ...(isDesktopProCover ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Blend Mode' }), tBlendSel)] : []),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Backdrop Highlight' }), el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, bgPillIn, clearBgPillBtn)),
         el('label', { className: 'bv-check-row' }, italicChk, el('span', { text: 'Italic Style' })),
         el('label', { className: 'bv-check-row' }, upperChk, el('span', { text: 'Uppercase Display' })),
@@ -2850,6 +3686,16 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         }),
       );
 
+      const shapeBlendSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: { change: () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((l) => l.id === selectedShapeLayer.id ? { ...l, blendMode: shapeBlendSel.value as CoverBlendMode } : l) })) },
+        },
+        ...COVER_BLEND_MODES.map((m) =>
+          el('option', { text: m.label, attrs: { value: m.id, selected: (selectedShapeLayer.blendMode || 'normal') === m.id } }),
+        ),
+      );
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: `Shape · ${selectedShapeLayer.name}` }),
         el('div', { className: 'bv-field' }, (wLbl = el('label', { className: 'bv-label', text: `Width (${selectedShapeLayer.widthPct}%)` })), wRange),
@@ -2860,6 +3706,7 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Stroke Width (${selectedShapeLayer.strokeWidth}px)` }), strokeWRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Corner Radius (${selectedShapeLayer.cornerRadius}px)` }), radiusRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Opacity (${Math.round(selectedShapeLayer.opacity * 100)}%)` }), opRange),
+        ...(isDesktopProCover ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Blend Mode' }), shapeBlendSel)] : []),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Rotation (${selectedShapeLayer.rotationDeg}°)` }), rotRange),
         el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Order' }), shapeZRow),
         alignRow((nx, ny) =>
@@ -2972,11 +3819,22 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
         },
       });
 
+      const gBlendSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: { change: () => mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((g) => g.id === selectedGraphicLayer.id ? { ...g, blendMode: gBlendSel.value as CoverBlendMode } : g) })) },
+        },
+        ...COVER_BLEND_MODES.map((m) =>
+          el('option', { text: m.label, attrs: { value: m.id, selected: (selectedGraphicLayer.blendMode || 'normal') === m.id } }),
+        ),
+      );
       rightBody.append(
         el('span', { className: 'bv-panel-title', text: `Graphic · ${selectedGraphicLayer.name}` }),
         el('div', { className: 'bv-field' }, (widthLbl = el('label', { className: 'bv-label', text: `Scale (${selectedGraphicLayer.widthPct}%)` })), widthRange),
         el('div', { className: 'bv-field' }, (rotLbl = el('label', { className: 'bv-label', text: `Rotation (${selectedGraphicLayer.rotationDeg}°)` })), rotRange),
         el('div', { className: 'bv-field' }, (opLbl = el('label', { className: 'bv-label', text: `Opacity (${Math.round(selectedGraphicLayer.opacity * 100)}%)` })), opRange),
+        ...(isDesktopProCover ? [el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Blend Mode' }), gBlendSel)] : []),
         el('div', { className: 'bv-field' }, (satLbl = el('label', { className: 'bv-label', text: `Saturation (${selectedGraphicLayer.saturationPct ?? 100}%)` })), satRange),
         el('div', { className: 'bv-field' }, (radLbl = el('label', { className: 'bv-label', text: `Corner Roundness (${selectedGraphicLayer.borderRadiusPct ?? 0}%)` })), radRange),
         el(
@@ -3013,6 +3871,126 @@ export function renderCoverStudio(container: HTMLElement, actions: AppActions): 
             },
           },
         }, icon('trash', 12), 'Remove Layer'),
+      );
+    } else if (selectedPathLayer) {
+      const pNameIn = el('input', {
+        className: 'bv-input',
+        attrs: { type: 'text', value: selectedPathLayer.name },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, name: pNameIn.value.trim() || p.name } : p)),
+            })),
+        },
+      });
+      const pStrokeColIn = el('input', {
+        attrs: { type: 'color', value: selectedPathLayer.strokeColor || '#c7a97b' },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, strokeColor: pStrokeColIn.value } : p)),
+            })),
+        },
+      });
+      const pStrokeWRange = el('input', {
+        attrs: { type: 'range', min: 1, max: 24, step: 1, value: selectedPathLayer.strokeWidth },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, strokeWidth: Number(pStrokeWRange.value) } : p)),
+            })),
+        },
+      });
+      const pFillColIn = el('input', {
+        attrs: { type: 'color', value: selectedPathLayer.fillColor && selectedPathLayer.fillColor.startsWith('#') ? selectedPathLayer.fillColor : cover.accentColor },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, fillColor: pFillColIn.value } : p)),
+            })),
+        },
+      });
+      const pOpRange = el('input', {
+        attrs: { type: 'range', min: 0.05, max: 1, step: 0.05, value: selectedPathLayer.opacity },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, opacity: Number(pOpRange.value) } : p)),
+            })),
+        },
+      });
+      const pBlendSel = el(
+        'select',
+        {
+          className: 'bv-input',
+          on: {
+            change: () =>
+              mutateCover(actions, (c) => ({
+                ...c,
+                pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, blendMode: pBlendSel.value as CoverBlendMode } : p)),
+              })),
+          },
+        },
+        ...COVER_BLEND_MODES.map((m) =>
+          el('option', { text: m.label, attrs: { value: m.id, selected: (selectedPathLayer.blendMode || 'normal') === m.id } }),
+        ),
+      );
+      const pClosedChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: selectedPathLayer.closed },
+        on: {
+          change: () =>
+            mutateCover(actions, (c) => ({
+              ...c,
+              pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, closed: pClosedChk.checked } : p)),
+            })),
+        },
+      });
+      rightBody.append(
+        el('span', { className: 'bv-panel-title', text: `Vector Path (${selectedPathLayer.points.length} pts)` }),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Layer Name' }), pNameIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Stroke Color' }), pStrokeColIn),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Stroke Width (${selectedPathLayer.strokeWidth}px)` }), pStrokeWRange),
+        el('label', { className: 'bv-check-row' }, pClosedChk, el('span', { text: 'Closed Shape & Fill' })),
+        el(
+          'div',
+          { className: 'bv-field' },
+          el('label', { className: 'bv-label', text: 'Fill Color' }),
+          el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+            pFillColIn,
+            el('button', {
+              className: 'bv-mini-btn',
+              text: 'Transparent',
+              attrs: { type: 'button' },
+              on: {
+                click: () =>
+                  mutateCover(actions, (c) => ({
+                    ...c,
+                    pathLayers: (c.pathLayers ?? []).map((p) => (p.id === selectedPathLayer.id ? { ...p, fillColor: 'transparent' } : p)),
+                  })),
+              },
+            }),
+          ),
+        ),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: `Opacity (${Math.round(selectedPathLayer.opacity * 100)}%)` }), pOpRange),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Blend Mode' }), pBlendSel),
+        el('button', {
+          className: 'bv-mini-btn',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              const delId = selectedPathLayer.id;
+              activeSelectionKind = 'element';
+              activeLayerId = '';
+              mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).filter((p) => p.id !== delId) }));
+            },
+          },
+        }, icon('trash', 12), 'Delete Vector Path'),
       );
     } else {
       const activeEl = cover.elements[activeElementKey];

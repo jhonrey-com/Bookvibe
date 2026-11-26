@@ -5,10 +5,10 @@
 **Quillvibe** is a free, open-source book writing app built for authors and writers. You can write chapters, keep character and world notes, mark up drafts while proofreading, design book covers, and export print-ready `.pdf` and `.epub` books—all in one place without creating an account. It opens in **Ivory Light** with three **Workspace Layouts** (**Focused**, **Editorial**, and **Full Studio**), works offline, saves books in Quillvibe's protected `.qv` format, and is published under **`jhonrey.com`**.
 
 > **Try Quillvibe in Your Browser:** <a href="https://quillvibe.jhonrey.com/start" target="_blank" rel="noopener noreferrer"><strong>Open <code>https://quillvibe.jhonrey.com/start</code></strong></a>  
-> **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 28 Lessons)</strong></a>  
+> **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 31 Lessons)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
 > **Developer Portal (`.qvext` Add-ons):** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/developer</code></strong></a> *(Companion Extension Builder App Coming Soon)*  
-> **Download Desktop App (`v3.0.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Download Desktop App (`v3.1.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
@@ -44,12 +44,12 @@
 Many writers end up juggling several separate programs—one for writing chapters, another for outlines, another for character notes, another for cover design, and another to turn drafts into an eBook or print PDF. Quillvibe keeps all of those steps together in one local book file:
 
 - **No account and no setup**: Open a blank book or sample project right away. Your `.qv` file stays on your own device and can be locked with a password.
-- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and toggleable in Settings), pick **Match Device (System)**, **Ivory Light**, **Parchment**, or **Obsidian Dark** themes, toggle **Smooth Animations** for Binder, Inspector, and menus, and use `Ctrl+Z` / `Ctrl+Y` undo and redo across every studio.
+- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and toggleable in Settings), pick **Match Device (System)**, **Ivory Light**, **Parchment**, or **Obsidian Dark** themes—or **link App Theme & Manuscript Paper Theme** so changing one updates both—toggle **Smooth Animations**, lock finalized proofread chapters or parts against accidental edits, use dedicated full pages for `/settings` and `/manual`, and undo/redo with `Ctrl+Z` / `Ctrl+Y`.
 - **Images right inside your book**: Drag and drop or insert photos and illustrations into any scene, wrap text around them (**Wrap Left**, **Wrap Right**, **Top & Bottom**, **Inline**, **Behind Text**), snap to grid or alignment guides, and remove solid backgrounds offline with one click.
 - **Built-in proofreading marks**: Mark up drafts with 15 traditional proofreading symbols right on the page, preview the clean result, and accept changes with automatic backup snapshots.
-- **Ready for publishing & easy migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and one-click **Migrate to Another Writing Tool** exports (`.md`, `.rtf`, `.json`).
+- **Ready for publishing & easy `.docx` migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and export full **`.docx`** manuscripts (for standard word processors and cloud document editors), `.md`, `.rtf`, or `.json`.
 
-### Live Screenshots (`v3.0.0`)
+### Live Screenshots (`v3.1.0`)
 
 <p align="center">
   <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, centered navigation bar, and Inspector" width="100%" />
@@ -69,14 +69,14 @@ Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener nor
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.0.0</code>)</strong></a> (published under **`jhonrey.com`**):
-- **Windows:** `.msi` or `-setup.exe`
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.1.0</code>)</strong></a> (published under **`jhonrey.com`**):
+- **Windows:** `.msi` or branded `-setup.exe` (with custom app icon & **Check for Updates** inside `/settings`)
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`
 
 Because Quillvibe is a new open-source app still being actively updated and improved, Windows, Mac, or Linux may show a warning before opening the installer. If you prefer to avoid that prompt, you can use the website version above instead.
 
-Desktop builds add automatic saving to your computer, stacked book tabs driven by a central drag-and-drop state machine (horizontal strip reordering, vertical tear-off detachment while preserving cursor grab offset, sole-tab window dragging, and z-ordered window merging), an empty **New Tab** book picker (`Ctrl+Shift+N`), conflict-safe live multi-window sync, single-instance double-click opening into a new tab for `.qv`, `.qvbible`, `.qvscene`, and `.qvstyle` files, `F11` fullscreen focus mode with a clock/timer bar, and Wi-Fi/Bluetooth book sharing.
+Desktop builds add automatic saving to your computer, stacked book tabs driven by a central drag-and-drop state machine (horizontal strip reordering, vertical tear-off detachment while preserving cursor grab offset, sole-tab window dragging, and z-ordered window merging), an empty **New Tab** book picker (`Ctrl+Shift+N`), conflict-safe live multi-window sync, single-instance double-click opening into a new tab for `.qv`, `.qvbible`, `.qvscene`, `.qvstyle`, and `.qvdesign` files, the **Pro Vector Book Cover Studio** (freehand brush & vector pen drawing, 7 optical blend modes, direct HTTPS image URL pasting, side-by-side draft comparison, canvas review pins, and `.qvdesign` sharing), `F11` fullscreen focus mode with a clock/timer bar, in-app update checking, and Wi-Fi/Bluetooth book sharing.
 
 ### Option C: Terminal Installers
 
@@ -123,9 +123,9 @@ Switch layouts anytime in **Settings -> Workspace & Editor** or by clicking the 
 ### Editorial — Outlining, Proofreading & Interior Print Layout
 Switch to **Editorial** layout to add **Corkboard** scene cards, **Outline** view, **Proofread** markup (15 copyediting symbols with Clean Preview and revision snapshots), and **Interior Typeset** for print and eBook layout.
 
-### Full Studio — Story Bible, Dual-Mode Story Graph, Cover Studio & Collaboration
-1. **Story Bible & Dual-Mode Story Graph**: Keep character, faction, item, location, lore, storyline, and scene cards linked with `[[wikilinks]]` and `#tags`. Switch seamlessly between **Spatial Storyboard** (Act Group frames, 90-degree obstacle-avoiding elbow connectors, Minimap, `.canvas` JSON import/export) and **Force Graph** (60 FPS physics constellation, hop isolation, shortest narrative path tracing).
-2. **Book Cover Studio & Author Seals**: Design front, spine, back, and jacket flaps with 100-step undo/redo, 10%–500% zoom, `Space+Drag` panning, 8-point scaling and rotation handles, `Ctrl+G` layer grouping, magnetic snapping with equal-spacing badges, inline double-click text editing, and `PNG 1x/2x/3x`, transparent PNG, JPEG, Vector SVG, and Print PDF exports. Keep multiple books in **Library**, record your **Origin Author & Device Key**, and seal your **Work Copyright**.
+### Full Studio — Story Bible, Dual-Mode Story Graph, Pro Cover Studio & Collaboration
+1. **Story Bible & Dual-Mode Story Graph**: Keep character, faction, item, location, lore, storyline, and scene cards linked with two-way **Auto-Sync Book** (`[[wikilinks]]` and `#tags`). Switch between **Spatial Storyboard** (Act Group frames, 5 curated board surface themes including Obsidian Dots, Slate Blueprint, Warm Paper, Charcoal Solid, and Ivory Grid, 90-degree obstacle-avoiding elbow connectors, Minimap, `.canvas` JSON import/export) and **Force Graph** (60 FPS physics constellation, hop isolation, shortest narrative path tracing).
+2. **Book Cover Studio & Author Seals**: On both website and desktop, design front, spine, back, and jacket flaps with 100-step undo/redo, 10%–500% zoom, `Space+Drag` panning, 8-point scaling and rotation handles, `Ctrl+G` layer grouping, magnetic snapping guides, and `PNG 1x/2x/3x`, transparent PNG, JPEG, Vector SVG, `.docx`, and Print PDF exports. **In the Desktop App**, Book Cover Studio adds full vector illustration & design tools: **Freehand Brush & Vector Pen path drawing**, per-layer transparency & **7 blend modes** (`Normal`, `Multiply`, `Screen`, `Overlay`, `Soft Light`, `Darken`, `Lighten`), direct **`https://` Image URL pasting**, **Draft Variants with Side-by-Side Comparison**, and canvas **Review Pins + `.qvdesign` sharing**. Keep multiple books in **Library**, record your **Origin Author & Device Key**, and seal your **Work Copyright**.
 3. **Co-Authors & Imports**: Pair co-authors using verified device tokens in **Collaborate**, or import `.docx`, `.html`, `.rtf`, `.md`, `.txt`, and older `.quillvibe`/`.bookvibe` files in **Settings -> Publishing & Archive**.
 
 ---
@@ -153,6 +153,7 @@ Native Quillvibe files use a protected binary format that only Quillvibe reads, 
 | **`.qvbible`** | Story Bible Notes | Merges Characters, Locations, Lore, and custom categories into the open book. |
 | **`.qvscene`** | Single Scene Draft | Opens or imports one scene with its snapshots and proofreading marks. |
 | **`.qvstyle`** | Typeset & Paper Style | Applies trim size, font, drop caps, smart quotes, margins, and paper theme. |
+| **`.qvdesign`** | Editable Cover Design Package | Opens or merges Book Cover Studio layers, vector paths, blend modes, draft variants, and canvas review pins. |
 
 Older `.quillvibe`, `.qvibe`, `.qvbook`, `.bookvibe`, and `.bv*` files do not open by double-clicking, but you can still import them anytime from **Settings -> Publishing & Archive** or the Welcome screen.
 

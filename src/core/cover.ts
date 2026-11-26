@@ -4,8 +4,11 @@ import { getProjectWordCount, newId } from './manuscript';
 import type {
   BookCoverConfig,
   BookProject,
+  CoverBlendMode,
   CoverFaceId,
   CoverGraphicLayer,
+  CoverPathLayer,
+  CoverPathPoint,
   CoverShapeKind,
   CoverShapeLayer,
   CoverTemplateId,
@@ -267,6 +270,90 @@ export function createTextLayer(
   };
 }
 
+export function createPathLayer(
+  face: CoverFaceId,
+  points: CoverPathPoint[],
+  options: {
+    name?: string;
+    closed?: boolean;
+    strokeColor?: string;
+    strokeWidth?: number;
+    fillColor?: string;
+    opacity?: number;
+    blendMode?: CoverBlendMode;
+  } = {},
+): CoverPathLayer {
+  return {
+    id: newId('cpl'),
+    face,
+    name: options.name ?? 'Vector Path',
+    points,
+    closed: Boolean(options.closed),
+    strokeColor: options.strokeColor ?? '#c7a97b',
+    strokeWidth: options.strokeWidth ?? 3,
+    fillColor: options.fillColor ?? 'transparent',
+    opacity: options.opacity ?? 1,
+    blendMode: options.blendMode ?? 'normal',
+    rotationDeg: 0,
+    visible: true,
+    locked: false,
+  };
+}
+
+export function createCoverVariantSnapshot(cover: BookCoverConfig): Omit<BookCoverConfig, 'variants' | 'comments'> {
+  const { variants: _v, comments: _c, ...rest } = structuredClone(cover);
+  return rest;
+}
+
+export function loadImageUrlAsDataUrl(rawUrl: string, maxDimension = 1400): Promise<string> {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return Promise.reject(new Error('Enter an HTTPS image URL or data:image URI first.'));
+  }
+  if (trimmed.startsWith('data:image/')) {
+    if (/^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(trimmed)) {
+      return Promise.resolve(trimmed);
+    }
+    return Promise.reject(new Error('Only safe PNG, JPEG, WebP, GIF, or SVG data URIs are allowed.'));
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return Promise.reject(new Error('Invalid URL format. Include https:// at the start.'));
+  }
+  if (parsed.protocol !== 'https:') {
+    return Promise.reject(new Error('Only secure https:// image URLs can be embedded into covers.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDimension / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || 600) * scale));
+        const h = Math.max(1, Math.round((img.height || 900) * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas 2D context unavailable for encoding pasted image.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        reject(new Error('Remote image server blocks canvas pixel export (missing CORS header). Download the file and upload it directly instead.'));
+      }
+    };
+    img.onerror = () =>
+      reject(new Error('Could not load image from that URL. Check the link or download the image to upload directly.'));
+    img.src = parsed.toString();
+  });
+}
+
 export function snapValueToGrid(valuePct: number, gridStepPct = 4, enabled = true): number {
   if (!enabled || gridStepPct <= 0) return Math.round(valuePct * 10) / 10;
   return Math.round(valuePct / gridStepPct) * gridStepPct;
@@ -347,6 +434,9 @@ export function defaultBookCover(project?: BookProject): BookCoverConfig {
     graphicLayers: [],
     shapeLayers: [],
     textLayers: [],
+    pathLayers: [],
+    variants: [],
+    comments: [],
     editionLabel: 'First Edition',
     elements: {
       edition: { xPct: 50, yPct: 12, fontSize: 12, align: 'center', visible: true },
@@ -441,6 +531,49 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
+function canvasBlendOp(mode?: CoverBlendMode): GlobalCompositeOperation {
+  if (!mode || mode === 'normal') return 'source-over';
+  return mode as GlobalCompositeOperation;
+}
+
+function drawPathLayersOnRect(
+  ctx: CanvasRenderingContext2D,
+  paths: CoverPathLayer[],
+  ox: number,
+  oy: number,
+  boxW: number,
+  boxH: number,
+): void {
+  const ordered = [...paths].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+  const scaleFactor = boxW / 400;
+  for (const p of ordered) {
+    if (p.visible === false || p.points.length < 2) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.02, Math.min(1, p.opacity));
+    ctx.globalCompositeOperation = canvasBlendOp(p.blendMode);
+    ctx.beginPath();
+    p.points.forEach((pt, idx) => {
+      const x = ox + (pt.xPct / 100) * boxW;
+      const y = oy + (pt.yPct / 100) * boxH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    if (p.closed) ctx.closePath();
+    if (p.fillColor && p.fillColor !== 'transparent') {
+      ctx.fillStyle = p.fillColor;
+      ctx.fill();
+    }
+    if (p.strokeWidth > 0 && p.strokeColor) {
+      ctx.strokeStyle = p.strokeColor;
+      ctx.lineWidth = Math.max(1, p.strokeWidth * scaleFactor);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 async function drawGraphicLayersOnRect(
   ctx: CanvasRenderingContext2D,
   layers: CoverGraphicLayer[],
@@ -461,6 +594,7 @@ async function drawGraphicLayersOnRect(
     const cy = oy + (layer.yPct / 100) * boxH;
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, layer.opacity));
+    ctx.globalCompositeOperation = canvasBlendOp(layer.blendMode);
     const b = layer.brightnessPct ?? 100;
     const c = layer.contrastPct ?? 100;
     const sat = layer.saturationPct ?? 100;
@@ -500,6 +634,7 @@ function drawShapeLayersOnRect(
     const cy = oy + (s.yPct / 100) * boxH;
     ctx.save();
     ctx.globalAlpha = Math.max(0.02, Math.min(1, s.opacity));
+    ctx.globalCompositeOperation = canvasBlendOp(s.blendMode);
     ctx.translate(cx, cy);
     ctx.rotate((s.rotationDeg * Math.PI) / 180);
 
@@ -591,6 +726,7 @@ function drawCustomTextLayersOnRect(
     const fontStack = tl.fontFamily ? resolveEffectiveFontCss('garamond', tl.fontFamily) : defaultFontStack;
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, tl.opacity));
+    ctx.globalCompositeOperation = canvasBlendOp(tl.blendMode);
     ctx.translate(ox + (tl.xPct / 100) * boxW, oy + (tl.yPct / 100) * boxH);
     ctx.rotate((tl.rotationDeg * Math.PI) / 180);
     ctx.font = `${tl.italic ? 'italic ' : ''}${tl.fontWeight || '500'} ${pxSize}px ${fontStack}`;
@@ -752,6 +888,15 @@ async function paintFrontFaceOnContext(
   await drawGraphicLayersOnRect(
     ctx,
     (cover.graphicLayers ?? []).filter((l) => l.face === 'front'),
+    ox,
+    oy,
+    widthPx,
+    heightPx,
+  );
+
+  drawPathLayersOnRect(
+    ctx,
+    (cover.pathLayers ?? []).filter((l) => l.face === 'front'),
     ox,
     oy,
     widthPx,
@@ -1009,6 +1154,22 @@ export function renderCoverToVectorSvg(
     })
     .join('\n  ');
 
+  const pathsMarkup = [...(cover.pathLayers ?? [])]
+    .filter((p) => p.face === 'front' && p.visible !== false && p.points.length >= 2)
+    .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+    .map((p) => {
+      const cmds = p.points
+        .map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${((pt.xPct / 100) * widthPx).toFixed(1)} ${((pt.yPct / 100) * heightPx).toFixed(1)}`)
+        .join(' ');
+      const d = p.closed ? `${cmds} Z` : cmds;
+      const fill = p.fillColor && p.fillColor !== 'transparent' ? escapeXml(p.fillColor) : 'none';
+      const stroke = p.strokeWidth > 0 && p.strokeColor ? escapeXml(p.strokeColor) : 'none';
+      const sw = p.strokeWidth > 0 ? (p.strokeWidth * scaleFactor).toFixed(1) : '0';
+      const blendStyle = p.blendMode && p.blendMode !== 'normal' ? ` style="mix-blend-mode:${p.blendMode}"` : '';
+      return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" opacity="${p.opacity}"${blendStyle} />`;
+    })
+    .join('\n  ');
+
   const frameBorder =
     cover.template === 'obsidian-foil' || cover.template === 'ivory-classic'
       ? `<rect x="${pad}" y="${pad}" width="${widthPx - pad * 2}" height="${heightPx - pad * 2}" fill="none" stroke="${escapeXml(cover.accentColor)}" stroke-width="${Math.max(2, Math.round(widthPx * 0.003))}" />`
@@ -1021,6 +1182,7 @@ export function renderCoverToVectorSvg(
   ${frameBorder}
   ${shapesMarkup}
   ${graphicsMarkup}
+  ${pathsMarkup}
   ${renderCoreText(cover.editionLabel, cover.elements.edition, cover.accentColor, '600', true)}
   ${renderCoreText(project.title, cover.elements.title, cover.textColor, '600')}
   ${renderCoreText(project.subtitle, cover.elements.subtitle, cover.textColor, '400')}
