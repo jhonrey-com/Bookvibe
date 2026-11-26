@@ -267,6 +267,12 @@ function compositeSourceOver(fg: RgbaSample, bg: RgbaSample): RgbaSample {
  * 4. Automatic WCAG BT.709 light-to-dark polarity flipping with hysteresis
  * 5. Critically-damped ODE glide & press physics honoring prefers-reduced-motion
  */
+function getDocumentInitialTone(): 'dark' | 'light' {
+  if (typeof document === 'undefined') return 'dark';
+  const theme = document.documentElement.dataset.theme;
+  return theme === 'ivory' || theme === 'parchment' ? 'light' : 'dark';
+}
+
 export class LiquidGlassControl<T extends string = string> {
   public readonly element: HTMLDivElement;
 
@@ -322,8 +328,9 @@ export class LiquidGlassControl<T extends string = string> {
     this.sampleCanvas.height = 6;
     this.sampleCtx = this.sampleCanvas.getContext('2d', { willReadFrequently: true });
 
+    this.currentTone = getDocumentInitialTone();
     this.element = el('div', {
-      className: `lg-host${config.compact ? ' lg-compact' : ''}${config.iconOnly ? ' lg-icon-only' : ''} lg-surface-${this.surface} tone-dark`,
+      className: `lg-host${config.compact ? ' lg-compact' : ''}${config.iconOnly ? ' lg-icon-only' : ''} lg-surface-${this.surface} tone-${this.currentTone}`,
     });
 
     this.svgFilterEl = this.createRefractionFilterSvg();
@@ -341,6 +348,7 @@ export class LiquidGlassControl<T extends string = string> {
       className: 'lg-pill',
       attrs: { 'aria-hidden': 'true' },
     });
+    this.pill.style.transition = 'none';
     this.pill.style.setProperty('--lg-refract-filter', `url(#${this.filterId})`);
 
     this.baseLayer = el('div', { className: 'lg-layer-base' });
@@ -432,6 +440,11 @@ export class LiquidGlassControl<T extends string = string> {
       if (!this.destroyed) {
         this.measureLayout(true);
         this.sampleBackdrop(true);
+        requestAnimationFrame(() => {
+          if (!this.destroyed) {
+            this.pill.style.transition = '';
+          }
+        });
       }
     });
 
@@ -948,8 +961,11 @@ export class LiquidGlassControl<T extends string = string> {
       }
     }
 
-    // Composite back-to-front over obsidian canvas root
-    let result: RgbaSample = { r: 8, g: 8, b: 10, a: 1 };
+    // Composite back-to-front over active theme canvas root
+    let result: RgbaSample =
+      getDocumentInitialTone() === 'light'
+        ? { r: 246, g: 244, b: 239, a: 1 }
+        : { r: 18, g: 18, b: 16, a: 1 };
     for (let i = layers.length - 1; i >= 0; i--) {
       result = compositeSourceOver(layers[i], result);
     }

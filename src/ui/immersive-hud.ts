@@ -7,7 +7,7 @@ import {
 import type { AppActions } from '../core/app-context';
 import { getProjectWordCount } from '../core/manuscript';
 import type { AlarmRingtoneId } from '../core/types';
-import { el, icon } from './dom';
+import { el, icon, svgEl } from './dom';
 
 export interface ImmersiveHudHandle {
   sync(): void;
@@ -16,12 +16,59 @@ export interface ImmersiveHudHandle {
   destroy(): void;
 }
 
+function createGripSvg(): SVGSVGElement {
+  const svg = svgEl('svg', {
+    width: 10,
+    height: 14,
+    viewBox: '0 0 10 14',
+    fill: 'currentColor',
+    'aria-hidden': 'true',
+  });
+  for (const cy of [3, 7, 11]) {
+    for (const cx of [3, 7]) {
+      svg.appendChild(svgEl('circle', { cx, cy, r: 1.15 }));
+    }
+  }
+  return svg;
+}
+
+function createHudMicroIcon(kind: 'play' | 'pause' | 'reset' | 'minus' | 'plus'): SVGSVGElement {
+  const svg = svgEl('svg', {
+    width: 12,
+    height: 12,
+    viewBox: '0 0 24 24',
+    fill: kind === 'play' || kind === 'pause' ? 'currentColor' : 'none',
+    stroke: kind === 'play' || kind === 'pause' ? 'none' : 'currentColor',
+    'stroke-width': '2',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
+  });
+  if (kind === 'play') {
+    svg.appendChild(svgEl('path', { d: 'M7 5l12 7-12 7V5z' }));
+  } else if (kind === 'pause') {
+    svg.append(
+      svgEl('rect', { x: 6, y: 5, width: 4, height: 14, rx: 1 }),
+      svgEl('rect', { x: 14, y: 5, width: 4, height: 14, rx: 1 }),
+    );
+  } else if (kind === 'reset') {
+    svg.append(
+      svgEl('path', { d: 'M3 12a9 9 0 1 0 3-6.7L3 8' }),
+      svgEl('path', { d: 'M3 3v5h5' }),
+    );
+  } else if (kind === 'minus') {
+    svg.appendChild(svgEl('path', { d: 'M5 12h14' }));
+  } else {
+    svg.append(svgEl('path', { d: 'M12 5v14' }), svgEl('path', { d: 'M5 12h14' }));
+  }
+  return svg;
+}
+
 function formatWallClock(): string {
   const now = new Date();
   return now.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
   });
 }
 
@@ -82,16 +129,19 @@ export function mountImmersiveHud(
 
   const applyHudPosition = () => {
     const s = actions.getState().settings;
+    const hudW = Math.max(160, hudEl.offsetWidth);
+    const hudH = Math.max(34, hudEl.offsetHeight);
     if (s.immersiveHudX >= 0) {
-      const maxX = Math.max(8, window.innerWidth - Math.max(180, hudEl.offsetWidth) - 8);
-      const maxY = Math.max(8, window.innerHeight - Math.max(48, hudEl.offsetHeight) - 8);
+      const maxX = Math.max(8, window.innerWidth - hudW - 8);
+      const maxY = Math.max(8, window.innerHeight - hudH - 8);
       hudEl.style.left = `${Math.min(maxX, Math.max(8, s.immersiveHudX))}px`;
       hudEl.style.top = `${Math.min(maxY, Math.max(8, s.immersiveHudY))}px`;
-      hudEl.style.transform = 'none';
+      hudEl.style.transform = 'translate3d(0, 0, 0)';
     } else {
+      const maxY = Math.max(8, window.innerHeight - hudH - 8);
       hudEl.style.left = '50%';
-      hudEl.style.top = `${Math.max(10, Math.min(200, s.immersiveHudY || 12))}px`;
-      hudEl.style.transform = 'translateX(-50%)';
+      hudEl.style.top = `${Math.min(maxY, Math.max(10, s.immersiveHudY || 12))}px`;
+      hudEl.style.transform = 'translate3d(-50%, 0, 0)';
     }
   };
 
@@ -111,12 +161,12 @@ export function mountImmersiveHud(
   window.addEventListener('pointermove', (e) => {
     if (!draggingHud) return;
     const maxX = Math.max(8, window.innerWidth - Math.max(160, hudEl.offsetWidth) - 8);
-    const maxY = Math.max(8, window.innerHeight - Math.max(40, hudEl.offsetHeight) - 8);
+    const maxY = Math.max(8, window.innerHeight - Math.max(34, hudEl.offsetHeight) - 8);
     const nextX = Math.round(Math.min(maxX, Math.max(8, e.clientX - dragOffsetX)));
     const nextY = Math.round(Math.min(maxY, Math.max(8, e.clientY - dragOffsetY)));
     hudEl.style.left = `${nextX}px`;
     hudEl.style.top = `${nextY}px`;
-    hudEl.style.transform = 'none';
+    hudEl.style.transform = 'translate3d(0, 0, 0)';
   });
   window.addEventListener('pointerup', () => {
     if (!draggingHud) return;
@@ -132,18 +182,17 @@ export function mountImmersiveHud(
   const wallClockEl = el('span', { className: 'qv-imm-clock', text: formatWallClock() });
   const sprintTextEl = el('span', { className: 'qv-imm-metric', text: '' });
   const sprintBtnEl = el('button', {
-    className: 'bv-mini-btn',
-    text: 'Start',
-    attrs: { type: 'button' },
+    className: 'qv-imm-icon-btn',
+    attrs: { type: 'button', 'aria-label': 'Start writing sprint', title: 'Start writing sprint' },
     on: { click: () => sprintControls.toggleSprint() },
   });
   const wordsEl = el('span', { className: 'qv-imm-metric', text: '' });
-  const alarmBtnLabel = el('span', { text: 'Alarm' });
+  const alarmBtnLabel = el('span', { className: 'qv-imm-metric', text: '' });
   const alarmBtn = el(
     'button',
     {
-      className: 'bv-mini-btn qv-imm-alarm-btn',
-      attrs: { type: 'button', 'aria-label': 'Configure writing alarm clock' },
+      className: 'qv-imm-icon-btn qv-imm-alarm-btn',
+      attrs: { type: 'button', 'aria-label': 'Configure writing alarm clock', title: 'Writing alarm' },
       on: { click: () => openAlarmPopover() },
     },
     icon('alarm', 13),
@@ -153,53 +202,63 @@ export function mountImmersiveHud(
   const renderTopStripControls = () => {
     const state = actions.getState();
     topStripDrawer.replaceChildren(
-      el('span', { className: 'qv-imm-top-label', text: state.project.title || 'Quillvibe Immersive' }),
-      el('button', {
-        className: `bv-mini-btn${!hudHiddenByUser ? ' is-active' : ''}`,
-        text: hudHiddenByUser ? 'Show Focus Bar' : 'Hide Focus Bar',
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            hudHiddenByUser = !hudHiddenByUser;
-            syncHudContents();
+      el('span', { className: 'qv-imm-top-label', text: state.project.title || 'Quillvibe' }),
+      el('span', { className: 'qv-imm-sep', attrs: { 'aria-hidden': 'true' } }),
+      el(
+        'div',
+        { className: 'qv-imm-actions' },
+        el('button', {
+          className: `qv-imm-pill-btn${!hudHiddenByUser ? ' is-active' : ''}`,
+          text: hudHiddenByUser ? 'Show Bar' : 'Hide Bar',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              hudHiddenByUser = !hudHiddenByUser;
+              syncHudContents();
+            },
           },
-        },
-      }),
-      el('button', {
-        className: 'bv-mini-btn',
-        text: state.settings.immersiveHudCollapsed ? 'Expand Bar' : 'Collapse Bar',
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            actions.updateSettings({ immersiveHudCollapsed: !state.settings.immersiveHudCollapsed });
-            syncHudContents();
+        }),
+        el('button', {
+          className: 'qv-imm-pill-btn',
+          text: state.settings.immersiveHudCollapsed ? 'Expand' : 'Collapse',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              actions.updateSettings({ immersiveHudCollapsed: !state.settings.immersiveHudCollapsed });
+              syncHudContents();
+            },
           },
-        },
-      }),
-      el('button', {
-        className: 'bv-mini-btn',
-        text: 'Center Bar',
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            hudHiddenByUser = false;
-            actions.updateSettings({ immersiveHudX: -1, immersiveHudY: 12 });
-            syncHudContents();
+        }),
+        el('button', {
+          className: 'qv-imm-pill-btn',
+          text: 'Center',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              hudHiddenByUser = false;
+              actions.updateSettings({ immersiveHudX: -1, immersiveHudY: 12 });
+              syncHudContents();
+            },
           },
-        },
-      }),
-      el('button', {
-        className: 'bv-mini-btn',
-        text: 'Alarm',
-        attrs: { type: 'button' },
-        on: { click: () => openAlarmPopover() },
-      }),
-      el('button', {
-        className: 'bv-mini-btn is-active',
-        text: 'Exit Fullscreen (F11)',
-        attrs: { type: 'button' },
-        on: { click: () => void actions.toggleImmersiveMode(false) },
-      }),
+        }),
+        el('button', {
+          className: 'qv-imm-pill-btn',
+          text: 'Alarm',
+          attrs: { type: 'button' },
+          on: { click: () => openAlarmPopover() },
+        }),
+        el('span', { className: 'qv-imm-sep', attrs: { 'aria-hidden': 'true' } }),
+        el(
+          'button',
+          {
+            className: 'qv-imm-exit-btn',
+            attrs: { type: 'button', title: 'Exit Fullscreen (F11)' },
+            on: { click: () => void actions.toggleImmersiveMode(false) },
+          },
+          icon('fullscreen-exit', 12),
+          el('span', { text: 'Exit F11' }),
+        ),
+      ),
     );
   };
 
@@ -222,46 +281,75 @@ export function mountImmersiveHud(
     wallClockEl.textContent = formatWallClock();
 
     const dragHandle = el(
-      'div',
+      'button',
       {
-        className: 'qv-imm-drag-handle',
-        attrs: { title: 'Drag to move Immersive Bar' },
+        className: 'qv-imm-grip',
+        attrs: { type: 'button', 'aria-label': 'Drag to move Immersive Bar', title: 'Drag to move Focus Bar' },
         on: { pointerdown: startHudDrag },
       },
-      el('span', { text: '⋮⋮', style: { fontSize: '12px', fontWeight: '700', lineHeight: '1' } }),
+      createGripSvg(),
     );
 
-    const collapseBtn = el('button', {
-      className: 'bv-mini-btn',
-      text: settings.immersiveHudCollapsed ? '+' : '−',
-      attrs: { type: 'button', 'aria-label': settings.immersiveHudCollapsed ? 'Expand focus bar' : 'Collapse focus bar', title: settings.immersiveHudCollapsed ? 'Expand Bar' : 'Collapse Bar' },
-      on: {
-        click: () => {
-          actions.updateSettings({ immersiveHudCollapsed: !settings.immersiveHudCollapsed });
-          syncHudContents();
+    const collapseBtn = el(
+      'button',
+      {
+        className: 'qv-imm-icon-btn',
+        attrs: {
+          type: 'button',
+          'aria-label': settings.immersiveHudCollapsed ? 'Expand focus bar' : 'Collapse focus bar',
+          title: settings.immersiveHudCollapsed ? 'Expand bar' : 'Collapse bar',
+        },
+        on: {
+          click: () => {
+            actions.updateSettings({ immersiveHudCollapsed: !settings.immersiveHudCollapsed });
+            syncHudContents();
+          },
         },
       },
-    });
+      createHudMicroIcon(settings.immersiveHudCollapsed ? 'plus' : 'minus'),
+    );
 
     hudEl.appendChild(dragHandle);
 
     if (settings.immersiveHudCollapsed) {
+      const compactParts: HTMLElement[] = [];
+      if (settings.immersiveShowClock) {
+        compactParts.push(
+          el('div', { className: 'qv-imm-group' }, icon('clock', 12), wallClockEl),
+          el('span', { className: 'qv-imm-sep', attrs: { 'aria-hidden': 'true' } }),
+        );
+      }
       hudEl.append(
-        el('div', { className: 'qv-imm-item' }, icon('clock', 13), wallClockEl),
-        collapseBtn,
-        el('button', {
-          className: 'bv-mini-btn is-active',
-          attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)' },
-          on: { click: () => void actions.toggleImmersiveMode(false) },
-        }, icon('fullscreen-exit', 13)),
+        ...compactParts,
+        el(
+          'div',
+          { className: 'qv-imm-actions' },
+          collapseBtn,
+          el(
+            'button',
+            {
+              className: 'qv-imm-exit-btn is-compact',
+              attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)', title: 'Exit Fullscreen (F11)' },
+              on: { click: () => void actions.toggleImmersiveMode(false) },
+            },
+            icon('fullscreen-exit', 12),
+          ),
+        ),
       );
       requestAnimationFrame(applyHudPosition);
       return;
     }
 
+    const metricGroups: HTMLElement[] = [];
+
     if (settings.immersiveShowClock) {
-      hudEl.appendChild(
-        el('div', { className: 'qv-imm-item' }, icon('clock', 13), wallClockEl),
+      metricGroups.push(
+        el(
+          'div',
+          { className: 'qv-imm-group', attrs: { title: 'Current local time' } },
+          icon('clock', 12),
+          wallClockEl,
+        ),
       );
     }
 
@@ -269,82 +357,109 @@ export function mountImmersiveHud(
       const total = getProjectWordCount(project);
       const delta = total - state.sprintStartWords;
       const sign = delta >= 0 ? `+${delta}w` : `${delta}w`;
-      sprintTextEl.textContent = `Sprint ${formatRemainingClock(state.sprintRemainingSec)} · ${sign}`;
-      sprintBtnEl.textContent = state.sprintRunning ? 'Pause' : 'Start';
-      hudEl.appendChild(
+      sprintTextEl.textContent = `${formatRemainingClock(state.sprintRemainingSec)} · ${sign}`;
+      sprintBtnEl.replaceChildren(createHudMicroIcon(state.sprintRunning ? 'pause' : 'play'));
+      sprintBtnEl.setAttribute('aria-label', state.sprintRunning ? 'Pause writing sprint' : 'Start writing sprint');
+      sprintBtnEl.setAttribute('title', state.sprintRunning ? 'Pause sprint' : 'Start sprint');
+      sprintBtnEl.classList.toggle('is-active', state.sprintRunning);
+      metricGroups.push(
         el(
           'div',
-          { className: 'qv-imm-item' },
+          { className: 'qv-imm-group qv-imm-sprint', attrs: { title: 'Writing sprint timer and net words' } },
           sprintTextEl,
           sprintBtnEl,
-          el('button', {
-            className: 'bv-mini-btn',
-            text: 'Reset',
-            attrs: { type: 'button' },
-            on: { click: () => sprintControls.resetSprint() },
-          }),
+          el(
+            'button',
+            {
+              className: 'qv-imm-icon-btn',
+              attrs: { type: 'button', 'aria-label': 'Reset writing sprint', title: 'Reset sprint' },
+              on: { click: () => sprintControls.resetSprint() },
+            },
+            createHudMicroIcon('reset'),
+          ),
         ),
       );
     }
 
     if (settings.immersiveShowWords) {
       const total = getProjectWordCount(project);
-      wordsEl.textContent = `${total.toLocaleString()} / ${project.wordTarget.toLocaleString()} words`;
-      hudEl.appendChild(
-        el('div', { className: 'qv-imm-item' }, icon('quill', 13), wordsEl),
+      wordsEl.textContent = `${total.toLocaleString()} / ${project.wordTarget.toLocaleString()}`;
+      metricGroups.push(
+        el(
+          'div',
+          {
+            className: 'qv-imm-group',
+            attrs: { title: `${total.toLocaleString()} of ${project.wordTarget.toLocaleString()} words` },
+          },
+          icon('quill', 12),
+          wordsEl,
+        ),
       );
     }
 
-    if (settings.immersiveShowAlarm) {
-      const snap = alarm.getSnapshot();
-      alarmBtnLabel.textContent = snap.armed
-        ? `Alarm ${formatRemainingClock(snap.remainingSeconds)}`
-        : 'Alarm';
-      alarmBtn.classList.toggle('is-active', snap.armed || snap.ringing);
-      hudEl.appendChild(el('div', { className: 'qv-imm-item' }, alarmBtn));
+    if (metricGroups.length > 0) {
+      const metricsWrap = el('div', { className: 'qv-imm-metrics' });
+      metricGroups.forEach((grp, idx) => {
+        if (idx > 0) {
+          metricsWrap.appendChild(el('span', { className: 'qv-imm-sep', attrs: { 'aria-hidden': 'true' } }));
+        }
+        metricsWrap.appendChild(grp);
+      });
+      hudEl.append(
+        metricsWrap,
+        el('span', { className: 'qv-imm-sep qv-imm-sep-major', attrs: { 'aria-hidden': 'true' } }),
+      );
     }
 
-    hudEl.appendChild(
+    const actionsWrap = el('div', { className: 'qv-imm-actions' });
+
+    if (settings.immersiveShowAlarm) {
+      const snap = alarm.getSnapshot();
+      alarmBtnLabel.textContent = snap.armed ? formatRemainingClock(snap.remainingSeconds) : '';
+      alarmBtnLabel.style.display = snap.armed ? '' : 'none';
+      alarmBtn.classList.toggle('is-active', snap.armed || snap.ringing);
+      alarmBtn.setAttribute('title', snap.armed ? `Alarm armed (${formatRemainingClock(snap.remainingSeconds)})` : 'Set writing alarm');
+      actionsWrap.appendChild(alarmBtn);
+    }
+
+    actionsWrap.append(
       el(
-        'div',
-        { className: 'qv-imm-item' },
-        el(
-          'button',
-          {
-            className: 'bv-mini-btn',
-            attrs: { type: 'button', 'aria-label': 'Configure immersive widgets' },
-            on: { click: () => actions.openSettingsModal('editor') },
-          },
-          icon('settings', 13),
-          'Customize',
-        ),
-        el(
-          'button',
-          {
-            className: 'bv-mini-btn',
-            text: 'Hide',
-            attrs: { type: 'button', title: 'Hide bar (move mouse to top edge of screen to restore)' },
-            on: {
-              click: () => {
-                hudHiddenByUser = true;
-                syncHudContents();
-              },
+        'button',
+        {
+          className: 'qv-imm-icon-btn',
+          attrs: { type: 'button', 'aria-label': 'Configure immersive widgets', title: 'Immersive bar settings' },
+          on: { click: () => actions.openSettingsModal('editor') },
+        },
+        icon('settings', 13),
+      ),
+      collapseBtn,
+      el(
+        'button',
+        {
+          className: 'qv-imm-icon-btn',
+          attrs: { type: 'button', 'aria-label': 'Hide focus bar', title: 'Hide bar (move mouse to top edge to restore)' },
+          on: {
+            click: () => {
+              hudHiddenByUser = true;
+              syncHudContents();
             },
           },
-        ),
-        collapseBtn,
-        el(
-          'button',
-          {
-            className: 'bv-mini-btn is-active',
-            attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)' },
-            on: { click: () => void actions.toggleImmersiveMode(false) },
-          },
-          icon('fullscreen-exit', 13),
-          'Exit',
-        ),
+        },
+        icon('eye-off', 13),
+      ),
+      el(
+        'button',
+        {
+          className: 'qv-imm-exit-btn',
+          attrs: { type: 'button', 'aria-label': 'Exit Immersive Mode (F11)', title: 'Exit Fullscreen (F11)' },
+          on: { click: () => void actions.toggleImmersiveMode(false) },
+        },
+        icon('fullscreen-exit', 12),
+        el('span', { text: 'Exit' }),
       ),
     );
+
+    hudEl.appendChild(actionsWrap);
     requestAnimationFrame(applyHudPosition);
   };
 
@@ -354,7 +469,7 @@ export function mountImmersiveHud(
       if (actions.getState().settings.immersiveShowTimer) {
         const s = actions.getState();
         const delta = getProjectWordCount(s.project) - s.sprintStartWords;
-        sprintTextEl.textContent = `Sprint ${formatRemainingClock(s.sprintRemainingSec)} · ${delta >= 0 ? '+' : ''}${delta}w`;
+        sprintTextEl.textContent = `${formatRemainingClock(s.sprintRemainingSec)} · ${delta >= 0 ? '+' : ''}${delta}w`;
       }
     }
   }, 1000);

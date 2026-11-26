@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en" data-theme="ivory">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f4ef" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+    />
+    <meta
+      name="description"
+      content="Quillvibe is a free, open-source book writing studio for authors: draft manuscripts, build story bibles, trace plot graphs, proofread with copyediting marks, design covers, and export print-ready books in your browser."
+    />
+    <link rel="canonical" href="https://quillvibe.app/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <title>Quillvibe — Open-Source Book Writing, Cover Design &amp; Typesetting Studio</title>
+    <link rel="stylesheet" href="./landing.css" />
+  </head>
+  <body>
+    <header class="ql-header">
+      <div class="ql-container ql-header-inner">
+        <a class="ql-brand" href="/landing/">
+          <img src="/logo.svg" width="22" height="22" alt="Quillvibe logo" />
+          <span class="ql-brand-name">Quillvibe</span>
+        </a>
+
+        <nav class="ql-nav" aria-label="Primary">
+          <a href="#why">Why Quillvibe</a>
+          <a href="#workspace">Studio</a>
+          <a href="#features">Features</a>
+          <a href="#sponsor">Open Source</a>
+          <a href="/course/">Course</a>
+        </nav>
+
+        <div class="ql-header-actions">
+          <button
+            type="button"
+            class="ql-icon-btn"
+            id="ql-theme-toggle"
+            aria-label="Switch Theme (Ivory Light)"
+            title="Switch Theme: Ivory · Parchment · Obsidian"
+          >
+            <svg
+              id="ql-theme-morph-svg"
+              class="qv-theme-morph"
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              data-theme-mode="ivory"
+              aria-hidden="true"
+            >
+              <defs>
+                <mask id="ql-tm-mask">
+                  <rect x="0" y="0" width="24" height="24" fill="#ffffff" stroke="none"></rect>
+                  <circle class="qv-tm-cutout" cx="16.8" cy="7.4" r="5.8" fill="#000000" stroke="none"></circle>
+                </mask>
+              </defs>
+              <g class="qv-tm-core-group">
+                <circle class="qv-tm-core" cx="12" cy="12" r="6.2" fill="currentColor" stroke="none" mask="url(#ql-tm-mask)"></circle>
+              </g>
+              <g class="qv-tm-rays-top">
+                <line x1="12" y1="2" x2="12" y2="4.3"></line>
+                <line x1="4.9" y1="4.9" x2="6.5" y2="6.5"></line>
+                <line x1="19.1" y1="4.9" x2="17.5" y2="6.5"></line>
+                <line x1="2" y1="12" x2="4.3" y2="12"></line>
+                <line x1="19.7" y1="12" x2="22" y2="12"></line>
+              </g>
+              <g class="qv-tm-rays-bottom">
+                <line x1="4.9" y1="19.1" x2="6.5" y2="17.5"></line>
+                <line x1="12" y1="19.7" x2="12" y2="22"></line>
+                <line x1="19.1" y1="19.1" x2="17.5" y2="17.5"></line>
+              </g>
+              <line class="qv-tm-horizon" x1="3.5" y1="17.8" x2="20.5" y2="17.8"></line>
+            </svg>
+          </button>
+          <a class="ql-btn ql-btn-ghost" href="/course/">Course</a>
+          <a class="ql-btn ql-btn-primary" href="/start">Open Studio</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="ql-hero" id="workspace">
+        <div class="ql-container">
+          <div class="ql-hero-copy">
+            <h1>Every stage of writing a book, kept in one calm place.</h1>
+            <p class="ql-lead">
+              Most authors split a single book across five separate apps—one for scenes, another for
+              character sheets, spreadsheets for outlines, design tools for covers, and converters for
+              EPUB or Print PDF. Quillvibe brings drafting, worldbuilding, proofreading, layout, and
+              cover design into one free, open-source workspace right in your browser.
+            </p>
+            <div class="ql-hero-cta">
+              <a class="ql-btn ql-btn-primary ql-btn-lg" href="/start">Start Writing Free</a>
+              <a class="ql-btn ql-btn-secondary ql-btn-lg" href="/course/">Take the Free Course</a>
+            </div>
+            <p class="ql-meta-line">
+              MIT Open Source · No account required · Protected <code>.qv</code> project files · Exports to PDF, EPUB 3, DOCX &amp; Markdown
+            </p>
+          </div>
+
+          <div class="ql-showcase">
+            <div class="ql-showcase-bar" role="tablist" aria-label="Studio workspace previews">
+              <button
+                type="button"
+                class="ql-tab-btn is-active"
+                role="tab"
+                aria-selected="true"
+                data-preview="editor"
+              >
+                Manuscript &amp; Proofread
+              </button>
+              <button
+                type="button"
+                class="ql-tab-btn"
+                role="tab"
+                aria-selected="false"
+                data-preview="graph"
+              >
+                Story Bible &amp; Graph
+              </button>
+              <button
+                type="button"
+                class="ql-tab-btn"
+                role="tab"
+                aria-selected="false"
+                data-preview="cover"
+              >
+                Book Cover Studio
+              </button>
+              <span class="ql-showcase-caption" id="ql-preview-caption">
+                Binder navigation, comfortable paper sheet, and Scene Inspector
+              </span>
+            </div>
+            <div class="ql-showcase-frame">
+              <img
+                id="ql-preview-img"
+                src="/screenshots/editor-workspace.png"
+                alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, and Inspector"
+                width="1280"
+                height="720"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ql-section ql-section-bordered" id="why">
+        <div class="ql-container">
+          <div class="ql-section-head">
+            <h2>Why writers move to Quillvibe</h2>
+            <p>
+              Designed specifically for long-form books—not short blog posts, chat threads, or generic note wikis.
+            </p>
+          </div>
+
+          <div class="ql-grid-3">
+            <article class="ql-card">
+              <div class="ql-card-meta">01 · Focus First</div>
+              <h3>No more app switching</h3>
+              <p>
+                Switch between Focused drafting, Editorial corkboards, and Full Studio without moving
+                chapters out of your manuscript or reformatting later.
+              </p>
+            </article>
+
+            <article class="ql-card">
+              <div class="ql-card-meta">02 · Built for Editors</div>
+              <h3>15 real copyediting marks</h3>
+              <p>
+                Annotate drafts right on the page with traditional proofreading symbols, toggle Clean Preview
+                to inspect changes, and lock finished chapters against accidental edits.
+              </p>
+            </article>
+
+            <article class="ql-card">
+              <div class="ql-card-meta">03 · True Ownership</div>
+              <h3>Local `.qv` files, no lock-in</h3>
+              <p>
+                Your manuscripts stay on your own device in password-capable <code>.qv</code> archives—no
+                cloud lock-in, no subscription paywalls, and full open-source code under MIT.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ql-section ql-section-bordered" id="features">
+        <div class="ql-container">
+          <div class="ql-section-head">
+            <h2>Inside the Studio</h2>
+            <p>
+              Every tool needed to take an idea from first outline to print-ready manuscript and cover.
+            </p>
+          </div>
+
+          <div class="ql-grid-2">
+            <article class="ql-card">
+              <div class="ql-card-meta">Manuscript Workspace</div>
+              <h3>Drafting, Split View &amp; Revision Snapshots</h3>
+              <p>
+                Organize parts, chapters, and scenes in the Binder. Compare snapshots side by side, track daily word-sprint goals, insert wrapped illustrations, and import existing <code>.docx</code>, <code>.md</code>, or <code>.rtf</code> drafts cleanly.
+              </p>
+            </article>
+
+            <article class="ql-card">
+              <div class="ql-card-meta">Story Bible &amp; Plot Graph</div>
+              <h3>Connected Characters, Places &amp; Plotlines</h3>
+              <p>
+                Link entries automatically from prose via <code>[[wikilinks]]</code> and <code>#tags</code>. Inspect structure on a 90-degree orthogonal Storyboard or switch to a live Force Graph to trace character relationships across chapters.
+              </p>
+            </article>
+
+            <article class="ql-card">
+              <div class="ql-card-meta">Interior Typeset</div>
+              <h3>Trade Trim Layout, EPUB 3 &amp; Print PDF</h3>
+              <p>
+                Preview real trim sizes (6"&times;9", 5.5"&times;8.5", 5"&times;8", 8.5"&times;11") with chapter typography, drop caps, front/back matter, custom uploaded fonts, and clean export packages.
+              </p>
+            </article>
+
+            <article class="ql-card">
+              <div class="ql-card-meta">Book Cover Studio</div>
+              <h3>Front, Spine, Back &amp; Dust-Jacket Wrap</h3>
+              <p>
+                Lay out shapes, ornaments, gradients, and custom typography with magnetic alignment guides, undo/redo history, and export crisp 1x/2x/3x PNG, JPEG, Print PDF, or Vector SVG wraps.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ql-section ql-section-bordered" id="sponsor">
+        <div class="ql-container">
+          <div class="ql-sponsor-box">
+            <div class="ql-sponsor-copy">
+              <div class="ql-card-meta">Free &amp; Open Source · MIT License</div>
+              <h2>Built for every author, supported by sponsors</h2>
+              <p>
+                Quillvibe is free to use with all writing, proofreading, worldbuilding, cover studio,
+                and publishing export tools unlocked. If Quillvibe helps you finish a book, optional
+                sponsorships keep development active and sustainable for everyone.
+              </p>
+            </div>
+            <div class="ql-sponsor-actions">
+              <a
+                class="ql-btn ql-btn-primary ql-btn-lg"
+                href="https://github.com/sponsors/jhonrey-com"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Sponsor on GitHub
+              </a>
+              <a
+                class="ql-btn ql-btn-secondary ql-btn-lg"
+                href="https://github.com/jhonrey-com/Quillvibe"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View Source on GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ql-footer">
+      <div class="ql-container">
+        <div class="ql-footer-grid">
+          <div class="ql-footer-brand">
+            <div class="ql-footer-logo">
+              <img src="/logo.svg" width="20" height="20" alt="Quillvibe logo" />
+              <strong>Quillvibe</strong>
+            </div>
+            <p class="ql-footer-desc">
+              Free, open-source book writing, Story Bible, copyediting, interior typesetting, and cover studio in the browser.
+            </p>
+            <p class="ql-footer-company">
+              Published by <a href="https://cxvre.com" target="_blank" rel="noopener noreferrer">CXVRE Information Technology Services</a><br />
+              Support: <a href="mailto:support@quillvibe.app">support@quillvibe.app</a> · <a href="https://cxv.re/quillvibe" target="_blank" rel="noopener noreferrer">cxv.re/quillvibe</a>
+            </p>
+          </div>
+
+          <div class="ql-footer-col">
+            <h4>Product</h4>
+            <a href="#why">Why Quillvibe</a>
+            <a href="#workspace">Workspace Preview</a>
+            <a href="#features">Studio Features</a>
+            <a href="#sponsor">Open Source &amp; Sponsors</a>
+            <a href="/start">Open Web Studio</a>
+          </div>
+
+          <div class="ql-footer-col">
+            <h4>Learning &amp; Docs</h4>
+            <a href="/course/">Book Writing Course</a>
+            <a href="/help/">Help Center</a>
+            <a href="/manual/">Manual &amp; Reference</a>
+            <a href="/faq/">FAQ</a>
+            <a href="/extensions/">Format Guide (.qv)</a>
+          </div>
+
+          <div class="ql-footer-col">
+            <h4>Community &amp; Support</h4>
+            <a href="https://github.com/jhonrey-com/Quillvibe" target="_blank" rel="noopener noreferrer">GitHub Repository</a>
+            <a href="https://github.com/sponsors/jhonrey-com" target="_blank" rel="noopener noreferrer">Sponsor Development</a>
+            <a href="https://cxvre.com" target="_blank" rel="noopener noreferrer">cxvre.com</a>
+            <a href="mailto:support@quillvibe.app">support@quillvibe.app</a>
+            <a href="/settings/">Studio Preferences</a>
+          </div>
+        </div>
+
+        <div class="ql-footer-bottom">
+          <span>&copy; 2026 CXVRE Information Technology Services · Released under the MIT License.</span>
+          <span class="ql-mono">Local-First Open-Source Book Studio</span>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="./landing.ts"></script>
+  </body>
+</html>

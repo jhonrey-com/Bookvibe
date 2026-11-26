@@ -1,6 +1,7 @@
 mod export;
 mod file_assoc;
 mod lan_sync;
+mod window_state;
 
 use export::{build_epub_bytes, sanitize_filename, EpubExportPayload};
 use file_assoc::{
@@ -252,7 +253,10 @@ fn save_book_library(app: AppHandle, payload: String) -> Result<(), String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Cannot resolve app data directory: {e}"))?;
-    write_atomic_bytes(&dir.join(LIBRARY_FILENAME), payload.as_bytes())
+    let bytes = payload.as_bytes();
+    write_atomic_bytes(&dir.join(LIBRARY_FILENAME), bytes)?;
+    let _ = window_state::create_rolling_backup(&dir, "library-backup", bytes, 5);
+    Ok(())
 }
 
 #[tauri::command]
@@ -533,10 +537,23 @@ fn focus_desktop_window(app: AppHandle, label: String) -> Result<bool, String> {
 fn move_desktop_window(app: AppHandle, label: Option<String>, x: f64, y: f64) -> Result<(), String> {
     let target_label = label.unwrap_or_else(|| "main".to_string());
     if let Some(win) = app.get_webview_window(&target_label) {
-        let _ = win.unmaximize();
-        let _ = win.set_position(tauri::LogicalPosition::new(x.max(0.0), y.max(0.0)));
+        if win.is_maximized().unwrap_or(false) {
+            let _ = win.unmaximize();
+        }
+        let _ = win.set_position(tauri::LogicalPosition::new(x, y));
     }
     Ok(())
+}
+
+#[tauri::command]
+fn close_desktop_window_by_label(app: AppHandle, label: String) -> Result<bool, String> {
+    if let Some(win) = app.get_webview_window(&label) {
+        let _ = win.hide();
+        let _ = win.close();
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -545,6 +562,7 @@ async fn open_book_in_new_window(
     book_id: Option<String>,
     title: Option<String>,
     maximized: Option<bool>,
+    focused: Option<bool>,
     pos_x: Option<f64>,
     pos_y: Option<f64>,
 ) -> Result<String, String> {
@@ -567,10 +585,11 @@ async fn open_book_in_new_window(
     );
 
     let should_maximize = maximized.unwrap_or(true);
+    let should_focus = focused.unwrap_or(true);
     let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::App("index.html".into()),
+        tauri::WebviewUrl::App("desktop.html".into()),
     )
     .title(clean_title)
     .inner_size(1280.0, 840.0)
@@ -579,7 +598,7 @@ async fn open_book_in_new_window(
     .resizable(true)
     .decorations(false)
     .visible(true)
-    .focused(true)
+    .focused(should_focus)
     .background_color(tauri::window::Color(246, 244, 239, 255))
     .initialization_script(&init_script);
 
@@ -588,7 +607,7 @@ async fn open_book_in_new_window(
             tauri::WebviewWindowBuilder::new(
                 &app,
                 &label,
-                tauri::WebviewUrl::App("index.html".into()),
+                tauri::WebviewUrl::App("desktop.html".into()),
             )
             .title(clean_title)
             .inner_size(1280.0, 840.0)
@@ -597,7 +616,7 @@ async fn open_book_in_new_window(
             .resizable(true)
             .decorations(false)
             .visible(true)
-            .focused(true)
+            .focused(should_focus)
             .background_color(tauri::window::Color(246, 244, 239, 255))
             .initialization_script(&init_script)
         });
@@ -606,7 +625,7 @@ async fn open_book_in_new_window(
     if !should_maximize {
         if let (Some(px), Some(py)) = (pos_x, pos_y) {
             if px.is_finite() && py.is_finite() {
-                builder = builder.position((px - 140.0).max(16.0), (py - 20.0).max(16.0));
+                builder = builder.position(px, py);
             }
         }
     }
@@ -615,7 +634,9 @@ async fn open_book_in_new_window(
         .build()
         .map_err(|e| format!("Could not open new desktop window: {e}"))?;
     let _ = win.show();
-    let _ = win.set_focus();
+    if should_focus {
+        let _ = win.set_focus();
+    }
 
     Ok(label)
 }
@@ -744,8 +765,200 @@ fn start_single_instance_listener(app: AppHandle) {
     });
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopRuntimeInfo {
+    pub os: String,
+    pub arch: String,
+    pub version: String,
+    pub data_dir: String,
+    pub crash_log_path: String,
+    pub backup_count: usize,
+    pub window_count: usize,
+}
+
+fn crash_log_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    let base = std::env::var_os("LOCALAPPDATA")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let base = std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join("Library").join("Logs"));
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")));
+    base.unwrap_or_else(std::env::temp_dir).join("com.jhonrey.quillvibe")
+}
+
+fn install_crash_logger() {
+    let dir = crash_log_dir();
+    let _ = fs::create_dir_all(&dir);
+    let log_path = dir.join("quillvibe-crash.log");
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let msg = format!("[{ts}] panic: {info}\n");
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            let _ = f.write_all(msg.as_bytes());
+        }
+        prev_hook(info);
+    }));
+}
+
+#[tauri::command]
+fn get_desktop_runtime_info(app: AppHandle) -> DesktopRuntimeInfo {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| crash_log_dir());
+    let backup_count = window_state::count_rolling_backups(&data_dir);
+    let crash_path = crash_log_dir().join("quillvibe-crash.log");
+    DesktopRuntimeInfo {
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        data_dir: data_dir.to_string_lossy().into_owned(),
+        crash_log_path: crash_path.to_string_lossy().into_owned(),
+        backup_count,
+        window_count: app.webview_windows().len(),
+    }
+}
+
+fn restore_main_window_state(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let Some(saved) = window_state::load_window_state(&dir) else {
+        return;
+    };
+
+    let monitors: Vec<window_state::MonitorWorkArea> = win
+        .available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| {
+            let pos = m.position();
+            let size = m.size();
+            let scale = m.scale_factor().max(0.5);
+            window_state::MonitorWorkArea {
+                x: ((pos.x as f64) / scale).round() as i32,
+                y: ((pos.y as f64) / scale).round() as i32,
+                width: ((size.width as f64) / scale).round() as u32,
+                height: ((size.height as f64) / scale).round() as u32,
+            }
+        })
+        .collect();
+
+    let safe = window_state::clamp_window_to_monitors(saved, &monitors);
+    if safe.maximized {
+        let _ = win.maximize();
+    } else {
+        let _ = win.unmaximize();
+        let _ = win.set_size(tauri::LogicalSize::new(safe.width as f64, safe.height as f64));
+        let _ = win.set_position(tauri::LogicalPosition::new(safe.x as f64, safe.y as f64));
+    }
+}
+
+fn persist_window_geometry(win: &tauri::Window) {
+    if win.label() != "main" {
+        return;
+    }
+    let Ok(dir) = win.app_handle().path().app_data_dir() else {
+        return;
+    };
+    let maximized = win.is_maximized().unwrap_or(true);
+    let scale = win.scale_factor().unwrap_or(1.0).max(0.5);
+    let prev = window_state::load_window_state(&dir).unwrap_or_default();
+
+    if maximized {
+        let next = window_state::WindowStateRecord {
+            maximized: true,
+            scale_factor: scale,
+            ..prev
+        };
+        let _ = window_state::save_window_state(&dir, &next);
+        return;
+    }
+
+    if let (Ok(pos), Ok(size)) = (win.outer_position(), win.inner_size()) {
+        let logical_w = ((size.width as f64) / scale).round() as u32;
+        let logical_h = ((size.height as f64) / scale).round() as u32;
+        if logical_w < 400 || logical_h < 300 {
+            return;
+        }
+        let next = window_state::WindowStateRecord {
+            x: ((pos.x as f64) / scale).round() as i32,
+            y: ((pos.y as f64) / scale).round() as i32,
+            width: logical_w,
+            height: logical_h,
+            maximized: false,
+            scale_factor: scale,
+        };
+        let _ = window_state::save_window_state(&dir, &next);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn install_native_os_menu(app: &AppHandle) {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+    if let (Ok(file_sub), Ok(edit_sub), Ok(view_sub), Ok(win_sub), Ok(help_sub)) = (
+        SubmenuBuilder::new(app, "File")
+            .item(&MenuItemBuilder::with_id("new-window", "New Window").accelerator("CmdOrCtrl+Shift+N").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("open-file", "Open Quillvibe File…").accelerator("CmdOrCtrl+O").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("save-snapshot", "Save Revision Snapshot").accelerator("CmdOrCtrl+S").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("export-default", "Export Default Format").build(app).unwrap())
+            .separator()
+            .item(&MenuItemBuilder::with_id("settings", "Settings…").accelerator("CmdOrCtrl+,").build(app).unwrap())
+            .separator()
+            .item(&PredefinedMenuItem::quit(app, None).unwrap())
+            .build(),
+        SubmenuBuilder::new(app, "Edit")
+            .item(&MenuItemBuilder::with_id("undo", "Undo").accelerator("CmdOrCtrl+Z").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("redo", "Redo").accelerator("CmdOrCtrl+Shift+Z").build(app).unwrap())
+            .separator()
+            .item(&PredefinedMenuItem::cut(app, None).unwrap())
+            .item(&PredefinedMenuItem::copy(app, None).unwrap())
+            .item(&PredefinedMenuItem::paste(app, None).unwrap())
+            .item(&PredefinedMenuItem::select_all(app, None).unwrap())
+            .build(),
+        SubmenuBuilder::new(app, "View")
+            .item(&MenuItemBuilder::with_id("toggle-binder", "Toggle Manuscript Binder").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("toggle-inspector", "Toggle Scene Inspector").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("extensions", "Extensions & Formats").build(app).unwrap())
+            .separator()
+            .item(&MenuItemBuilder::with_id("toggle-fullscreen", "Toggle Immersive Fullscreen").build(app).unwrap())
+            .build(),
+        SubmenuBuilder::new(app, "Window")
+            .item(&MenuItemBuilder::with_id("combine-windows", "Combine All Windows Here").build(app).unwrap())
+            .item(&PredefinedMenuItem::minimize(app, None).unwrap())
+            .item(&PredefinedMenuItem::close_window(app, None).unwrap())
+            .build(),
+        SubmenuBuilder::new(app, "Help")
+            .item(&MenuItemBuilder::with_id("manual", "Manual & Reference").build(app).unwrap())
+            .item(&MenuItemBuilder::with_id("course", "Book Writing Course").build(app).unwrap())
+            .build(),
+    ) {
+        if let Ok(menu) = MenuBuilder::new(app)
+            .items(&[&file_sub, &edit_sub, &view_sub, &win_sub, &help_sub])
+            .build()
+        {
+            let _ = app.set_menu(menu);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_crash_logger();
+
     if let Some(startup_path) = find_startup_file_path_from_args() {
         if try_forward_file_to_running_instance(&startup_path) {
             return;
@@ -761,14 +974,38 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
-            start_single_instance_listener(app.handle().clone());
+            let handle = app.handle();
+            restore_main_window_state(handle);
+            #[cfg(target_os = "macos")]
+            install_native_os_menu(handle);
+            start_single_instance_listener(handle.clone());
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            let id = event.id().0.clone();
+            if let Some(win) = app
+                .webview_windows()
+                .into_values()
+                .find(|w| w.is_focused().unwrap_or(false))
+                .or_else(|| app.webview_windows().into_values().next())
+            {
+                let _ = win.emit("quillvibe://menu-action", id);
+            }
+        })
+        .on_window_event(|win, event| match event {
+            tauri::WindowEvent::Moved(_)
+            | tauri::WindowEvent::Resized(_)
+            | tauri::WindowEvent::CloseRequested { .. } => {
+                persist_window_geometry(win);
+            }
+            _ => {}
         })
         .manage(StartupFileState {
             pending: Mutex::new(initial_file),
         })
         .invoke_handler(tauri::generate_handler![
             get_startup_opened_file,
+            get_desktop_runtime_info,
             load_default_project,
             save_default_project,
             load_book_library,
@@ -792,6 +1029,7 @@ pub fn run() {
             list_desktop_window_bounds,
             focus_desktop_window,
             move_desktop_window,
+            close_desktop_window_by_label,
             open_book_in_new_window
         ])
         .run(tauri::generate_context!())

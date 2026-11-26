@@ -96,6 +96,7 @@ let pathSourceId = '';
 let pathTargetId = '';
 let activeForceRafId: number | null = null;
 let activeGraphKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let activeGraphWheelHandler: ((e: WheelEvent) => void) | null = null;
 
 function withGraph(
   actions: AppActions,
@@ -345,6 +346,27 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
   });
 
   let canvasWrap!: HTMLElement;
+  let storyboardViewportEl: HTMLElement | null = null;
+  let storyboardSyncGrid: (() => void) | null = null;
+
+  const applyGraphZoom = (nextZoom: number, anchorClientX?: number, anchorClientY?: number) => {
+    const prevZoom = Math.max(0.25, zoomScale);
+    const clampedZoom = Math.max(0.25, Math.min(2.5, Number(nextZoom.toFixed(3))));
+    if (canvasWrap) {
+      const rect = canvasWrap.getBoundingClientRect();
+      const cx = typeof anchorClientX === 'number' ? anchorClientX : rect.left + rect.width / 2;
+      const cy = typeof anchorClientY === 'number' ? anchorClientY : rect.top + rect.height / 2;
+      const wx = (cx - rect.left - panX) / prevZoom;
+      const wy = (cy - rect.top - panY) / prevZoom;
+      panX = Math.round(cx - rect.left - wx * clampedZoom);
+      panY = Math.round(cy - rect.top - wy * clampedZoom);
+    }
+    zoomScale = clampedZoom;
+    if (storyboardViewportEl) {
+      storyboardViewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+      storyboardSyncGrid?.();
+    }
+  };
 
   const fitCanvas = (nodesSubset?: StoryGraphNode[]) => {
     const list = nodesSubset && nodesSubset.length > 0 ? nodesSubset : visibleNodes;
@@ -685,18 +707,29 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
     ),
   );
 
-  // Scoped Shift+1 (Fit All) & Shift+2 (Zoom to Selection) shortcuts
+  // Scoped keyboard shortcuts (Shift+1/2, Ctrl/Cmd + +/-/0) & trackpad/wheel zoom for Story Graph
   if (activeGraphKeyHandler) {
     window.removeEventListener('keydown', activeGraphKeyHandler);
   }
   activeGraphKeyHandler = (e: KeyboardEvent) => {
-    if (!document.body.contains(container)) {
+    if (!document.body.contains(canvasWrap)) {
       window.removeEventListener('keydown', activeGraphKeyHandler!);
+      activeGraphKeyHandler = null;
       return;
     }
     const ae = document.activeElement as HTMLElement | null;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
-    if (e.shiftKey && e.code === 'Digit1') {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadAdd')) {
+      e.preventDefault();
+      applyGraphZoom(zoomScale * 1.15);
+    } else if (mod && (e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract')) {
+      e.preventDefault();
+      applyGraphZoom(zoomScale / 1.15);
+    } else if (mod && (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0')) {
+      e.preventDefault();
+      fitCanvas();
+    } else if (e.shiftKey && e.code === 'Digit1') {
       e.preventDefault();
       fitCanvas();
     } else if (e.shiftKey && e.code === 'Digit2') {
@@ -709,10 +742,66 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
   };
   window.addEventListener('keydown', activeGraphKeyHandler);
 
+  if (activeGraphWheelHandler) {
+    window.removeEventListener('wheel', activeGraphWheelHandler);
+  }
+  activeGraphWheelHandler = (e: WheelEvent) => {
+    if (!document.body.contains(canvasWrap)) {
+      window.removeEventListener('wheel', activeGraphWheelHandler!);
+      activeGraphWheelHandler = null;
+      return;
+    }
+    const target = e.target as Node | null;
+    if (!target || !container.contains(target)) return;
+    const overCanvas = canvasWrap && canvasWrap.contains(target);
+    if (!e.ctrlKey && !e.metaKey && !overCanvas) return;
+
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      const rawStep = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const factor = Math.exp(-Math.max(-180, Math.min(180, rawStep)) * 0.0055);
+      applyGraphZoom(zoomScale * factor, e.clientX, e.clientY);
+      return;
+    }
+    if (Math.abs(e.deltaX) > 0 || e.shiftKey) {
+      panX -= e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+      if (!e.shiftKey) panY -= e.deltaY;
+      if (storyboardViewportEl) {
+        storyboardViewportEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+        storyboardSyncGrid?.();
+      }
+      return;
+    }
+    const rawStep = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    const factor = Math.exp(-Math.max(-180, Math.min(180, rawStep)) * 0.0038);
+    applyGraphZoom(zoomScale * factor, e.clientX, e.clientY);
+  };
+  window.addEventListener('wheel', activeGraphWheelHandler, { passive: false });
+
   canvasWrap = el('div', {
     className: 'bv-graph-canvas-wrap',
     dataset: { boardTheme: graph.boardTheme ?? 'obsidian-dots' },
   });
+
+  let gestureGraphZoom = zoomScale;
+  canvasWrap.addEventListener(
+    'gesturestart' as keyof HTMLElementEventMap,
+    ((e: Event & { scale?: number }) => {
+      e.preventDefault();
+      gestureGraphZoom = zoomScale;
+    }) as EventListener,
+    { passive: false },
+  );
+  canvasWrap.addEventListener(
+    'gesturechange' as keyof HTMLElementEventMap,
+    ((e: Event & { scale?: number }) => {
+      e.preventDefault();
+      if (typeof e.scale === 'number' && Number.isFinite(e.scale)) {
+        applyGraphZoom(gestureGraphZoom * e.scale);
+      }
+    }) as EventListener,
+    { passive: false },
+  );
 
   if (graphViewMode === 'force') {
     // ================= FORCE-DIRECTED GRAPH MODE (2D CANVAS @ 60FPS) =================
@@ -840,12 +929,6 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
     let fPanY = 0;
     let fOrigPanX = panX;
     let fOrigPanY = panY;
-
-    canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.08 : -0.08;
-      zoomScale = Math.max(0.25, Math.min(2.5, Number((zoomScale + delta).toFixed(2))));
-    }, { passive: false });
 
     canvas.addEventListener('pointerdown', (e) => {
       const w = toWorld(e.clientX, e.clientY);
@@ -991,12 +1074,14 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`,
       },
     });
+    storyboardViewportEl = viewport;
 
     const syncCanvasGrid = () => {
       const step = Math.max(8, Math.round(24 * zoomScale));
       canvasWrap.style.backgroundPosition = `${panX}px ${panY}px`;
       canvasWrap.style.backgroundSize = `${step}px ${step}px`;
     };
+    storyboardSyncGrid = syncCanvasGrid;
     syncCanvasGrid();
 
     // Render Act / Section Group Frames first
@@ -1741,24 +1826,6 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
     };
 
     requestAnimationFrame(() => updateConnectedEdgesLive(''));
-
-    canvasWrap.addEventListener(
-      'wheel',
-      (e) => {
-        e.preventDefault();
-        const step = e.deltaY < 0 ? 0.08 : -0.08;
-        const nextZoom = Math.max(0.25, Math.min(2.5, Number((zoomScale + step).toFixed(2))));
-        const rect = canvasWrap.getBoundingClientRect();
-        const wx = (e.clientX - rect.left - panX) / zoomScale;
-        const wy = (e.clientY - rect.top - panY) / zoomScale;
-        zoomScale = nextZoom;
-        panX = Math.round(e.clientX - rect.left - wx * zoomScale);
-        panY = Math.round(e.clientY - rect.top - wy * zoomScale);
-        viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
-        syncCanvasGrid();
-      },
-      { passive: false },
-    );
 
     canvasWrap.addEventListener('pointerdown', (e) => {
       if (e.button === 0 && e.shiftKey) {

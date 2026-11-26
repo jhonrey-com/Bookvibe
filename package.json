@@ -1,6 +1,6 @@
 {
   "name": "quillvibe",
-  "version": "3.1.2",
+  "version": "3.2.0",
   "private": true,
   "author": "jhonrey.com",
   "description": "Open-source cross-platform book writing, worldbuilding, proofreading, cover studio, and EPUB/PDF typesetting app.",
@@ -9,9 +9,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:web": "vite build",
+    "build:desktop": "vite build --config vite.desktop.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "version:bump": "node scripts/bump-version.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

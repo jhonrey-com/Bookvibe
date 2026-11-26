@@ -25,6 +25,12 @@ import {
   loadImageUrlAsDataUrl,
 } from '../core/cover';
 import {
+  COVER_ZOOM_PRESETS,
+  classifyCanvasWheelGesture,
+  computeCursorAnchoredZoom,
+  computeFitZoom,
+} from '../core/cover-navigation';
+import {
   exportCoverDesignArchive,
   importCoverDesignArchive,
 } from '../core/extensions';
@@ -60,6 +66,14 @@ import { createVerticalResizer } from '../ui/resizer';
 
 type CoverPreviewMode = 'front' | 'back' | 'spine' | 'full-wrap' | 'dust-jacket';
 type CoverElementKey = keyof BookCoverConfig['elements'];
+type FaceEditableFieldKey =
+  | 'back-headline'
+  | 'back-blurb'
+  | 'author-bio'
+  | 'spine-title'
+  | 'front-flap'
+  | 'back-flap'
+  | '';
 type StudioToolTab =
   | 'templates'
   | 'text'
@@ -84,10 +98,12 @@ const COVER_BLEND_MODES: Array<{ id: CoverBlendMode; label: string }> = [
 ];
 
 let coverWrapMode: CoverPreviewMode = 'front';
+let activeEditFace: CoverFaceId = 'front';
 let activeToolTab: StudioToolTab = 'templates';
 let activeInspectorTab: InspectorTab = 'properties';
-let activeSelectionKind: 'element' | 'text' | 'shape' | 'graphic' | 'path' = 'element';
+let activeSelectionKind: 'none' | 'element' | 'text' | 'shape' | 'graphic' | 'path' = 'none';
 let activeElementKey: CoverElementKey = 'title';
+let activeFaceElementKey: FaceEditableFieldKey = '';
 let activeLayerId = '';
 let drawBrushMode: 'off' | 'freehand' | 'pen' = 'off';
 let drawStrokeColor = '#c7a97b';
@@ -99,7 +115,7 @@ let pendingPenPoints: CoverPathPoint[] = [];
 let commentPinMode = false;
 let compareLeftVariantId = '';
 let compareRightVariantId = '';
-const selectedLayerKeys = new Set<string>(['element:title']);
+const selectedLayerKeys = new Set<string>();
 let studioZoom = 1.0;
 let studioPanX = 0;
 let studioPanY = 0;
@@ -110,6 +126,7 @@ let studioClipboard: Array<
 > = [];
 let sliderUndoBaseline: BookCoverConfig | null = null;
 let activeCoverKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let activeCoverWheelHandler: ((e: WheelEvent) => void) | null = null;
 
 let savedStudioLeftScroll = 0;
 let savedStudioRightScroll = 0;
@@ -130,7 +147,9 @@ function setSingleSelection(
   additive = false,
 ): void {
   if (!additive) selectedLayerKeys.clear();
+  activeFaceElementKey = '';
   if (kind === 'element') {
+    activeEditFace = 'front';
     activeSelectionKind = 'element';
     activeElementKey = idOrKey as CoverElementKey;
     activeLayerId = '';
@@ -140,6 +159,12 @@ function setSingleSelection(
   activeSelectionKind = kind;
   activeLayerId = idOrKey;
   selectedLayerKeys.add(layerKeyOf(kind, idOrKey));
+  const faceOwner =
+    (cover.shapeLayers ?? []).find((s) => s.id === idOrKey)?.face ??
+    (cover.graphicLayers ?? []).find((g) => g.id === idOrKey)?.face ??
+    (cover.textLayers ?? []).find((t) => t.id === idOrKey)?.face ??
+    (cover.pathLayers ?? []).find((p) => p.id === idOrKey)?.face;
+  if (faceOwner) activeEditFace = faceOwner;
   // Expand selection automatically across layers sharing a groupId
   const allLayers = [
     ...(cover.shapeLayers ?? []).map((s) => ({ kind: 'shape' as const, id: s.id, groupId: s.groupId })),
@@ -154,6 +179,13 @@ function setSingleSelection(
       }
     }
   }
+}
+
+function clearCoverSelection(): void {
+  activeSelectionKind = 'none';
+  activeLayerId = '';
+  activeFaceElementKey = '';
+  selectedLayerKeys.clear();
 }
 
 function recordSliderBaseline(cover: BookCoverConfig): void {
@@ -171,8 +203,13 @@ function commitSliderBaseline(): void {
 }
 
 function activeTargetFace(): CoverFaceId {
-  if (coverWrapMode === 'back' || coverWrapMode === 'spine') return coverWrapMode;
-  return 'front';
+  if (coverWrapMode === 'front') return 'front';
+  if (coverWrapMode === 'back') return 'back';
+  if (coverWrapMode === 'spine') return 'spine';
+  if (coverWrapMode === 'full-wrap') {
+    return activeEditFace === 'back' || activeEditFace === 'spine' ? activeEditFace : 'front';
+  }
+  return activeEditFace;
 }
 
 function recordCoverUndoSnapshot(cover: BookCoverConfig): void {
@@ -325,9 +362,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     (activeSelectionKind === 'graphic' && !selectedGraphicLayer) ||
     (activeSelectionKind === 'path' && !selectedPathLayer)
   ) {
-    activeSelectionKind = 'element';
-    activeElementKey = 'title';
-    activeLayerId = '';
+    clearCoverSelection();
   }
 
   // Hidden file pickers
@@ -389,6 +424,9 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       on: {
         change: () => {
           coverWrapMode = wrapModeSel.value as CoverPreviewMode;
+          if (coverWrapMode === 'front' || coverWrapMode === 'back' || coverWrapMode === 'spine') {
+            activeEditFace = coverWrapMode;
+          }
           renderCoverStudio(container, actions);
         },
       },
@@ -408,7 +446,6 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       on: {
         change: () => {
           actions.updateSettings({ toolbarDisplayMode: detailModeSel.value as ToolbarDisplayMode });
-          actions.setState({}, true);
         },
       },
     },
@@ -519,6 +556,13 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     }, 0);
   };
 
+  let zoomNavController: {
+    applyZoom: (nextZoom: number, anchorX?: number, anchorY?: number) => void;
+    fitArtboard: () => void;
+    fitArtwork: () => void;
+    resetView: () => void;
+  } | null = null;
+
   let exportMenuBtn!: HTMLButtonElement;
   const studioBar = el(
     'div',
@@ -556,27 +600,88 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       { className: 'bv-subbar-group' },
       makeToolToggleBtn('zoom-out', 'Zoom Out', false, 'Zoom canvas out (min 10%)', () => {
         const step = studioZoom <= 0.5 ? 0.05 : 0.15;
-        studioZoom = Math.max(0.1, Number((studioZoom - step).toFixed(2)));
-        renderCoverStudio(container, actions);
+        const target = Math.max(0.1, Number((studioZoom - step).toFixed(2)));
+        if (zoomNavController) {
+          zoomNavController.applyZoom(target);
+        } else {
+          studioZoom = target;
+          renderCoverStudio(container, actions);
+        }
       }),
       el('button', {
         className: 'bv-mini-btn',
+        dataset: { coverZoomReadout: '1' },
         text: `${Math.round(studioZoom * 100)}%`,
-        tooltip: { title: 'Reset Zoom (100%)', short: 'Click to reset zoom to 100% and center canvas.' },
+        tooltip: { title: 'Reset Zoom (Ctrl/Cmd + 0)', short: 'Click to reset zoom to 100% and center canvas.' },
         attrs: { type: 'button' },
         on: {
           click: () => {
-            studioZoom = 1;
-            studioPanX = 0;
-            studioPanY = 0;
-            renderCoverStudio(container, actions);
+            if (zoomNavController) {
+              zoomNavController.resetView();
+            } else {
+              studioZoom = 1;
+              studioPanX = 0;
+              studioPanY = 0;
+              renderCoverStudio(container, actions);
+            }
           },
         },
       }),
+      el(
+        'select',
+        {
+          className: 'bv-select qv-cover-zoom-select',
+          dataset: { coverZoomSelect: '1' },
+          attrs: { 'aria-label': 'Zoom level preset' },
+          style: { minWidth: '82px' },
+          on: {
+            change: (ev) => {
+              const sel = ev.currentTarget as HTMLSelectElement;
+              const val = sel.value;
+              if (val === 'fit') {
+                zoomNavController?.fitArtboard();
+                return;
+              }
+              const parsed = Number.parseFloat(val);
+              if (Number.isFinite(parsed) && parsed > 0) {
+                if (zoomNavController) {
+                  zoomNavController.applyZoom(parsed);
+                } else {
+                  studioZoom = parsed;
+                  renderCoverStudio(container, actions);
+                }
+              }
+            },
+          },
+        },
+        el('option', {
+          text: `${Math.round(studioZoom * 100)}%`,
+          attrs: {
+            value: 'custom',
+            selected: !COVER_ZOOM_PRESETS.some((p) => Math.abs(p - studioZoom) < 0.005),
+            hidden: COVER_ZOOM_PRESETS.some((p) => Math.abs(p - studioZoom) < 0.005),
+          },
+        }),
+        ...COVER_ZOOM_PRESETS.map((preset) =>
+          el('option', {
+            text: `${Math.round(preset * 100)}%`,
+            attrs: {
+              value: String(preset),
+              selected: Math.abs(preset - studioZoom) < 0.005,
+            },
+          }),
+        ),
+        el('option', { text: 'Fit to Window', attrs: { value: 'fit' } }),
+      ),
       makeToolToggleBtn('zoom-in', 'Zoom In', false, 'Zoom canvas in (max 500%)', () => {
         const step = studioZoom < 0.5 ? 0.05 : 0.25;
-        studioZoom = Math.min(5, Number((studioZoom + step).toFixed(2)));
-        renderCoverStudio(container, actions);
+        const target = Math.min(5, Number((studioZoom + step).toFixed(2)));
+        if (zoomNavController) {
+          zoomNavController.applyZoom(target);
+        } else {
+          studioZoom = target;
+          renderCoverStudio(container, actions);
+        }
       }),
       el('button', {
         className: 'bv-mini-btn',
@@ -585,15 +690,16 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
         attrs: { type: 'button' },
         on: {
           click: () => {
-            const scrollEl = container.querySelector<HTMLElement>('.qv-studio-canvas-scroll');
-            const sw = Math.max(260, (scrollEl?.clientWidth ?? 640) - 80);
-            const sh = Math.max(260, (scrollEl?.clientHeight ?? 620) - 80);
-            const faceUnits = coverWrapMode === 'full-wrap' ? 2.2 : coverWrapMode === 'dust-jacket' ? 3.1 : 1;
-            const fit = Math.min(sw / (frontW * faceUnits), sh / frontH);
-            studioZoom = Math.max(0.1, Math.min(2.5, Number(fit.toFixed(2))));
-            studioPanX = 0;
-            studioPanY = 0;
-            renderCoverStudio(container, actions);
+            if (zoomNavController) {
+              zoomNavController.fitArtboard();
+            } else {
+              const scrollEl = container.querySelector<HTMLElement>('.qv-studio-canvas-scroll');
+              const faceUnits = coverWrapMode === 'full-wrap' ? 2.2 : coverWrapMode === 'dust-jacket' ? 3.1 : 1;
+              studioZoom = computeFitZoom(scrollEl?.clientWidth ?? 640, scrollEl?.clientHeight ?? 620, frontW * faceUnits, frontH);
+              studioPanX = 0;
+              studioPanY = 0;
+              renderCoverStudio(container, actions);
+            }
           },
         },
       }),
@@ -1604,7 +1710,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
 
   const getSelectedLayersList = () => {
     const keys = Array.from(selectedLayerKeys);
-    if (keys.length === 0 && activeLayerId) {
+    if (keys.length === 0 && activeLayerId && activeSelectionKind !== 'none') {
       keys.push(layerKeyOf(activeSelectionKind, activeLayerId));
     }
     return keys;
@@ -2313,7 +2419,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           lineHeight: String(tl.lineHeight),
           opacity: String(tl.opacity),
           mixBlendMode: tl.blendMode || 'normal',
-          zIndex: String(3 + (tl.zIndex ?? 0)),
+          zIndex: String(2 + (tl.zIndex ?? 0)),
           transform: `translate(-50%, -50%) rotate(${tl.rotationDeg}deg)`,
           textShadow: tl.shadowBlur ? `0 2px ${tl.shadowBlur}px rgba(0,0,0,0.6)` : 'none',
           webkitTextStroke: tl.strokeWidth ? `${tl.strokeWidth}px ${tl.strokeColor || '#000'}` : undefined,
@@ -2390,25 +2496,25 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       faceEl.appendChild(tNode);
     }
 
-    // Vector Path / Freehand Layers + Desktop Interactive Drawing & Review Pins
+    // Vector Path / Freehand Layers + Desktop Interactive Drawing
     const facePaths = [...pathLayers]
       .filter((p) => p.face === face && p.visible !== false && p.points.length >= 2)
       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
-    if (facePaths.length > 0 || (isDesktopProCover && drawBrushMode !== 'off' && activeTargetFace() === face)) {
-      const pathOverlaySvg = svgEl('svg', {
-        className: 'qv-cover-path-overlay',
-        viewBox: '0 0 100 100',
-        preserveAspectRatio: 'none',
-      });
-      pathOverlaySvg.style.position = 'absolute';
-      pathOverlaySvg.style.inset = '0';
-      pathOverlaySvg.style.width = '100%';
-      pathOverlaySvg.style.height = '100%';
-      pathOverlaySvg.style.zIndex = '4';
-      pathOverlaySvg.style.pointerEvents = drawBrushMode === 'off' ? 'none' : 'auto';
-      pathOverlaySvg.style.cursor = drawBrushMode === 'off' ? 'default' : 'crosshair';
 
+    if (drawBrushMode === 'off') {
       for (const pl of facePaths) {
+        const layerSvg = svgEl('svg', {
+          className: 'qv-cover-path-overlay',
+          viewBox: '0 0 100 100',
+          preserveAspectRatio: 'none',
+        });
+        layerSvg.style.position = 'absolute';
+        layerSvg.style.inset = '0';
+        layerSvg.style.width = '100%';
+        layerSvg.style.height = '100%';
+        layerSvg.style.zIndex = String(2 + (pl.zIndex ?? 0));
+        layerSvg.style.pointerEvents = 'none';
+
         const d =
           pl.points.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.xPct.toFixed(2)} ${pt.yPct.toFixed(2)}`).join(' ') +
           (pl.closed ? ' Z' : '');
@@ -2429,14 +2535,46 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
         pNode.style.pointerEvents = 'stroke';
         pNode.style.cursor = 'pointer';
         if (isSel) {
-          pNode.setAttribute('filter', 'drop-shadow(0 0 2px #d8b576)');
+          pNode.setAttribute('filter', 'drop-shadow(0 0 2px #3b82f6)');
         }
-        pNode.addEventListener('click', (e) => {
-          if (drawBrushMode !== 'off') return;
+        pNode.addEventListener('pointerdown', (e) => {
           e.stopPropagation();
           setSingleSelection(cover, 'path', pl.id, false);
           activeInspectorTab = 'properties';
           renderCoverStudio(container, actions);
+        });
+        layerSvg.appendChild(pNode);
+        faceEl.appendChild(layerSvg);
+      }
+    }
+
+    if (isDesktopProCover && drawBrushMode !== 'off' && activeTargetFace() === face) {
+      const pathOverlaySvg = svgEl('svg', {
+        className: 'qv-cover-path-overlay',
+        viewBox: '0 0 100 100',
+        preserveAspectRatio: 'none',
+      });
+      pathOverlaySvg.style.position = 'absolute';
+      pathOverlaySvg.style.inset = '0';
+      pathOverlaySvg.style.width = '100%';
+      pathOverlaySvg.style.height = '100%';
+      pathOverlaySvg.style.zIndex = '500';
+      pathOverlaySvg.style.pointerEvents = 'auto';
+      pathOverlaySvg.style.cursor = 'crosshair';
+
+      for (const pl of facePaths) {
+        const d =
+          pl.points.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.xPct.toFixed(2)} ${pt.yPct.toFixed(2)}`).join(' ') +
+          (pl.closed ? ' Z' : '');
+        const pNode = svgEl('path', {
+          d,
+          fill: pl.fillColor && pl.fillColor !== 'transparent' ? pl.fillColor : 'none',
+          stroke: pl.strokeColor,
+          'stroke-width': String(Math.max(0.4, pl.strokeWidth * 0.35)),
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          opacity: String(pl.opacity),
+          'vector-effect': 'non-scaling-stroke',
         });
         pathOverlaySvg.appendChild(pNode);
       }
@@ -2467,70 +2605,68 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
         }
       }
 
-      if (isDesktopProCover && drawBrushMode !== 'off' && activeTargetFace() === face) {
-        const toPct = (ev: PointerEvent): CoverPathPoint => {
-          const rect = pathOverlaySvg.getBoundingClientRect();
-          return {
-            xPct: Math.max(0, Math.min(100, ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 100)),
-            yPct: Math.max(0, Math.min(100, ((ev.clientY - rect.top) / Math.max(1, rect.height)) * 100)),
-          };
+      const toPct = (ev: PointerEvent): CoverPathPoint => {
+        const rect = pathOverlaySvg.getBoundingClientRect();
+        return {
+          xPct: Math.max(0, Math.min(100, ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 100)),
+          yPct: Math.max(0, Math.min(100, ((ev.clientY - rect.top) / Math.max(1, rect.height)) * 100)),
         };
+      };
 
-        if (drawBrushMode === 'pen') {
-          pathOverlaySvg.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-            pendingPenPoints.push(toPct(e));
-            renderCoverStudio(container, actions);
+      if (drawBrushMode === 'pen') {
+        pathOverlaySvg.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          pendingPenPoints.push(toPct(e));
+          renderCoverStudio(container, actions);
+        });
+      } else if (drawBrushMode === 'freehand') {
+        let activeStroke: CoverPathPoint[] = [];
+        let liveEl: SVGPathElement | null = null;
+        pathOverlaySvg.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          pathOverlaySvg.setPointerCapture?.(e.pointerId);
+          activeStroke = [toPct(e)];
+          liveEl = svgEl('path', {
+            d: `M ${activeStroke[0].xPct.toFixed(2)} ${activeStroke[0].yPct.toFixed(2)}`,
+            fill: 'none',
+            stroke: drawStrokeColor,
+            'stroke-width': String(Math.max(1, drawStrokeWidth)),
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+            'vector-effect': 'non-scaling-stroke',
           });
-        } else if (drawBrushMode === 'freehand') {
-          let activeStroke: CoverPathPoint[] = [];
-          let liveEl: SVGPathElement | null = null;
-          pathOverlaySvg.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-            pathOverlaySvg.setPointerCapture?.(e.pointerId);
-            activeStroke = [toPct(e)];
-            liveEl = svgEl('path', {
-              d: `M ${activeStroke[0].xPct.toFixed(2)} ${activeStroke[0].yPct.toFixed(2)}`,
-              fill: 'none',
-              stroke: drawStrokeColor,
-              'stroke-width': String(Math.max(1, drawStrokeWidth)),
-              'stroke-linecap': 'round',
-              'stroke-linejoin': 'round',
-              'vector-effect': 'non-scaling-stroke',
-            });
-            pathOverlaySvg.appendChild(liveEl);
-            const onMove = (mv: PointerEvent) => {
-              const pt = toPct(mv);
-              const last = activeStroke[activeStroke.length - 1];
-              if (Math.hypot(pt.xPct - last.xPct, pt.yPct - last.yPct) >= 1.1) {
-                activeStroke.push(pt);
-                liveEl?.setAttribute(
-                  'd',
-                  activeStroke.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.xPct.toFixed(2)} ${p.yPct.toFixed(2)}`).join(' '),
-                );
-              }
-            };
-            const onUp = () => {
-              window.removeEventListener('pointermove', onMove);
-              window.removeEventListener('pointerup', onUp);
-              if (activeStroke.length >= 2) {
-                const created = createPathLayer(face, activeStroke, {
-                  name: `Brush Stroke ${pathLayers.length + 1}`,
-                  closed: drawClosedPath,
-                  strokeColor: drawStrokeColor,
-                  strokeWidth: drawStrokeWidth,
-                  fillColor: drawClosedPath ? drawFillColor : 'transparent',
-                  blendMode: drawBlendMode,
-                });
-                activeSelectionKind = 'path';
-                activeLayerId = created.id;
-                mutateCover(actions, (c) => ({ ...c, pathLayers: [...(c.pathLayers ?? []), created] }));
-              }
-            };
-            window.addEventListener('pointermove', onMove);
-            window.addEventListener('pointerup', onUp);
-          });
-        }
+          pathOverlaySvg.appendChild(liveEl);
+          const onMove = (mv: PointerEvent) => {
+            const pt = toPct(mv);
+            const last = activeStroke[activeStroke.length - 1];
+            if (Math.hypot(pt.xPct - last.xPct, pt.yPct - last.yPct) >= 1.1) {
+              activeStroke.push(pt);
+              liveEl?.setAttribute(
+                'd',
+                activeStroke.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.xPct.toFixed(2)} ${p.yPct.toFixed(2)}`).join(' '),
+              );
+            }
+          };
+          const onUp = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            if (activeStroke.length >= 2) {
+              const created = createPathLayer(face, activeStroke, {
+                name: `Brush Stroke ${pathLayers.length + 1}`,
+                closed: drawClosedPath,
+                strokeColor: drawStrokeColor,
+                strokeWidth: drawStrokeWidth,
+                fillColor: drawClosedPath ? drawFillColor : 'transparent',
+                blendMode: drawBlendMode,
+              });
+              activeSelectionKind = 'path';
+              activeLayerId = created.id;
+              mutateCover(actions, (c) => ({ ...c, pathLayers: [...(c.pathLayers ?? []), created] }));
+            }
+          };
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
       }
       faceEl.appendChild(pathOverlaySvg);
     }
@@ -2711,14 +2847,22 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
   }
 
   const buildFrontFace = (): HTMLElement => {
+    const isWrapMulti = coverWrapMode === 'full-wrap' || coverWrapMode === 'dust-jacket';
     const frontCanvas = el('div', {
-      className: 'bv-cover-front',
+      className: `bv-cover-front${isWrapMulti && activeTargetFace() === 'front' ? ' bv-cover-face-active' : ''}`,
       style: {
         width: `${frontW}px`,
         height: `${frontH}px`,
         background: computeCoverBackgroundCss(cover, cover.backgroundColor),
         color: cover.textColor,
         fontFamily: fontCss,
+      },
+      on: {
+        pointerdown: (e) => {
+          const tgt = e.target as HTMLElement;
+          if (tgt.closest('.bv-cover-drag-item') || tgt.closest('.qv-cover-handle') || tgt.closest('.qv-cover-pin')) return;
+          activeEditFace = 'front';
+        },
       },
     });
 
@@ -2774,10 +2918,21 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       let dragging = false;
       let startX = 0;
       let startY = 0;
+      const isElemSelected = activeSelectionKind === 'element' && activeElementKey === key;
+      const selFrame = isElemSelected
+        ? el(
+            'div',
+            { className: 'qv-cover-sel-box' },
+            el('span', { className: 'qv-cover-handle is-nw' }),
+            el('span', { className: 'qv-cover-handle is-ne' }),
+            el('span', { className: 'qv-cover-handle is-se' }),
+            el('span', { className: 'qv-cover-handle is-sw' }),
+          )
+        : null;
       const node = el(
         'div',
         {
-          className: `bv-cover-drag-item${activeSelectionKind === 'element' && activeElementKey === key ? ' is-selected' : ''}`,
+          className: `bv-cover-drag-item${isElemSelected ? ' is-selected' : ''}`,
           attrs: { 'data-cover-el': key },
           style: {
             left: `${placement.xPct}%`,
@@ -2792,11 +2947,17 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
             pointerdown: (e) => {
               if (e.button !== 0) return;
               e.stopPropagation();
+              activeEditFace = 'front';
+              activeFaceElementKey = '';
               activeSelectionKind = 'element';
               activeElementKey = key;
               activeLayerId = '';
               activeInspectorTab = 'properties';
-              if (placement.locked) return;
+              if (placement.locked) {
+                setSingleSelection(cover, 'element', key, e.shiftKey);
+                renderCoverStudio(container, actions);
+                return;
+              }
               dragging = true;
               startX = e.clientX;
               startY = e.clientY;
@@ -2908,6 +3069,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           ],
         },
       ]);
+      if (selFrame) node.appendChild(selFrame);
       frontCanvas.appendChild(node);
     };
 
@@ -2943,8 +3105,17 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
   };
 
   const buildBackFace = (): HTMLElement => {
+    const isWrapMulti = coverWrapMode === 'full-wrap' || coverWrapMode === 'dust-jacket';
+    const selectFaceField = (fieldKey: FaceEditableFieldKey, ev: Event) => {
+      ev.stopPropagation();
+      clearCoverSelection();
+      activeEditFace = 'back';
+      activeFaceElementKey = fieldKey;
+      activeInspectorTab = 'properties';
+      renderCoverStudio(container, actions);
+    };
     const back = el('div', {
-      className: 'bv-cover-back',
+      className: `bv-cover-back${isWrapMulti && activeTargetFace() === 'back' ? ' bv-cover-face-active' : ''}`,
       style: {
         width: `${frontW}px`,
         height: `${frontH}px`,
@@ -2952,25 +3123,43 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
         color: cover.textColor,
         fontFamily: fontCss,
       },
+      on: {
+        pointerdown: (e) => {
+          const tgt = e.target as HTMLElement;
+          if (tgt.closest('.bv-cover-drag-item') || tgt.closest('.bv-cover-editable-block') || tgt.closest('.qv-cover-handle') || tgt.closest('.qv-cover-pin')) return;
+          activeEditFace = 'back';
+        },
+      },
     });
     renderFaceLayers(back, 'back');
     back.append(
       el('div', {
+        className: `bv-cover-editable-block${activeFaceElementKey === 'back-headline' ? ' is-selected' : ''}`,
         text: cover.backHeadline || project.title,
         style: { fontSize: '18px', fontWeight: '600', color: cover.accentColor, lineHeight: '1.2', position: 'relative', zIndex: '3' },
+        on: { click: (e) => selectFaceField('back-headline', e) },
       }),
       el('p', {
-        text: cover.backBlurb,
-        style: { margin: '0', fontSize: '13px', lineHeight: '1.6', opacity: '0.9', position: 'relative', zIndex: '3' },
+        className: `bv-cover-editable-block${activeFaceElementKey === 'back-blurb' ? ' is-selected' : ''}`,
+        text: cover.backBlurb || 'Click to edit back cover blurb…',
+        style: { margin: '0', fontSize: '13px', lineHeight: '1.6', opacity: cover.backBlurb ? '0.9' : '0.45', position: 'relative', zIndex: '3' },
+        on: { click: (e) => selectFaceField('back-blurb', e) },
       }),
-      ...(cover.authorBio
-        ? [
-            el('p', {
-              text: cover.authorBio,
-              style: { margin: 'auto 0 0', fontSize: '11.5px', lineHeight: '1.5', opacity: '0.72', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: '10px', position: 'relative', zIndex: '3' },
-            }),
-          ]
-        : []),
+      el('p', {
+        className: `bv-cover-editable-block${activeFaceElementKey === 'author-bio' ? ' is-selected' : ''}`,
+        text: cover.authorBio || 'Click to add author bio…',
+        style: {
+          margin: 'auto 0 0',
+          fontSize: '11.5px',
+          lineHeight: '1.5',
+          opacity: cover.authorBio ? '0.72' : '0.42',
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          paddingTop: '10px',
+          position: 'relative',
+          zIndex: '3',
+        },
+        on: { click: (e) => selectFaceField('author-bio', e) },
+      }),
       ...(cover.showBarcodeBox !== false
         ? [
             el(
@@ -2987,10 +3176,11 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
 
   const buildSpineFace = (): HTMLElement => {
     const spineW = Math.max(38, Math.round(spineInches * 64));
+    const isWrapMulti = coverWrapMode === 'full-wrap' || coverWrapMode === 'dust-jacket';
     const spine = el(
       'div',
       {
-        className: 'bv-cover-spine',
+        className: `bv-cover-spine${isWrapMulti && activeTargetFace() === 'spine' ? ' bv-cover-face-active' : ''}`,
         style: {
           width: `${spineW}px`,
           height: `${frontH}px`,
@@ -2998,18 +3188,39 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           color: cover.accentColor,
           fontFamily: fontCss,
         },
+        on: {
+          pointerdown: (e) => {
+            const tgt = e.target as HTMLElement;
+            if (tgt.closest('.bv-cover-drag-item') || tgt.closest('.bv-cover-editable-block') || tgt.closest('.qv-cover-handle') || tgt.closest('.qv-cover-pin')) return;
+            activeEditFace = 'spine';
+          },
+        },
       },
-      el('span', { text: `${cover.spineTitle || project.title}  ·  ${penName}` }),
+      el('span', {
+        className: `bv-cover-editable-block${activeFaceElementKey === 'spine-title' ? ' is-selected' : ''}`,
+        text: `${cover.spineTitle || project.title}  ·  ${penName}`,
+        on: {
+          click: (e) => {
+            e.stopPropagation();
+            clearCoverSelection();
+            activeEditFace = 'spine';
+            activeFaceElementKey = 'spine-title';
+            activeInspectorTab = 'properties';
+            renderCoverStudio(container, actions);
+          },
+        },
+      }),
     );
     renderFaceLayers(spine, 'spine');
     return spine;
   };
 
   const buildFlapFace = (side: 'front-flap' | 'back-flap'): HTMLElement => {
+    const isWrapMulti = coverWrapMode === 'dust-jacket';
     const flap = el(
       'div',
       {
-        className: 'bv-cover-flap',
+        className: `bv-cover-flap${isWrapMulti && activeTargetFace() === side ? ' bv-cover-face-active' : ''}`,
         style: {
           position: 'relative',
           width: `${Math.round(frontW * 0.44)}px`,
@@ -3018,11 +3229,29 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           color: cover.textColor,
           fontFamily: fontCss,
         },
+        on: {
+          pointerdown: (e) => {
+            const tgt = e.target as HTMLElement;
+            if (tgt.closest('.bv-cover-drag-item') || tgt.closest('.bv-cover-editable-block') || tgt.closest('.qv-cover-handle') || tgt.closest('.qv-cover-pin')) return;
+            activeEditFace = side;
+          },
+        },
       },
       el('span', { className: 'bv-mono-tag', text: side === 'front-flap' ? 'FRONT FLAP' : 'BACK FLAP', style: { color: cover.accentColor } }),
       el('p', {
-        text: side === 'front-flap' ? (cover.frontFlapText || '') : (cover.backFlapText || ''),
+        className: `bv-cover-editable-block${activeFaceElementKey === side ? ' is-selected' : ''}`,
+        text: (side === 'front-flap' ? cover.frontFlapText : cover.backFlapText) || `Click to edit ${side === 'front-flap' ? 'front flap' : 'back flap'} copy…`,
         style: { fontSize: '11.5px', lineHeight: '1.55', opacity: '0.88' },
+        on: {
+          click: (e) => {
+            e.stopPropagation();
+            clearCoverSelection();
+            activeEditFace = side;
+            activeFaceElementKey = side;
+            activeInspectorTab = 'properties';
+            renderCoverStudio(container, actions);
+          },
+        },
       }),
     );
     renderFaceLayers(flap, side);
@@ -3056,27 +3285,173 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     );
   }
 
-  // Wheel zoom (Ctrl/Cmd + Wheel)
-  stageScroll.addEventListener(
-    'wheel',
-    (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      studioZoom = Math.max(0.1, Math.min(5, Number((studioZoom + delta).toFixed(2))));
-      wrap.style.transform = `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`;
-      wrap.style.setProperty('--qv-inv-zoom', String(Number((1 / Math.max(0.1, studioZoom)).toFixed(3))));
-      const statusZoom = bottomStatusStrip.querySelector('.bv-mono-tag');
-      if (statusZoom) {
-        statusZoom.textContent = `Trim ${trim.label} · Spine ${spineInches}" · Zoom ${Math.round(studioZoom * 100)}%`;
+  const syncZoomUiState = () => {
+    wrap.style.transform = `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`;
+    wrap.style.setProperty('--qv-inv-zoom', String(Number((1 / Math.max(0.1, studioZoom)).toFixed(3))));
+    const pctText = `${Math.round(studioZoom * 100)}%`;
+    const readoutBtn = container.querySelector<HTMLButtonElement>('[data-cover-zoom-readout="1"]');
+    if (readoutBtn) readoutBtn.textContent = pctText;
+    const zoomSel = container.querySelector<HTMLSelectElement>('[data-cover-zoom-select="1"]');
+    if (zoomSel) {
+      const matchedPreset = COVER_ZOOM_PRESETS.find((preset) => Math.abs(preset - studioZoom) < 0.005);
+      const customOpt = zoomSel.querySelector<HTMLOptionElement>('option[value="custom"]');
+      if (matchedPreset !== undefined) {
+        if (customOpt) customOpt.hidden = true;
+        zoomSel.value = String(matchedPreset);
+      } else {
+        if (customOpt) {
+          customOpt.textContent = pctText;
+          customOpt.hidden = false;
+        }
+        zoomSel.value = 'custom';
       }
-    },
+    }
+    const statusZoom = stageWrap.querySelector('.qv-studio-status-strip .bv-mono-tag');
+    if (statusZoom) {
+      statusZoom.textContent = `Trim ${trim.label} · Spine ${spineInches}" · Zoom ${pctText}`;
+    }
+  };
+
+  const applyStudioZoom = (nextZoom: number, anchorClientX?: number, anchorClientY?: number) => {
+    const rect = stageScroll.getBoundingClientRect();
+    const padTop = Number.parseFloat(getComputedStyle(stageScroll).paddingTop || '36') || 36;
+    const defaultAnchorX = rect.width > 0 ? rect.left + rect.width / 2 : undefined;
+    const defaultAnchorY = rect.height > 0 ? rect.top + rect.height / 2 : undefined;
+    const ax = typeof anchorClientX === 'number' ? anchorClientX : defaultAnchorX;
+    const ay = typeof anchorClientY === 'number' ? anchorClientY : defaultAnchorY;
+    const result = computeCursorAnchoredZoom({
+      currentZoom: studioZoom,
+      nextZoom,
+      panX: studioPanX,
+      panY: studioPanY,
+      anchorX: rect.width > 0 ? ax : undefined,
+      anchorY: rect.height > 0 ? ay : undefined,
+      originX: rect.left + rect.width / 2 - stageScroll.scrollLeft,
+      originY: rect.top + padTop - stageScroll.scrollTop,
+    });
+    studioZoom = result.zoom;
+    studioPanX = result.panX;
+    studioPanY = result.panY;
+    syncZoomUiState();
+  };
+
+  const fitCoverArtboard = () => {
+    const faceUnits = coverWrapMode === 'full-wrap' ? 2.2 : coverWrapMode === 'dust-jacket' ? 3.1 : coverWrapMode === 'spine' ? 0.3 : 1;
+    const boardW = wrap.offsetWidth > 40 ? wrap.offsetWidth : frontW * faceUnits;
+    const boardH = wrap.offsetHeight > 40 ? wrap.offsetHeight : frontH;
+    studioZoom = computeFitZoom(stageScroll.clientWidth || 640, stageScroll.clientHeight || 620, boardW, boardH);
+    studioPanX = 0;
+    studioPanY = 0;
+    syncZoomUiState();
+  };
+
+  const fitCoverArtwork = () => {
+    const faceLayerBoxes = [
+      ...(cover.shapeLayers ?? []).map((s) => ({ x: s.xPct, y: s.yPct, w: s.widthPct, h: s.heightPct })),
+      ...(cover.graphicLayers ?? []).map((g) => ({ x: g.xPct, y: g.yPct, w: g.widthPct, h: g.widthPct })),
+      ...(cover.textLayers ?? []).map((t) => ({ x: t.xPct, y: t.yPct, w: 28, h: Math.max(8, t.fontSize * 0.45) })),
+    ];
+    if (faceLayerBoxes.length === 0) {
+      fitCoverArtboard();
+      return;
+    }
+    let minX = 100;
+    let minY = 100;
+    let maxX = 0;
+    let maxY = 0;
+    for (const box of faceLayerBoxes) {
+      minX = Math.min(minX, Math.max(0, box.x - box.w / 2));
+      minY = Math.min(minY, Math.max(0, box.y - box.h / 2));
+      maxX = Math.max(maxX, Math.min(100, box.x + box.w / 2));
+      maxY = Math.max(maxY, Math.min(100, box.y + box.h / 2));
+    }
+    const artW = Math.max(frontW * 0.25, ((maxX - minX) / 100) * frontW);
+    const artH = Math.max(frontH * 0.25, ((maxY - minY) / 100) * frontH);
+    studioZoom = computeFitZoom(stageScroll.clientWidth || 640, stageScroll.clientHeight || 620, artW, artH, 96);
+    studioPanX = 0;
+    studioPanY = 0;
+    syncZoomUiState();
+  };
+
+  const resetCoverView = () => {
+    studioZoom = 1;
+    studioPanX = 0;
+    studioPanY = 0;
+    syncZoomUiState();
+  };
+
+  zoomNavController = {
+    applyZoom: applyStudioZoom,
+    fitArtboard: fitCoverArtboard,
+    fitArtwork: fitCoverArtwork,
+    resetView: resetCoverView,
+  };
+
+  // Trackpad pinch (ctrlKey=true), Ctrl/Cmd + Wheel zoom, and two-finger pan
+  if (activeCoverWheelHandler) {
+    window.removeEventListener('wheel', activeCoverWheelHandler);
+  }
+  activeCoverWheelHandler = (e: WheelEvent) => {
+    if (!document.body.contains(stageScroll)) {
+      window.removeEventListener('wheel', activeCoverWheelHandler!);
+      activeCoverWheelHandler = null;
+      return;
+    }
+    const target = e.target as Node | null;
+    if (!target || (!stageWrap.contains(target) && !container.contains(target))) return;
+    const gesture = classifyCanvasWheelGesture({
+      deltaX: e.deltaX,
+      deltaY: e.deltaY,
+      deltaMode: e.deltaMode,
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+      shiftKey: e.shiftKey,
+    });
+    if (gesture.kind === 'zoom') {
+      e.preventDefault();
+      applyStudioZoom(studioZoom * gesture.zoomFactor, e.clientX, e.clientY);
+      return;
+    }
+    if (stageScroll.contains(target)) {
+      e.preventDefault();
+      studioPanX += gesture.panDeltaX;
+      studioPanY += gesture.panDeltaY;
+      syncZoomUiState();
+    }
+  };
+  window.addEventListener('wheel', activeCoverWheelHandler, { passive: false });
+
+  let gestureBaseZoom = studioZoom;
+  stageScroll.addEventListener(
+    'gesturestart' as keyof HTMLElementEventMap,
+    ((e: Event & { scale?: number }) => {
+      e.preventDefault();
+      gestureBaseZoom = studioZoom;
+    }) as EventListener,
+    { passive: false },
+  );
+  stageScroll.addEventListener(
+    'gesturechange' as keyof HTMLElementEventMap,
+    ((e: Event & { scale?: number; clientX?: number; clientY?: number }) => {
+      e.preventDefault();
+      if (typeof e.scale === 'number' && Number.isFinite(e.scale) && e.scale > 0) {
+        applyStudioZoom(gestureBaseZoom * e.scale, e.clientX, e.clientY);
+      }
+    }) as EventListener,
     { passive: false },
   );
 
   // Panning (Space+Drag or Middle-Mouse) and Empty-Stage Marquee Box Multi-Select
   let spaceHeld = false;
+  let lastContextClientX: number | undefined;
+  let lastContextClientY: number | undefined;
+  stageScroll.addEventListener('contextmenu', (ev) => {
+    lastContextClientX = ev.clientX;
+    lastContextClientY = ev.clientY;
+  });
+
   stageScroll.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) return;
     const target = e.target as HTMLElement;
     const isMiddlePan = e.button === 1;
     const isSpacePan = e.button === 0 && spaceHeld;
@@ -3087,22 +3462,32 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       const origX = studioPanX;
       const origY = studioPanY;
       stageScroll.classList.add('is-panning');
+      const cleanupPan = () => {
+        stageScroll.classList.remove('is-panning');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', cleanupPan);
+        window.removeEventListener('pointercancel', cleanupPan);
+        window.removeEventListener('blur', cleanupPan);
+      };
       const onMove = (mv: PointerEvent) => {
         studioPanX = origX + (mv.clientX - sx);
         studioPanY = origY + (mv.clientY - sy);
-        wrap.style.transform = `translate(${Math.round(studioPanX)}px, ${Math.round(studioPanY)}px) scale(${studioZoom})`;
-      };
-      const onUp = () => {
-        stageScroll.classList.remove('is-panning');
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
+        syncZoomUiState();
       };
       window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointerup', cleanupPan);
+      window.addEventListener('pointercancel', cleanupPan);
+      window.addEventListener('blur', cleanupPan);
       return;
     }
 
-    if (e.button === 0 && !target.closest('.bv-cover-drag-item') && !target.closest('.qv-inline-text-editor')) {
+    if (
+      e.button === 0 &&
+      !target.closest('.bv-cover-drag-item') &&
+      !target.closest('.bv-cover-editable-block') &&
+      !target.closest('.qv-inline-text-editor') &&
+      !target.closest('.qv-cover-pin')
+    ) {
       const startX = e.clientX;
       const startY = e.clientY;
       const box = el('div', { className: 'qv-marquee-rect' });
@@ -3144,6 +3529,9 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
             }
           });
           renderCoverStudio(container, actions);
+        } else {
+          clearCoverSelection();
+          renderCoverStudio(container, actions);
         }
       };
       window.addEventListener('pointermove', onMove);
@@ -3165,8 +3553,8 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     el('button', { className: 'bv-mini-btn', text: 'Tidy', attrs: { type: 'button' }, on: { click: () => applyAlignToSelected('tidy') } }),
     el('button', { className: 'bv-mini-btn', text: 'Group', attrs: { type: 'button', title: 'Ctrl+G' }, on: { click: () => groupSelectedLayers(false) } }),
     el('button', { className: 'bv-mini-btn', text: 'Ungroup', attrs: { type: 'button', title: 'Ctrl+Shift+G' }, on: { click: () => groupSelectedLayers(true) } }),
-    el('button', { className: 'bv-mini-btn', text: 'Forward', attrs: { type: 'button', title: ']' }, on: { click: () => activeLayerId && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, 1) } }),
-    el('button', { className: 'bv-mini-btn', text: 'Back', attrs: { type: 'button', title: '[' }, on: { click: () => activeLayerId && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, -1) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Forward', attrs: { type: 'button', title: ']' }, on: { click: () => activeLayerId && activeSelectionKind !== 'none' && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, 1) } }),
+    el('button', { className: 'bv-mini-btn', text: 'Back', attrs: { type: 'button', title: '[' }, on: { click: () => activeLayerId && activeSelectionKind !== 'none' && activeSelectionKind !== 'element' && bumpLayerZ(activeSelectionKind, activeLayerId, -1) } }),
     el('button', { className: 'bv-mini-btn', text: 'Delete', attrs: { type: 'button', title: 'Delete' }, on: { click: deleteSelectedLayers } }),
   );
 
@@ -3178,9 +3566,10 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     if (e.code === 'Space') spaceHeld = false;
   };
   activeCoverKeyHandler = (e: KeyboardEvent) => {
-    if (!document.body.contains(container)) {
+    if (!document.body.contains(stageScroll)) {
       window.removeEventListener('keydown', activeCoverKeyHandler!);
       window.removeEventListener('keyup', onKeyUp);
+      activeCoverKeyHandler = null;
       return;
     }
     const ae = document.activeElement as HTMLElement | null;
@@ -3192,7 +3581,18 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
       return;
     }
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key.toLowerCase() === 'd') {
+    if (mod && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadAdd')) {
+      e.preventDefault();
+      applyStudioZoom(studioZoom * 1.15);
+    } else if (mod && (e.key === '-' || e.key === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract')) {
+      e.preventDefault();
+      applyStudioZoom(studioZoom / 1.15);
+    } else if (mod && (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0')) {
+      e.preventDefault();
+      studioPanX = 0;
+      studioPanY = 0;
+      applyStudioZoom(1);
+    } else if (mod && e.key.toLowerCase() === 'd') {
       e.preventDefault();
       duplicateSelectedLayers();
     } else if (mod && e.key.toLowerCase() === 'c') {
@@ -3208,13 +3608,13 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     } else if (mod && e.key.toLowerCase() === 'g') {
       e.preventDefault();
       groupSelectedLayers(e.shiftKey);
-    } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelectionKind !== 'element') {
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && activeSelectionKind !== 'none' && activeSelectionKind !== 'element') {
       e.preventDefault();
       deleteSelectedLayers();
-    } else if (e.key === ']' && activeSelectionKind !== 'element' && activeLayerId) {
+    } else if (e.key === ']' && activeSelectionKind !== 'none' && activeSelectionKind !== 'element' && activeLayerId) {
       e.preventDefault();
       bumpLayerZ(activeSelectionKind, activeLayerId, mod ? 10 : 1);
-    } else if (e.key === '[' && activeSelectionKind !== 'element' && activeLayerId) {
+    } else if (e.key === '[' && activeSelectionKind !== 'none' && activeSelectionKind !== 'element' && activeLayerId) {
       e.preventDefault();
       bumpLayerZ(activeSelectionKind, activeLayerId, mod ? -10 : -1);
     } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
@@ -3229,6 +3629,37 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
   window.addEventListener('keyup', onKeyUp);
 
   attachContextMenu(stageScroll, () => [
+    {
+      heading: 'View & Navigation',
+      items: [
+        {
+          label: 'Zoom In',
+          icon: 'zoom-in',
+          onSelect: () => applyStudioZoom(studioZoom * 1.25, lastContextClientX, lastContextClientY),
+        },
+        {
+          label: 'Zoom Out',
+          icon: 'zoom-out',
+          onSelect: () => applyStudioZoom(studioZoom / 1.25, lastContextClientX, lastContextClientY),
+        },
+        {
+          label: 'Fit Artboard to Window',
+          onSelect: () => fitCoverArtboard(),
+        },
+        {
+          label: 'Fit Artwork to Window',
+          onSelect: () => fitCoverArtwork(),
+        },
+        {
+          label: 'Actual Size (100%)',
+          onSelect: () => applyStudioZoom(1, lastContextClientX, lastContextClientY),
+        },
+        {
+          label: 'Reset View',
+          onSelect: () => resetCoverView(),
+        },
+      ],
+    },
     {
       heading: 'Cover Canvas',
       items: [
@@ -3251,13 +3682,6 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           onSelect: () => mutateCover(actions, (c) => ({ ...c, showGuides: !showBleedGuides }), true, false),
         },
         {
-          label: 'Reset Zoom (100%)',
-          onSelect: () => {
-            studioZoom = 1;
-            renderCoverStudio(container, actions);
-          },
-        },
-        {
           label: 'Export Front Cover PNG',
           icon: 'download',
           onSelect: () => void actions.exportCoverPng(),
@@ -3271,7 +3695,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
     'div',
     { className: 'qv-studio-status-strip' },
     el('span', { className: 'bv-mono-tag', text: `Trim ${trim.label} · Spine ${spineInches}" · Zoom ${Math.round(studioZoom * 100)}%` }),
-    el('span', { className: 'bv-mono-tag', text: 'Ctrl+Wheel zoom · Space+Drag pan · Double-click text to edit · Hold Ctrl to bypass snap' }),
+    el('span', { className: 'bv-mono-tag', text: 'Two-finger pan · Ctrl+Wheel / Pinch zoom · Space+Drag pan · Right-click View' }),
   );
   stageWrap.append(contextualStrip, stageScroll, bottomStatusStrip);
 
@@ -3307,148 +3731,248 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
   const rightBody = el('div', { className: 'qv-studio-right-body' });
 
   if (activeInspectorTab === 'layers') {
-    const buildLayerRow = (
-      label: string,
-      badge: string,
-      selected: boolean,
-      visible: boolean,
-      locked: boolean,
-      onSelect: () => void,
-      onToggleVis: () => void,
-      onToggleLock: () => void,
-      onDelete?: () => void,
-    ) =>
-      el(
+    type StackLayerItem = {
+      kind: 'graphic' | 'text' | 'path' | 'shape';
+      id: string;
+      label: string;
+      badge: string;
+      zIndex: number;
+      visible: boolean;
+      locked: boolean;
+    };
+
+    const stackItems: StackLayerItem[] = [
+      ...graphicLayers.map((g) => ({
+        kind: 'graphic' as const,
+        id: g.id,
+        label: g.name,
+        badge: `${g.kind.toUpperCase()} · ${g.face}`,
+        zIndex: g.zIndex ?? 0,
+        visible: g.visible !== false,
+        locked: Boolean(g.locked),
+      })),
+      ...textLayers.map((tl) => ({
+        kind: 'text' as const,
+        id: tl.id,
+        label: tl.text.slice(0, 28) || 'Text Box',
+        badge: `TEXT · ${tl.face}`,
+        zIndex: tl.zIndex ?? 0,
+        visible: tl.visible !== false,
+        locked: Boolean(tl.locked),
+      })),
+      ...pathLayers.map((pl) => ({
+        kind: 'path' as const,
+        id: pl.id,
+        label: pl.name,
+        badge: `PATH · ${pl.face} (${pl.points.length} pts)`,
+        zIndex: pl.zIndex ?? 0,
+        visible: pl.visible !== false,
+        locked: Boolean(pl.locked),
+      })),
+      ...shapeLayers.map((sh) => ({
+        kind: 'shape' as const,
+        id: sh.id,
+        label: sh.name,
+        badge: `SHAPE · ${sh.face}`,
+        zIndex: sh.zIndex ?? 0,
+        visible: sh.visible !== false,
+        locked: Boolean(sh.locked),
+      })),
+    ].sort((a, b) => b.zIndex - a.zIndex);
+
+    let draggedStackKey: string | null = null;
+    const stackKey = (item: Pick<StackLayerItem, 'kind' | 'id'>) => `${item.kind}:${item.id}`;
+
+    const applyZStackOrder = (orderedTopToBottom: StackLayerItem[]) => {
+      const zByKey = new Map<string, number>();
+      const total = orderedTopToBottom.length;
+      orderedTopToBottom.forEach((item, idx) => {
+        zByKey.set(stackKey(item), total - 1 - idx);
+      });
+      mutateCover(actions, (c) => ({
+        ...c,
+        graphicLayers: (c.graphicLayers ?? []).map((g) => {
+          const z = zByKey.get(`graphic:${g.id}`);
+          return z !== undefined ? { ...g, zIndex: z } : g;
+        }),
+        textLayers: (c.textLayers ?? []).map((t) => {
+          const z = zByKey.get(`text:${t.id}`);
+          return z !== undefined ? { ...t, zIndex: z } : t;
+        }),
+        pathLayers: (c.pathLayers ?? []).map((p) => {
+          const z = zByKey.get(`path:${p.id}`);
+          return z !== undefined ? { ...p, zIndex: z } : p;
+        }),
+        shapeLayers: (c.shapeLayers ?? []).map((s) => {
+          const z = zByKey.get(`shape:${s.id}`);
+          return z !== undefined ? { ...s, zIndex: z } : s;
+        }),
+      }));
+    };
+
+    const toggleCustomLayerVis = (item: StackLayerItem) => {
+      mutateCover(actions, (c) => {
+        if (item.kind === 'graphic') return { ...c, graphicLayers: (c.graphicLayers ?? []).map((x) => (x.id === item.id ? { ...x, visible: !item.visible } : x)) };
+        if (item.kind === 'text') return { ...c, textLayers: (c.textLayers ?? []).map((x) => (x.id === item.id ? { ...x, visible: !item.visible } : x)) };
+        if (item.kind === 'path') return { ...c, pathLayers: (c.pathLayers ?? []).map((x) => (x.id === item.id ? { ...x, visible: !item.visible } : x)) };
+        return { ...c, shapeLayers: (c.shapeLayers ?? []).map((x) => (x.id === item.id ? { ...x, visible: !item.visible } : x)) };
+      });
+    };
+
+    const toggleCustomLayerLock = (item: StackLayerItem) => {
+      mutateCover(actions, (c) => {
+        if (item.kind === 'graphic') return { ...c, graphicLayers: (c.graphicLayers ?? []).map((x) => (x.id === item.id ? { ...x, locked: !item.locked } : x)) };
+        if (item.kind === 'text') return { ...c, textLayers: (c.textLayers ?? []).map((x) => (x.id === item.id ? { ...x, locked: !item.locked } : x)) };
+        if (item.kind === 'path') return { ...c, pathLayers: (c.pathLayers ?? []).map((x) => (x.id === item.id ? { ...x, locked: !item.locked } : x)) };
+        return { ...c, shapeLayers: (c.shapeLayers ?? []).map((x) => (x.id === item.id ? { ...x, locked: !item.locked } : x)) };
+      });
+    };
+
+    const deleteCustomLayer = (item: StackLayerItem) => {
+      if (activeSelectionKind === item.kind && activeLayerId === item.id) {
+        clearCoverSelection();
+      }
+      mutateCover(actions, (c) => {
+        if (item.kind === 'graphic') return { ...c, graphicLayers: (c.graphicLayers ?? []).filter((x) => x.id !== item.id) };
+        if (item.kind === 'text') return { ...c, textLayers: (c.textLayers ?? []).filter((x) => x.id !== item.id) };
+        if (item.kind === 'path') return { ...c, pathLayers: (c.pathLayers ?? []).filter((x) => x.id !== item.id) };
+        return { ...c, shapeLayers: (c.shapeLayers ?? []).filter((x) => x.id !== item.id) };
+      });
+    };
+
+    if (stackItems.length > 0) {
+      rightBody.appendChild(el('span', { className: 'bv-label', text: 'Drag layers up/down to reorder visual stacking' }));
+    }
+
+    for (const item of stackItems) {
+      const k = stackKey(item);
+      const selected = activeSelectionKind === item.kind && activeLayerId === item.id;
+      const row = el(
         'div',
         {
           className: `qv-layer-row${selected ? ' is-active' : ''}`,
-          on: { click: onSelect },
+          attrs: { draggable: 'true' },
+          on: {
+            click: () => {
+              setSingleSelection(cover, item.kind, item.id, false);
+              renderCoverStudio(container, actions);
+            },
+            dragstart: (e) => {
+              draggedStackKey = k;
+              if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', k);
+              }
+            },
+            dragover: (e) => {
+              if (!draggedStackKey || draggedStackKey === k) return;
+              e.preventDefault();
+              const rect = row.getBoundingClientRect();
+              const topHalf = e.clientY < rect.top + rect.height / 2;
+              row.classList.toggle('is-drag-over-top', topHalf);
+              row.classList.toggle('is-drag-over-bottom', !topHalf);
+            },
+            dragleave: () => {
+              row.classList.remove('is-drag-over-top', 'is-drag-over-bottom');
+            },
+            drop: (e) => {
+              e.preventDefault();
+              const rect = row.getBoundingClientRect();
+              const insertAbove = e.clientY < rect.top + rect.height / 2;
+              row.classList.remove('is-drag-over-top', 'is-drag-over-bottom');
+              const srcKey = draggedStackKey || e.dataTransfer?.getData('text/plain') || '';
+              draggedStackKey = null;
+              if (!srcKey || srcKey === k) return;
+              const nextOrder = [...stackItems];
+              const fromIdx = nextOrder.findIndex((x) => stackKey(x) === srcKey);
+              if (fromIdx === -1) return;
+              const [moved] = nextOrder.splice(fromIdx, 1);
+              let targetIdx = nextOrder.findIndex((x) => stackKey(x) === k);
+              if (targetIdx === -1) return;
+              if (!insertAbove) targetIdx += 1;
+              nextOrder.splice(targetIdx, 0, moved);
+              applyZStackOrder(nextOrder);
+            },
+            dragend: () => {
+              draggedStackKey = null;
+              row.classList.remove('is-drag-over-top', 'is-drag-over-bottom');
+            },
+          },
         },
+        el('span', { className: 'qv-layer-grip', text: '⋮⋮', attrs: { title: 'Drag to reorder layer stacking' } }),
         el(
           'div',
           { style: { minWidth: '0', flex: '1' } },
-          el('div', { text: label, style: { fontWeight: '600', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }),
-          el('span', { className: 'bv-mono-tag', text: badge }),
+          el('div', { text: item.label, style: { fontWeight: '600', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }),
+          el('span', { className: 'bv-mono-tag', text: item.badge }),
         ),
         el(
           'div',
           { style: { display: 'flex', gap: '3px', alignItems: 'center' } },
           el('button', {
             className: 'bv-icon-tiny',
-            attrs: { type: 'button', 'aria-label': visible ? 'Hide layer' : 'Show layer' },
-            on: { click: (e) => { e.stopPropagation(); onToggleVis(); } },
-          }, icon(visible ? 'eye' : 'eye-off', 13)),
+            attrs: { type: 'button', 'aria-label': item.visible ? 'Hide layer' : 'Show layer' },
+            on: { click: (e) => { e.stopPropagation(); toggleCustomLayerVis(item); } },
+          }, icon(item.visible ? 'eye' : 'eye-off', 13)),
           el('button', {
             className: 'bv-icon-tiny',
-            attrs: { type: 'button', 'aria-label': locked ? 'Unlock layer' : 'Lock layer' },
-            on: { click: (e) => { e.stopPropagation(); onToggleLock(); } },
-          }, icon(locked ? 'lock' : 'unlock', 13)),
-          onDelete
-            ? el('button', {
-                className: 'bv-icon-tiny',
-                attrs: { type: 'button', 'aria-label': 'Delete layer' },
-                on: { click: (e) => { e.stopPropagation(); onDelete(); } },
-              }, icon('trash', 13))
-            : null,
+            attrs: { type: 'button', 'aria-label': item.locked ? 'Unlock layer' : 'Lock layer' },
+            on: { click: (e) => { e.stopPropagation(); toggleCustomLayerLock(item); } },
+          }, icon(item.locked ? 'lock' : 'unlock', 13)),
+          el('button', {
+            className: 'bv-icon-tiny',
+            attrs: { type: 'button', 'aria-label': 'Delete layer' },
+            on: { click: (e) => { e.stopPropagation(); deleteCustomLayer(item); } },
+          }, icon('trash', 13)),
         ),
       );
-
-    for (const g of [...graphicLayers].reverse()) {
-      rightBody.appendChild(
-        buildLayerRow(
-          g.name,
-          `${g.kind.toUpperCase()} · ${g.face}`,
-          activeSelectionKind === 'graphic' && activeLayerId === g.id,
-          g.visible !== false,
-          Boolean(g.locked),
-          () => {
-            activeSelectionKind = 'graphic';
-            activeLayerId = g.id;
-            renderCoverStudio(container, actions);
-          },
-          () => mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((x) => x.id === g.id ? { ...x, visible: !(x.visible !== false) } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).map((x) => x.id === g.id ? { ...x, locked: !x.locked } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, graphicLayers: (c.graphicLayers ?? []).filter((x) => x.id !== g.id) })),
-        ),
-      );
-    }
-
-    for (const tl of [...textLayers].reverse()) {
-      rightBody.appendChild(
-        buildLayerRow(
-          tl.text.slice(0, 28) || 'Text Box',
-          `TEXT · ${tl.face}`,
-          activeSelectionKind === 'text' && activeLayerId === tl.id,
-          tl.visible !== false,
-          Boolean(tl.locked),
-          () => {
-            activeSelectionKind = 'text';
-            activeLayerId = tl.id;
-            renderCoverStudio(container, actions);
-          },
-          () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((x) => x.id === tl.id ? { ...x, visible: !(x.visible !== false) } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).map((x) => x.id === tl.id ? { ...x, locked: !x.locked } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, textLayers: (c.textLayers ?? []).filter((x) => x.id !== tl.id) })),
-        ),
-      );
-    }
-
-    for (const pl of [...pathLayers].reverse()) {
-      rightBody.appendChild(
-        buildLayerRow(
-          pl.name,
-          `PATH · ${pl.face} (${pl.points.length} pts)`,
-          activeSelectionKind === 'path' && activeLayerId === pl.id,
-          pl.visible !== false,
-          Boolean(pl.locked),
-          () => {
-            activeSelectionKind = 'path';
-            activeLayerId = pl.id;
-            renderCoverStudio(container, actions);
-          },
-          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).map((x) => x.id === pl.id ? { ...x, visible: !(x.visible !== false) } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).map((x) => x.id === pl.id ? { ...x, locked: !x.locked } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).filter((x) => x.id !== pl.id) })),
-        ),
-      );
-    }
-
-    for (const sh of [...shapeLayers].reverse()) {
-      rightBody.appendChild(
-        buildLayerRow(
-          sh.name,
-          `SHAPE · ${sh.face}`,
-          activeSelectionKind === 'shape' && activeLayerId === sh.id,
-          sh.visible !== false,
-          Boolean(sh.locked),
-          () => {
-            activeSelectionKind = 'shape';
-            activeLayerId = sh.id;
-            renderCoverStudio(container, actions);
-          },
-          () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((x) => x.id === sh.id ? { ...x, visible: !(x.visible !== false) } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).map((x) => x.id === sh.id ? { ...x, locked: !x.locked } : x) })),
-          () => mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).filter((x) => x.id !== sh.id) })),
-        ),
-      );
+      rightBody.appendChild(row);
     }
 
     for (const key of ['edition', 'title', 'subtitle', 'author', 'signature'] as CoverElementKey[]) {
       const elCfg = cover.elements[key];
       rightBody.appendChild(
-        buildLayerRow(
-          key.charAt(0).toUpperCase() + key.slice(1),
-          'CORE FIELD',
-          activeSelectionKind === 'element' && activeElementKey === key,
-          elCfg.visible,
-          Boolean(elCfg.locked),
-          () => {
-            activeSelectionKind = 'element';
-            activeElementKey = key;
-            renderCoverStudio(container, actions);
+        el(
+          'div',
+          {
+            className: `qv-layer-row${activeSelectionKind === 'element' && activeElementKey === key ? ' is-active' : ''}`,
+            on: {
+              click: () => {
+                setSingleSelection(cover, 'element', key, false);
+                renderCoverStudio(container, actions);
+              },
+            },
           },
-          () => mutateCover(actions, (c) => ({ ...c, elements: { ...c.elements, [key]: { ...c.elements[key], visible: !c.elements[key].visible } } })),
-          () => mutateCover(actions, (c) => ({ ...c, elements: { ...c.elements, [key]: { ...c.elements[key], locked: !c.elements[key].locked } } })),
+          el(
+            'div',
+            { style: { minWidth: '0', flex: '1' } },
+            el('div', { text: key.charAt(0).toUpperCase() + key.slice(1), style: { fontWeight: '600', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }),
+            el('span', { className: 'bv-mono-tag', text: 'FRONT FIELD' }),
+          ),
+          el(
+            'div',
+            { style: { display: 'flex', gap: '3px', alignItems: 'center' } },
+            el('button', {
+              className: 'bv-icon-tiny',
+              attrs: { type: 'button', 'aria-label': elCfg.visible ? 'Hide field' : 'Show field' },
+              on: {
+                click: (e) => {
+                  e.stopPropagation();
+                  mutateCover(actions, (c) => ({ ...c, elements: { ...c.elements, [key]: { ...c.elements[key], visible: !c.elements[key].visible } } }));
+                },
+              },
+            }, icon(elCfg.visible ? 'eye' : 'eye-off', 13)),
+            el('button', {
+              className: 'bv-icon-tiny',
+              attrs: { type: 'button', 'aria-label': elCfg.locked ? 'Unlock field' : 'Lock field' },
+              on: {
+                click: (e) => {
+                  e.stopPropagation();
+                  mutateCover(actions, (c) => ({ ...c, elements: { ...c.elements, [key]: { ...c.elements[key], locked: !c.elements[key].locked } } }));
+                },
+              },
+            }, icon(Boolean(elCfg.locked) ? 'lock' : 'unlock', 13)),
+          ),
         ),
       );
     }
@@ -3735,8 +4259,7 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           on: {
             click: () => {
               const delId = selectedShapeLayer.id;
-              activeSelectionKind = 'element';
-              activeLayerId = '';
+              clearCoverSelection();
               mutateCover(actions, (c) => ({ ...c, shapeLayers: (c.shapeLayers ?? []).filter((l) => l.id !== delId) }));
             },
           },
@@ -3996,12 +4519,100 @@ export function renderCoverStudio(container: HTMLElement, rawActions: AppActions
           on: {
             click: () => {
               const delId = selectedPathLayer.id;
-              activeSelectionKind = 'element';
-              activeLayerId = '';
+              clearCoverSelection();
               mutateCover(actions, (c) => ({ ...c, pathLayers: (c.pathLayers ?? []).filter((p) => p.id !== delId) }));
             },
           },
         }, icon('trash', 12), 'Delete Vector Path'),
+      );
+    } else if (activeFaceElementKey) {
+      const faceFieldMap: Record<
+        Exclude<FaceEditableFieldKey, ''>,
+        { title: string; get: () => string; multiline?: boolean; patch: (val: string) => Partial<BookCoverConfig> }
+      > = {
+        'back-headline': {
+          title: 'Back Cover Headline',
+          get: () => cover.backHeadline || '',
+          patch: (v) => ({ backHeadline: v }),
+        },
+        'back-blurb': {
+          title: 'Back Cover Blurb',
+          multiline: true,
+          get: () => cover.backBlurb || '',
+          patch: (v) => ({ backBlurb: v }),
+        },
+        'author-bio': {
+          title: 'Back Cover Author Bio',
+          multiline: true,
+          get: () => cover.authorBio || '',
+          patch: (v) => ({ authorBio: v }),
+        },
+        'spine-title': {
+          title: 'Spine Title',
+          get: () => cover.spineTitle || '',
+          patch: (v) => ({ spineTitle: v }),
+        },
+        'front-flap': {
+          title: 'Dust Jacket Front Flap Copy',
+          multiline: true,
+          get: () => cover.frontFlapText || '',
+          patch: (v) => ({ frontFlapText: v }),
+        },
+        'back-flap': {
+          title: 'Dust Jacket Back Flap Copy',
+          multiline: true,
+          get: () => cover.backFlapText || '',
+          patch: (v) => ({ backFlapText: v }),
+        },
+      };
+      const meta = faceFieldMap[activeFaceElementKey];
+      const fieldInput = meta.multiline
+        ? el('textarea', {
+            className: 'bv-textarea',
+            attrs: { rows: 5 },
+            on: { change: () => mutateCover(actions, (c) => ({ ...c, ...meta.patch((fieldInput as HTMLTextAreaElement).value) })) },
+          })
+        : el('input', {
+            className: 'bv-input',
+            attrs: { type: 'text', value: meta.get() },
+            on: { change: () => mutateCover(actions, (c) => ({ ...c, ...meta.patch((fieldInput as HTMLInputElement).value) })) },
+          });
+      if (meta.multiline) (fieldInput as HTMLTextAreaElement).value = meta.get();
+
+      rightBody.append(
+        el('span', { className: 'bv-panel-title', text: meta.title }),
+        el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Copy / Text' }), fieldInput),
+        el('span', {
+          className: 'bv-label',
+          text: `Target face: ${activeTargetFace().toUpperCase()}. New text, shapes, or graphics added from the left tools will be placed on this face.`,
+        }),
+      );
+    } else if (activeSelectionKind === 'none') {
+      const targetFaceLabel = activeTargetFace().replace('-', ' ').toUpperCase();
+      rightBody.append(
+        el('span', { className: 'bv-panel-title', text: 'No Selection' }),
+        el('p', {
+          className: 'bv-label',
+          text: 'Click any object, title, text box, shape, vector path, or back/spine copy on the artboard to inspect and edit its properties. Click the board outside to clear selection.',
+        }),
+        el('div', { className: 'bv-field' },
+          el('label', { className: 'bv-label', text: `Active Placement Face (${targetFaceLabel})` }),
+          el('select', {
+            className: 'bv-input',
+            on: {
+              change: (ev) => {
+                activeEditFace = (ev.target as HTMLSelectElement).value as CoverFaceId;
+                renderCoverStudio(container, actions);
+              },
+            },
+          },
+            el('option', { text: 'Front Cover', attrs: { value: 'front', selected: activeTargetFace() === 'front' } }),
+            el('option', { text: 'Back Cover', attrs: { value: 'back', selected: activeTargetFace() === 'back' } }),
+            el('option', { text: 'Spine', attrs: { value: 'spine', selected: activeTargetFace() === 'spine' } }),
+            el('option', { text: 'Front Flap', attrs: { value: 'front-flap', selected: activeTargetFace() === 'front-flap' } }),
+            el('option', { text: 'Back Flap', attrs: { value: 'back-flap', selected: activeTargetFace() === 'back-flap' } }),
+          ),
+        ),
       );
     } else {
       const activeEl = cover.elements[activeElementKey];

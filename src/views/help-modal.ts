@@ -97,7 +97,7 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
   const bodyWrap = el('div', { className: 'qv-manual-page-content' });
 
   const closeModal = () => {
-    actions.setState({ activeView: 'editor' }, true);
+    actions.returnToWriting();
   };
 
   const renderTabs = () => {

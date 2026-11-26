@@ -20,6 +20,7 @@ const VIEW_TO_PATH: Record<StudioViewId, string> = {
   developer: '/developer',
   settings: '/settings',
   manual: '/manual',
+  extensions: '/extensions',
 };
 
 export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): RouteMatch {
@@ -45,6 +46,9 @@ export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): R
   }
   if (clean === '/manual' || clean.startsWith('/manual/')) {
     return { view: 'manual', showStartSplash: false, canonicalPath: '/manual' };
+  }
+  if (clean === '/extensions' || clean.startsWith('/extensions/')) {
+    return { view: 'extensions', showStartSplash: false, canonicalPath: '/extensions' };
   }
   if (clean === '/write' || clean === '/editor' || clean === '/') {
     return { view: 'editor', showStartSplash: false, canonicalPath: '/write' };

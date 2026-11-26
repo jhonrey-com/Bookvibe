@@ -172,7 +172,7 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
           {
             className: 'bv-mini-btn',
             attrs: { type: 'button' },
-            on: { click: () => actions.setState({ activeView: 'editor' }, true) },
+            on: { click: () => actions.returnToWriting() },
           },
           icon('quill', 12),
           'Back to Book',
@@ -392,7 +392,7 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
               on: {
                 click: () => {
                   toggleCourseLessonDone(lesson.id, true);
-                  actions.setState({ activeView: 'editor' }, true);
+                  actions.returnToWriting();
                   actions.notify('Completed the full Quillvibe Book Writing Course.');
                 },
               },

@@ -21,7 +21,8 @@ Run every verification step locally after your final edit:
 ```bash
 npm run typecheck
 npm test
-npm run build
+npm run build:web
+npm run build:desktop
 ```
 
 When changing desktop Rust code (`src-tauri/src/`), also run:

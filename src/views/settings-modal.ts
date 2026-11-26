@@ -1,6 +1,6 @@
 import type { AppActions } from '../core/app-context';
 import { ALARM_RINGTONES, playRingtonePreview } from '../core/alarm';
-import { exportGenericFile, isTauriRuntime } from '../core/bridge';
+import { exportGenericFile, getDesktopRuntimeInfo, isTauriRuntime } from '../core/bridge';
 import {
   buildPortableMigrationJson,
   buildPortableMigrationMarkdown,
@@ -24,6 +24,12 @@ import {
   formatAppWindowTitle,
   mapAppThemeToPaperTheme,
 } from '../core/settings';
+import {
+  APP_COMMIT,
+  APP_VERSION,
+  compareSemver,
+  isPrereleaseVersion,
+} from '../core/version';
 import type {
   AlarmRingtoneId,
   AppThemeId,
@@ -33,7 +39,7 @@ import type {
   ToolTier,
   WindowTitleMode,
 } from '../core/types';
-import { el, icon, clearNode } from '../ui/dom';
+import { clearNode, el, icon, quillvibeLogo } from '../ui/dom';
 
 export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
 
@@ -59,7 +65,7 @@ const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
   { id: 'print-ready', label: 'Print & Press Ready' },
 ];
 
-const CURRENT_QUILLVIBE_VERSION = '3.1.2';
+const CURRENT_QUILLVIBE_VERSION = APP_VERSION;
 
 function appendInlineMarkdown(target: HTMLElement, text: string): void {
   const tokenRegex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
@@ -127,18 +133,57 @@ function renderFormattedReleaseNotes(body: string): HTMLElement {
   return wrap;
 }
 
+interface GitHubReleaseAsset {
+  name?: string;
+  size?: number;
+  browser_download_url?: string;
+}
+
+function pickInstallerAssetForPlatform(
+  assets: GitHubReleaseAsset[],
+  platformOs: string,
+): GitHubReleaseAsset | null {
+  const os = platformOs.toLowerCase();
+  const findBy = (re: RegExp) => assets.find((a) => typeof a.name === 'string' && re.test(a.name));
+  if (os.includes('win')) {
+    return findBy(/-setup\.exe$/i) ?? findBy(/\.msi$/i) ?? null;
+  }
+  if (os.includes('mac') || os.includes('darwin')) {
+    return findBy(/\.dmg$/i) ?? null;
+  }
+  if (os.includes('linux')) {
+    return findBy(/\.AppImage$/i) ?? findBy(/\.deb$/i) ?? findBy(/\.rpm$/i) ?? null;
+  }
+  return findBy(/-setup\.exe$/i) ?? findBy(/\.dmg$/i) ?? findBy(/\.AppImage$/i) ?? null;
+}
+
+function formatByteSize(bytes?: number): string {
+  if (!bytes || !Number.isFinite(bytes) || bytes <= 0) return '';
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
+}
+
 function showUpdateCheckDialog(actions: AppActions): void {
   document.getElementById('qv-update-dialog')?.remove();
 
+  const platformLine = el('div', {
+    className: 'bv-mono-tag',
+    text: `Installed: v${CURRENT_QUILLVIBE_VERSION} (${APP_COMMIT}) · ${isTauriRuntime() ? 'Desktop App' : 'Web Studio'}`,
+  });
+  const statusPill = el('span', {
+    className: 'qv-update-status-pill is-checking',
+    text: 'Checking GitHub Releases…',
+  });
   const statusText = el('p', {
     className: 'bv-label',
-    text: `Installed version: Quillvibe v${CURRENT_QUILLVIBE_VERSION}. Checking latest release notes…`,
+    style: { margin: '0' },
+    text: 'Contacting official jhonrey.com release channel…',
   });
   const notesBox = el('div', {
-    className: 'bv-cork-card',
-    style: { display: 'none', gap: '6px' },
+    className: 'qv-update-notes-scroll',
+    style: { display: 'none' },
   });
-  const downloadBtn = el(
+  const directDownloadBtn = el(
     'a',
     {
       className: 'bv-btn bv-btn-primary',
@@ -150,21 +195,47 @@ function showUpdateCheckDialog(actions: AppActions): void {
       style: { display: 'none', textDecoration: 'none' },
     },
     icon('download', 14),
-    'Open Release Download',
+    el('span', { text: 'Download Installer' }),
+  );
+  const allReleasesBtn = el(
+    'a',
+    {
+      className: 'bv-btn',
+      attrs: {
+        href: 'https://github.com/jhonrey-com/Quillvibe/releases/latest',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      },
+      style: { display: 'none', textDecoration: 'none' },
+    },
+    'All Release Files',
   );
 
   const close = () => backdrop.remove();
+  const heroCard = el(
+    'div',
+    { className: 'qv-update-hero' },
+    el('div', { className: 'qv-update-logo-box' }, quillvibeLogo(34)),
+    el(
+      'div',
+      { className: 'qv-update-hero-meta' },
+      el('strong', { text: 'Quillvibe', style: { fontSize: '15px', letterSpacing: '-0.01em' } }),
+      platformLine,
+      statusPill,
+    ),
+  );
+
   const modal = el(
     'div',
     {
       className: 'bv-modal',
-      style: { maxWidth: '520px' },
+      style: { maxWidth: '560px' },
       attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Quillvibe Software Updates' },
     },
     el(
       'div',
       { className: 'bv-panel-head' },
-      el('span', { className: 'bv-panel-title', text: 'Quillvibe Updates' }),
+      el('span', { className: 'bv-panel-title', text: 'Quillvibe Software Updates' }),
       el('button', {
         className: 'bv-mini-btn',
         text: 'Close',
@@ -175,12 +246,14 @@ function showUpdateCheckDialog(actions: AppActions): void {
     el(
       'div',
       { className: 'bv-modal-body', style: { gap: '12px' } },
+      heroCard,
       statusText,
       notesBox,
       el(
         'div',
-        { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' } },
-        downloadBtn,
+        { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', marginTop: '4px' } },
+        allReleasesBtn,
+        directDownloadBtn,
         el('button', {
           className: 'bv-btn',
           text: 'Done',
@@ -206,38 +279,88 @@ function showUpdateCheckDialog(actions: AppActions): void {
   );
   document.body.appendChild(backdrop);
 
-  fetch('https://api.github.com/repos/jhonrey-com/Quillvibe/releases/latest', {
+  const runtimePromise = getDesktopRuntimeInfo().catch(() => null);
+  const releasePromise = fetch('https://api.github.com/repos/jhonrey-com/Quillvibe/releases/latest', {
     headers: { Accept: 'application/vnd.github+json' },
-  })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as {
-        tag_name?: string;
-        name?: string;
-        body?: string;
-        html_url?: string;
-      };
-    })
-    .then((data) => {
+  }).then(async (res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as {
+      tag_name?: string;
+      name?: string;
+      body?: string;
+      html_url?: string;
+      assets?: GitHubReleaseAsset[];
+    };
+  });
+
+  Promise.all([runtimePromise, releasePromise])
+    .then(([runtime, data]) => {
+      const detectedOs =
+        runtime?.os ||
+        (typeof navigator !== 'undefined' ? navigator.platform || navigator.userAgent : 'windows');
+      if (runtime) {
+        platformLine.textContent = `Installed: v${CURRENT_QUILLVIBE_VERSION} (${APP_COMMIT}) · ${runtime.os} ${runtime.arch}`;
+      }
+
       const latestTag = (data.tag_name || '').replace(/^v/i, '').trim() || CURRENT_QUILLVIBE_VERSION;
-      const upToDate = latestTag === CURRENT_QUILLVIBE_VERSION;
-      statusText.textContent = upToDate
-        ? `Quillvibe v${CURRENT_QUILLVIBE_VERSION} is up to date.`
-        : `New release available: Quillvibe v${latestTag} (installed: v${CURRENT_QUILLVIBE_VERSION}).`;
-      if (data.html_url) downloadBtn.setAttribute('href', data.html_url);
-      downloadBtn.style.display = 'inline-flex';
+      const cmp = compareSemver(latestTag, CURRENT_QUILLVIBE_VERSION);
+      const upToDate = cmp <= 0;
+
+      statusPill.classList.remove('is-checking');
+      if (cmp > 0) {
+        statusPill.classList.add('is-available');
+        statusPill.textContent = `Update Available · v${latestTag}`;
+        statusText.textContent = `Quillvibe v${latestTag} is ready to install (you are on v${CURRENT_QUILLVIBE_VERSION}).`;
+      } else if (cmp < 0 || isPrereleaseVersion(CURRENT_QUILLVIBE_VERSION)) {
+        statusPill.classList.add('is-ok');
+        statusPill.textContent = `Pre-Release Build · v${CURRENT_QUILLVIBE_VERSION}`;
+        statusText.textContent = `Quillvibe v${CURRENT_QUILLVIBE_VERSION} (${APP_COMMIT}) is ahead of public release v${latestTag}.`;
+      } else {
+        statusPill.classList.add('is-ok');
+        statusPill.textContent = `Up to Date · v${CURRENT_QUILLVIBE_VERSION}`;
+        statusText.textContent = 'You are running the latest verified release of Quillvibe.';
+      }
+
+      const matchedAsset = pickInstallerAssetForPlatform(data.assets ?? [], detectedOs);
+      if (matchedAsset?.browser_download_url && matchedAsset.name) {
+        directDownloadBtn.setAttribute('href', matchedAsset.browser_download_url);
+        const sizeLabel = formatByteSize(matchedAsset.size);
+        const labelSpan = directDownloadBtn.querySelector('span');
+        if (labelSpan) {
+          labelSpan.textContent = sizeLabel
+            ? `Download ${matchedAsset.name} (${sizeLabel})`
+            : `Download ${matchedAsset.name}`;
+        }
+        directDownloadBtn.style.display = 'inline-flex';
+      } else if (data.html_url) {
+        directDownloadBtn.setAttribute('href', data.html_url);
+        const labelSpan = directDownloadBtn.querySelector('span');
+        if (labelSpan) labelSpan.textContent = `Open Release v${latestTag}`;
+        directDownloadBtn.style.display = 'inline-flex';
+      }
+
+      if (data.html_url) {
+        allReleasesBtn.setAttribute('href', data.html_url);
+        allReleasesBtn.style.display = 'inline-flex';
+      }
+
       if (data.body) {
         notesBox.style.display = 'flex';
         notesBox.replaceChildren(
-          el('strong', { text: data.name || `Release ${latestTag}`, style: { fontSize: '12.5px' } }),
+          el('strong', { text: data.name || `Release v${latestTag}`, style: { fontSize: '12.5px' } }),
           renderFormattedReleaseNotes(data.body),
         );
       }
-      actions.notify(upToDate ? 'Quillvibe is up to date' : `Quillvibe v${latestTag} is available`);
+
+      actions.notify(
+        upToDate ? `Quillvibe v${CURRENT_QUILLVIBE_VERSION} is up to date` : `Quillvibe v${latestTag} is available`,
+      );
     })
     .catch(() => {
-      statusText.textContent = `Current version: v${CURRENT_QUILLVIBE_VERSION}. Unable to reach the release feed right now—you can check manually below.`;
-      downloadBtn.style.display = 'inline-flex';
+      statusPill.classList.remove('is-checking');
+      statusPill.textContent = 'Offline / Unreachable';
+      statusText.textContent = `Installed build: v${CURRENT_QUILLVIBE_VERSION} (${APP_COMMIT}). Unable to reach GitHub Releases right now—you can open the downloads page manually below.`;
+      allReleasesBtn.style.display = 'inline-flex';
     });
 }
 
@@ -254,7 +377,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
   const bodyWrap = el('div', { className: 'qv-settings-page-content' });
 
   const closeModal = () => {
-    actions.setState({ activeView: 'editor' }, true);
+    actions.returnToWriting();
   };
 
   const renderTabs = () => {
@@ -1371,7 +1494,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
             el('div', { text: `Publisher Origin: ${prov.publisher}`, style: { fontWeight: '600', fontSize: '12.5px' } }),
             el('div', { className: 'bv-mono-tag', text: `Build Mark: ${prov.mark} · Verified: ${verified ? 'Valid' : 'Mismatch'}` }),
           ),
-          el('span', { className: 'bv-mono-tag', text: `v${CURRENT_QUILLVIBE_VERSION}`, style: { color: 'var(--accent-emerald)' } }),
+          el('span', { className: 'bv-mono-tag', text: `v${CURRENT_QUILLVIBE_VERSION} (${APP_COMMIT})`, style: { color: 'var(--accent-emerald)' } }),
         ),
         el(
           'div',
@@ -1405,6 +1528,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
                 click: () => {
                   const snapshot = {
                     version: CURRENT_QUILLVIBE_VERSION,
+                    commit: APP_COMMIT,
                     publisher: prov.publisher,
                     mark: prov.mark,
                     bookId: project.id,

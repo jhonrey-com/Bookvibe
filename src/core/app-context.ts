@@ -50,6 +50,7 @@ export interface AppActions {
   mutateProject(updater: (prev: BookProject) => BookProject, rerender?: boolean): void;
   updateActiveSceneTextQuietly(field: 'title' | 'content', value: string): void;
   selectScene(sceneId: string, switchToEditor?: boolean): void;
+  returnToWriting(): void;
   openBibleEntry(category: BibleCategory, entryId: string): void;
   openExtensionsModal(initialTab?: ExtensionsModalTab): void;
   openLibraryModal(): void;

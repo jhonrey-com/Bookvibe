@@ -1,6 +1,6 @@
-# Quillvibe Controls, FAQ & Error Code Reference (`v3.0.0`)
+# Quillvibe Controls, FAQ & Error Code Reference (`v3.1.2`)
 
-Plain guide to every workspace control, question, and `QV-xxx` error code in Quillvibe.
+Plain guide to every workspace control, question, and `QV-xxx` error code in Quillvibe (see also [DESKTOP-ARCHITECTURE.md](DESKTOP-ARCHITECTURE.md)).
 
 > Live searchable version with screenshots: <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/help</strong></a> (or <a href="https://quillvibe.jhonrey.com/faq" target="_blank" rel="noopener noreferrer"><strong>/faq</strong></a>)
 
@@ -17,7 +17,7 @@ Quillvibe is a new, free, open-source project still being actively updated and i
 ### What is the difference between the website version and the desktop app?
 Writing, Manuscript Image Studio (text wrap, snap-to-grid, offline background remover), proofreading, Corkboard, Outline, Story Bible, Story Graph, Typeset & Cover Studio, Print PDF / EPUB 3 export, Migrate-Out exports (`.md`, `.rtf`, `.json`), Origin Author Keys (`QVK-`/`QVD-`), Work Copyright Seals (`QVC-`), Verified Co-Author tokens (`QVCA1.`), Self-Hosted HTTPS sync, `/course`, and `/help` all run in both browser and desktop builds.
 
-Desktop installers (<a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer">Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`/`.rpm`</a>) add automatic saving straight to disk, stacked top book tabs with pointer drag-and-drop & window combining, unlimited multi-window editing with live sync, single-instance double-click opening for `.qv`/`.qvbible`/`.qvscene`/`.qvstyle`, `F11` fullscreen focus HUD with clock/alarm, local Wi-Fi PIN sync, and OS Bluetooth transfer.
+Desktop installers (<a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer">Windows `.msi`/`.exe`, macOS Universal `.dmg`, Linux `.AppImage`/`.deb`/`.rpm`</a>) run the dedicated `desktop.html` native shell with automatic saving straight to disk (including 5 rolling local backups, monitor/DPI window-state restoration, and crash logging), stacked top book tabs with Chrome-style transform gliding and dynamic `+` button positioning, unlimited multi-window editing with live sync, single-instance double-click opening for `.qv`/`.qvbible`/`.qvscene`/`.qvstyle`/`.qvdesign`, `Ctrl/Cmd + +/-/0` & trackpad pinch zoom on Cover Studio and Story Graph, `F11` fullscreen focus HUD with clock/alarm, local Wi-Fi PIN sync, and OS Bluetooth transfer.
 
 ### How does the mobile website behave on smaller screens?
 On small screens (`<= 768px`), Quillvibe automatically locks to the **Focused** Workspace Layout and hides the bottom `Workspace:` pill so the writing canvas stays uncluttered. You can still insert images, adjust wrap modes, resize with touch sliders, and remove backgrounds on mobile (desktop web or the desktop app is recommended for finer drag-and-snap placement).

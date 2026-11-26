@@ -1,0 +1,730 @@
+/* Exact Quillvibe application palette: Ivory (default), Parchment, Obsidian */
+:root,
+:root[data-theme='ivory'] {
+  color-scheme: light;
+  --bg-canvas: #f6f4ef;
+  --bg-bar: #fbfaf7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f1ede4;
+  --bg-hover: #e7e2d7;
+
+  --border-subtle: #e7e2d8;
+  --border-hairline: #dad3c6;
+  --border-strong: #beb6a6;
+
+  --text-primary: #181a20;
+  --text-secondary: #4e535f;
+  --text-muted: #767d8b;
+
+  --accent-ivory: #8c6a35;
+  --accent-amber: #b3833e;
+  --accent-emerald: #2c7a56;
+  --qv-primary-ink: #ffffff;
+}
+
+:root[data-theme='parchment'] {
+  color-scheme: light;
+  --bg-canvas: #ebe4d5;
+  --bg-bar: #f4eee1;
+  --bg-surface: #fbf7ef;
+  --bg-elevated: #e5dccb;
+  --bg-hover: #dbd0bc;
+
+  --border-subtle: #dfd6c4;
+  --border-hairline: #cfc4af;
+  --border-strong: #b4a78e;
+
+  --text-primary: #1f1b15;
+  --text-secondary: #4d4539;
+  --text-muted: #786d5c;
+
+  --accent-ivory: #7d5928;
+  --accent-amber: #a8752c;
+  --accent-emerald: #2c7a56;
+  --qv-primary-ink: #ffffff;
+}
+
+:root[data-theme='obsidian'] {
+  color-scheme: dark;
+  --bg-canvas: #121210;
+  --bg-bar: #171614;
+  --bg-surface: #1d1c19;
+  --bg-elevated: #252320;
+  --bg-hover: #2d2a26;
+
+  --border-subtle: #252420;
+  --border-hairline: #302e29;
+  --border-strong: #46433c;
+
+  --text-primary: #efede8;
+  --text-secondary: #aba59b;
+  --text-muted: #7c776e;
+
+  --accent-ivory: #d4c09e;
+  --accent-amber: #b89867;
+  --accent-emerald: #5da682;
+  --qv-primary-ink: #121210;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition:
+    background-color 220ms ease,
+    color 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code,
+.ql-mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.86em;
+}
+
+code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hairline);
+}
+
+.ql-container {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* --- Morphing Theme SVG Icon (exact app animation parity) --- */
+.qv-theme-morph {
+  overflow: visible;
+}
+
+.qv-theme-morph .qv-tm-cutout,
+.qv-theme-morph .qv-tm-core-group,
+.qv-theme-morph .qv-tm-rays-top,
+.qv-theme-morph .qv-tm-rays-bottom,
+.qv-theme-morph .qv-tm-horizon {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 190ms ease;
+}
+
+.qv-theme-morph[data-theme-mode='ivory'] .qv-tm-cutout {
+  transform: translate(11px, -11px) scale(0.4);
+}
+.qv-theme-morph[data-theme-mode='ivory'] .qv-tm-core-group {
+  transform: scale(0.76) rotate(0deg);
+  opacity: 1;
+}
+.qv-theme-morph[data-theme-mode='ivory'] .qv-tm-rays-top,
+.qv-theme-morph[data-theme-mode='ivory'] .qv-tm-rays-bottom {
+  transform: scale(1) rotate(0deg);
+  opacity: 1;
+}
+.qv-theme-morph[data-theme-mode='ivory'] .qv-tm-horizon {
+  transform: scale(0.65);
+  opacity: 0;
+}
+
+.qv-theme-morph[data-theme-mode='parchment'] .qv-tm-cutout {
+  transform: translate(11px, -11px) scale(0.4);
+}
+.qv-theme-morph[data-theme-mode='parchment'] .qv-tm-core-group {
+  transform: translateY(1.4px) scale(0.72) rotate(12deg);
+  opacity: 1;
+}
+.qv-theme-morph[data-theme-mode='parchment'] .qv-tm-rays-top {
+  transform: translateY(1px) scale(0.96) rotate(0deg);
+  opacity: 1;
+}
+.qv-theme-morph[data-theme-mode='parchment'] .qv-tm-rays-bottom {
+  transform: translateY(-2px) scale(0.45);
+  opacity: 0;
+}
+.qv-theme-morph[data-theme-mode='parchment'] .qv-tm-horizon {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+.qv-theme-morph[data-theme-mode='obsidian'] .qv-tm-cutout {
+  transform: translate(-1.8px, 1.2px) scale(1);
+}
+.qv-theme-morph[data-theme-mode='obsidian'] .qv-tm-core-group {
+  transform: scale(1.18) rotate(-22deg);
+  opacity: 1;
+}
+.qv-theme-morph[data-theme-mode='obsidian'] .qv-tm-rays-top,
+.qv-theme-morph[data-theme-mode='obsidian'] .qv-tm-rays-bottom {
+  transform: scale(0.35) rotate(42deg);
+  opacity: 0;
+}
+.qv-theme-morph[data-theme-mode='obsidian'] .qv-tm-horizon {
+  transform: scale(0.5);
+  opacity: 0;
+}
+
+/* --- Header --- */
+.ql-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--border-hairline);
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+
+.ql-header-inner {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ql-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.ql-brand-name {
+  font-size: 16.5px;
+}
+
+.ql-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.ql-nav a:hover {
+  color: var(--text-primary);
+}
+
+.ql-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ql-icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.ql-icon-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.ql-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.ql-btn:hover {
+  background: var(--bg-hover);
+}
+
+.ql-btn-lg {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.ql-btn-block {
+  width: 100%;
+}
+
+.ql-btn-primary {
+  background: var(--accent-ivory);
+  border-color: var(--accent-ivory);
+  color: var(--qv-primary-ink);
+  font-weight: 600;
+}
+
+.ql-btn-primary:hover {
+  filter: brightness(1.06);
+  background: var(--accent-ivory);
+}
+
+.ql-btn-secondary {
+  background: var(--bg-surface);
+}
+
+.ql-btn-ghost {
+  border-color: var(--border-hairline);
+  color: var(--text-secondary);
+}
+
+.ql-btn-ghost:hover {
+  color: var(--text-primary);
+}
+
+/* --- Hero & Showcase --- */
+.ql-hero {
+  padding: 58px 0 56px;
+}
+
+.ql-hero-copy {
+  max-width: 720px;
+}
+
+.ql-hero h1 {
+  margin: 0 0 16px;
+  font-family: 'EB Garamond', Garamond, Georgia, 'Times New Roman', serif;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.07;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.ql-lead {
+  margin: 0 0 24px;
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--text-secondary);
+  max-width: 64ch;
+}
+
+.ql-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ql-meta-line {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.ql-showcase {
+  margin-top: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ql-showcase-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--bg-elevated);
+}
+
+.ql-tab-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ql-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.ql-tab-btn.is-active {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.ql-showcase-caption {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.ql-showcase-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* --- Sections & Cards --- */
+.ql-section {
+  padding: 64px 0;
+}
+
+.ql-section-bordered {
+  border-top: 1px solid var(--border-hairline);
+}
+
+.ql-section-head {
+  margin-bottom: 32px;
+  max-width: 60ch;
+}
+
+.ql-section-head-split {
+  max-width: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ql-section-head h2 {
+  margin: 0 0 8px;
+  font-family: 'EB Garamond', Garamond, Georgia, serif;
+  font-size: 30px;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+.ql-section-head p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.ql-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ql-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ql-card,
+.ql-price-card {
+  padding: 22px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+
+.ql-card-meta {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--accent-ivory);
+  margin-bottom: 8px;
+}
+
+.ql-card h3 {
+  margin: 0 0 8px;
+  font-size: 16.5px;
+  font-weight: 600;
+}
+
+.ql-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* --- Pricing & Region Notice --- */
+.ql-region-badge {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-secondary);
+}
+
+.ql-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ql-price-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.ql-price-card.is-featured {
+  border-color: var(--accent-ivory);
+  box-shadow: inset 0 2px 0 var(--accent-ivory);
+}
+
+.ql-price-tier {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.ql-price-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ql-price-amount {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ql-price-period {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.ql-price-desc {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.ql-list {
+  margin: 0 0 20px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  flex: 1;
+}
+
+.ql-list li + li {
+  margin-top: 6px;
+}
+
+.ql-trust-note {
+  margin: 18px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* --- Open Source & Sponsor Section --- */
+.ql-sponsor-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  flex-wrap: wrap;
+}
+
+.ql-sponsor-copy {
+  max-width: 60ch;
+}
+
+.ql-sponsor-copy h2 {
+  margin: 0 0 10px;
+  font-family: 'EB Garamond', Garamond, Georgia, serif;
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.ql-sponsor-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14.5px;
+}
+
+.ql-sponsor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* --- Multi-Column Footer --- */
+.ql-footer {
+  border-top: 1px solid var(--border-hairline);
+  background: var(--bg-bar);
+  padding: 44px 0 28px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.ql-footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  gap: 28px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ql-footer-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15.5px;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.ql-footer-desc {
+  margin: 0 0 12px;
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ql-footer-company {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.ql-footer-company a {
+  color: var(--text-primary);
+}
+
+.ql-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ql-footer-col h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.ql-footer-col a {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.ql-footer-col a:hover,
+.ql-footer-company a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.ql-footer-bottom {
+  padding-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 960px) {
+  .ql-grid-3,
+  .ql-pricing-grid,
+  .ql-waitlist-box {
+    grid-template-columns: 1fr;
+  }
+  .ql-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ql-showcase-caption {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .ql-container {
+    padding: 0 16px;
+  }
+  .ql-header-actions {
+    gap: 6px;
+  }
+  .ql-header-actions .ql-btn {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .ql-nav {
+    display: none;
+  }
+  .ql-grid-2,
+  .ql-field-row,
+  .ql-footer-grid {
+    grid-template-columns: 1fr;
+  }
+  .ql-hero {
+    padding: 40px 0 36px;
+  }
+  .ql-section {
+    padding: 44px 0;
+  }
+}

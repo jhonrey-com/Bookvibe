@@ -23,7 +23,7 @@ import type {
   InstalledExtension,
   QuillvibePluginManifest,
 } from '../core/types';
-import { el, icon } from '../ui/dom';
+import { clearNode, el, icon } from '../ui/dom';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
@@ -32,12 +32,31 @@ export interface ShowExtensionsOptions {
   pendingExternalRawJson?: string;
 }
 
-export async function showExtensionsModal(
+interface MountExtensionsNavBridge {
+  onRender?: (activeTab: ExtensionsModalTab, setTab: (tab: ExtensionsModalTab) => void) => void;
+}
+
+const EXTENSIONS_PAGE_TABS: ReadonlyArray<{ id: ExtensionsModalTab; label: string; desc: string }> = [
+  { id: 'integrated', label: 'Integrated Extensions', desc: 'Built-in export, typography, and studio modules' },
+  { id: 'external', label: 'External Sandbox', desc: 'Signed .qvext plugins and permission controls' },
+  { id: 'formats', label: 'Official File Formats', desc: 'Protected .qv* archives and OS shell registration' },
+];
+
+let activeExtensionsPageGlass: LiquidGlassControl<ExtensionsModalTab> | null = null;
+let pendingExtensionsPageOptions: ShowExtensionsOptions = {};
+
+export function setExtensionsPageOptions(options: ShowExtensionsOptions): void {
+  pendingExtensionsPageOptions = { ...options };
+}
+
+async function mountExtensionsWorkspace(
+  hostBody: HTMLElement,
   actions: AppActions,
-  options: ShowExtensionsOptions = {},
+  options: ShowExtensionsOptions,
+  closeModal: () => void,
+  registerGlass: (glass: LiquidGlassControl<ExtensionsModalTab>) => void,
+  navBridge?: MountExtensionsNavBridge,
 ): Promise<void> {
-  const existing = document.getElementById('bv-extensions-modal');
-  if (existing) existing.remove();
 
   let activeTab: ExtensionsModalTab = options.pendingExternalRawJson
     ? 'external'
@@ -64,7 +83,6 @@ export async function showExtensionsModal(
     }
   }
 
-  let tabGlass: LiquidGlassControl<ExtensionsModalTab> | null = null;
   const contentArea = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
 
   const renderPermissionBadges = (ext: InstalledExtension, onTogglePerm?: (p: ExtensionPermission, granted: boolean) => void) => {
@@ -779,6 +797,19 @@ export async function showExtensionsModal(
     contentArea.append(statusBanner, el('div', { className: 'bv-table-wrap' }, table));
   };
 
+  const setActiveTab = (tab: ExtensionsModalTab) => {
+    activeTab = tab;
+    renderContent();
+    navBridge?.onRender?.(activeTab, setActiveTab);
+  };
+
+  if (navBridge?.onRender) {
+    hostBody.append(contentArea);
+    renderContent();
+    navBridge.onRender(activeTab, setActiveTab);
+    return;
+  }
+
   const tabSwitcher = new LiquidGlassControl<ExtensionsModalTab>({
     ariaLabel: 'Extensions section',
     surface: 'solid',
@@ -795,12 +826,120 @@ export async function showExtensionsModal(
       renderContent();
     },
   });
-  tabGlass = tabSwitcher;
+  registerGlass(tabSwitcher);
+  hostBody.append(tabSwitcher.element, contentArea);
+  renderContent();
+}
 
+export function renderExtensionsPageView(container: HTMLElement, actions: AppActions): void {
+  if (activeExtensionsPageGlass) {
+    activeExtensionsPageGlass.destroy();
+    activeExtensionsPageGlass = null;
+  }
+  clearNode(container);
+
+  const opts = pendingExtensionsPageOptions;
+  pendingExtensionsPageOptions = {};
+
+  const backToWriting = () => {
+    actions.returnToWriting();
+  };
+
+  const tabBar = el('div', { className: 'qv-settings-sidebar-nav', attrs: { role: 'tablist', 'aria-label': 'Extensions sections' } });
+  const bodyWrap = el('div', { className: 'qv-settings-page-content qv-ext-page-content' });
+
+  const renderSidebarTabs = (activeTab: ExtensionsModalTab, setTab: (tab: ExtensionsModalTab) => void) => {
+    tabBar.textContent = '';
+    for (const tab of EXTENSIONS_PAGE_TABS) {
+      tabBar.appendChild(
+        el(
+          'button',
+          {
+            className: `qv-settings-nav-item${activeTab === tab.id ? ' is-active' : ''}`,
+            attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
+            on: { click: () => setTab(tab.id) },
+          },
+          el('span', { text: tab.label, style: { fontWeight: '600', fontSize: '13px' } }),
+          el('span', { className: 'bv-label', text: tab.desc }),
+        ),
+      );
+    }
+  };
+
+  const header = el(
+    'header',
+    { className: 'qv-standalone-header' },
+    el(
+      'div',
+      { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } },
+      el(
+        'button',
+        {
+          className: 'bv-btn',
+          attrs: { type: 'button' },
+          on: { click: backToWriting },
+        },
+        icon('draft-sheet', 14),
+        'Back to Writing',
+      ),
+      el('h1', { text: 'Extensions, Permissions & Official File Formats', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+    ),
+    el(
+      'div',
+      { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          attrs: { type: 'button' },
+          on: { click: () => actions.openSettingsModal('developer') },
+        },
+        'Settings',
+      ),
+    ),
+  );
+
+  const pageGrid = el(
+    'div',
+    { className: 'qv-settings-page-grid' },
+    el('aside', { className: 'qv-settings-sidebar' }, tabBar),
+    bodyWrap,
+  );
+
+  const pageShell = el(
+    'div',
+    { className: 'qv-settings-page' },
+    header,
+    pageGrid,
+  );
+  container.appendChild(pageShell);
+
+  void mountExtensionsWorkspace(
+    bodyWrap,
+    actions,
+    opts,
+    backToWriting,
+    (glass) => {
+      activeExtensionsPageGlass = glass;
+    },
+    { onRender: renderSidebarTabs },
+  );
+}
+
+export async function showExtensionsModal(
+  actions: AppActions,
+  options: ShowExtensionsOptions = {},
+): Promise<void> {
+  const existing = document.getElementById('bv-extensions-modal');
+  if (existing) existing.remove();
+
+  let modalGlass: LiquidGlassControl<ExtensionsModalTab> | null = null;
   const closeModal = () => {
-    tabGlass?.destroy();
+    modalGlass?.destroy();
     backdrop.remove();
   };
+
+  const modalBody = el('div', { className: 'bv-modal-body' });
 
   const modal = el(
     'div',
@@ -819,12 +958,7 @@ export async function showExtensionsModal(
         on: { click: closeModal },
       }),
     ),
-    el(
-      'div',
-      { className: 'bv-modal-body' },
-      tabSwitcher.element,
-      contentArea,
-    ),
+    modalBody,
   );
 
   const backdrop = el(
@@ -843,5 +977,7 @@ export async function showExtensionsModal(
   backdrop.addEventListener('bv-close-modal', closeModal);
 
   document.body.appendChild(backdrop);
-  renderContent();
+  await mountExtensionsWorkspace(modalBody, actions, options, closeModal, (g) => {
+    modalGlass = g;
+  });
 }

@@ -19,6 +19,13 @@ OUTDATED_WARNING = """\
 """
 
 HIGHLIGHT_OVERRIDES: dict[str, List[str]] = {
+    "v3.2.0": [
+        "Fixed Book Cover Studio touchpad navigation: two-finger touchpad scrolling pans smoothly while pinch gestures and Ctrl/Cmd + Wheel zoom around the pointer focal point, plus toolbar zoom presets and a right-click View & Navigation menu.",
+        "Rebuilt Chrome-style desktop tabs: live tear-off spawning on drag-out across any tab type (Book workspaces, Settings, Help, Manual, Course, Extensions, New Tab), immediate source-tab cleanup, instant window merge on target strip entry, locked right-edge bounds, and zero tab-switch flicker.",
+        "Added morphing app theme icon transitions (`Ivory`, `Parchment`, `Obsidian`, `System`), redesigned fullscreen HUD layout, and bidirectional `overscroll-behavior: none` containment across all workspace panes.",
+        "Added custom Windows NSIS installer shell hooks (`SHChangeNotify` icon/association refresh) and a redesigned Software Updates dialog showing the Quillvibe emblem, SemVer build status, and OS-matched installer download.",
+        "Added the open-source landing page (`/landing/`), updated README/screenshots, and introduced single-source SemVer + commit tracking across web and desktop builds.",
+    ],
     "v3.1.2": [
         "Fixed Book Cover Studio artboard collapse in the workspace layout so center canvases and Full Wrap previews display at full size.",
         "Fixed Story Graph node placement (`Sync Now` and `Auto Layout`) so storyboard cards stay separated without overlap.",

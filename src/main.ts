@@ -4,6 +4,7 @@ import { AlarmController, playRingtonePreview } from './core/alarm';
 import type { AppActions, AppState, ExtensionsModalTab } from './core/app-context';
 import {
   closeDesktopWindow,
+  closeDesktopWindowByLabel,
   exportBookAsDocx,
   exportBookAsEpub,
   exportBookAsHtml,
@@ -26,6 +27,7 @@ import {
   openQuillvibeFile,
   persistLibrary,
   persistProject,
+  readPickedBrowserFile,
   saveDefaultExportFormat,
   saveQuillvibeExtensionFile,
   setDesktopFullscreen,
@@ -54,6 +56,7 @@ import {
 } from './core/extensions';
 import { ProjectHistoryStack } from './core/history';
 import { TabDragController } from './core/tab-drag-controller';
+import { TabManager } from './core/tab-manager';
 import { loadCustomFonts } from './core/fonts';
 import { COLLABORATOR_ROLE_LABELS } from './core/collab';
 import { resolveEffectiveFontCss } from './core/fonts';
@@ -100,6 +103,7 @@ import { createSnapshotForScene } from './core/snapshots';
 import {
   COURSE_TAB_ID,
   EMPTY_TAB_PREFIX,
+  EXTENSIONS_TAB_ID,
   HELP_TAB_ID,
   MANUAL_TAB_ID,
   SETTINGS_TAB_ID,
@@ -122,7 +126,7 @@ import type {
 } from './core/types';
 import { attachContextMenu, hideContextMenu } from './ui/context-menu';
 import { openInteractiveCourseDrawer } from './ui/course';
-import { clearNode, el, icon, quillvibeLogo, svgEl } from './ui/dom';
+import { clearNode, createMorphThemeIcon, el, icon, quillvibeLogo, svgEl } from './ui/dom';
 import { installGlobalErrorHandlers, showErrorDialog } from './ui/error-dialog';
 import { mountImmersiveHud, type ImmersiveHudHandle } from './ui/immersive-hud';
 import { LiquidGlassControl, mountGlobalControlGlass } from './ui/liquid-glass';
@@ -142,7 +146,7 @@ import { renderCorkboardView } from './views/corkboard';
 import { renderCoursePageView, setCoursePageSelection } from './views/course-page';
 import { renderDeveloperPageView } from './views/developer-page';
 import { renderEditorView } from './views/editor';
-import { showExtensionsModal } from './views/extensions-modal';
+import { renderExtensionsPageView, setExtensionsPageOptions } from './views/extensions-modal';
 import { renderGraphView } from './views/graph';
 import { renderHelpPageView, setHelpPageSearch } from './views/help-page';
 import { renderInspector } from './views/inspector';
@@ -239,38 +243,158 @@ let desktopTabBarEl: HTMLElement | null = null;
 let topbarLogoEl: HTMLElement | null = null;
 let topbarWinControlsEl: HTMLElement | null = null;
 let topbarNewWinBtnEl: HTMLButtonElement | null = null;
+let themeSwitchBtnEl: HTMLButtonElement | null = null;
+let themeMorphSvgEl: SVGSVGElement | null = null;
 let windowSync: WorkspaceWindowSync | null = null;
 let currentWindowLabel = 'main';
 let isApplyingRemoteSync = false;
+let pendingFocusTabIdAfterRender: string | null = null;
 const alertedSharedBookIds = new Set<string>();
+const LAST_OPENED_BOOK_STORAGE_KEY = 'quillvibe.lastOpenedBookId.v1';
+const DETACH_HANDOFF_STORAGE_KEY = 'quillvibe.detachHandoff.v1';
+let lastOpenedBookId = starter.id;
+let lastTabBarRenderSig = '';
+let pendingDetachHandoffEditorState: {
+  sceneId: string;
+  scrollTop: number;
+  selectionStart: number;
+  selectionEnd: number;
+} | null = null;
+
+interface DetachHandoffPayload {
+  project: BookProject;
+  activeView: StudioViewId;
+  activeSceneId: string;
+  editorSubMode: AppState['editorSubMode'];
+  typesetSubTab: AppState['typesetSubTab'];
+  showBinder?: boolean;
+  showInspector?: boolean;
+  scrollTop: number;
+  selectionStart: number;
+  selectionEnd: number;
+  createdAt: number;
+}
+
+function saveDetachHandoff(bookId: string, payload: DetachHandoffPayload): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const raw = window.localStorage.getItem(DETACH_HANDOFF_STORAGE_KEY);
+    const map: Record<string, DetachHandoffPayload> = raw ? (JSON.parse(raw) as Record<string, DetachHandoffPayload>) : {};
+    const now = Date.now();
+    for (const k of Object.keys(map)) {
+      if (!map[k] || now - map[k].createdAt > 15_000) delete map[k];
+    }
+    map[bookId] = payload;
+    window.localStorage.setItem(DETACH_HANDOFF_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function consumeDetachHandoff(bookId: string): DetachHandoffPayload | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(DETACH_HANDOFF_STORAGE_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, DetachHandoffPayload>;
+    const entry = map?.[bookId] ?? null;
+    if (entry) {
+      delete map[bookId];
+      window.localStorage.setItem(DETACH_HANDOFF_STORAGE_KEY, JSON.stringify(map));
+    }
+    if (!entry || Date.now() - entry.createdAt > 15_000) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function rememberLastBook(bookId: string): void {
+  if (!bookId || isNonBookTabId(bookId)) return;
+  lastOpenedBookId = bookId;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(LAST_OPENED_BOOK_STORAGE_KEY, bookId);
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
+
+const tabManager = new TabManager([starter.id], starter.id);
+
+function syncTabsFromManager(persistOrder = false): void {
+  state.openBookTabIds = tabManager.getTabIds();
+  state.activeTabId = tabManager.getActiveTabId();
+  if (persistOrder && isTauriRuntime()) {
+    tabManager.savePersistedOrder(currentWindowLabel);
+  }
+}
+
+function setTabOrderAndActive(
+  nextIds: string[],
+  nextActiveId?: string,
+  persistOrder = false,
+): void {
+  tabManager.setOrder(nextIds, { persist: false });
+  if (nextActiveId !== undefined) {
+    if (!tabManager.hasTab(nextActiveId)) {
+      tabManager.openTab(nextActiveId, { activate: true });
+    } else {
+      tabManager.setActiveTabId(nextActiveId);
+    }
+  }
+  syncTabsFromManager(persistOrder);
+}
+
+function resolveSpecialPageView(tabId: string): StudioViewId {
+  if (tabId === COURSE_TAB_ID) return 'course';
+  if (tabId === HELP_TAB_ID) return 'help';
+  if (tabId === SETTINGS_TAB_ID) return 'settings';
+  if (tabId === MANUAL_TAB_ID) return 'manual';
+  if (tabId === EXTENSIONS_TAB_ID) return 'extensions';
+  return 'editor';
+}
 
 function activateDesktopTab(tabId: string): void {
   if (tabId === COURSE_TAB_ID) {
-    state.activeTabId = COURSE_TAB_ID;
+    tabManager.openTab(COURSE_TAB_ID, { activate: true });
+    syncTabsFromManager(true);
     state.activeView = 'course';
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
   } else if (tabId === HELP_TAB_ID) {
-    state.activeTabId = HELP_TAB_ID;
+    tabManager.openTab(HELP_TAB_ID, { activate: true });
+    syncTabsFromManager(true);
     state.activeView = 'help';
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
   } else if (tabId === SETTINGS_TAB_ID) {
-    state.activeTabId = SETTINGS_TAB_ID;
+    tabManager.openTab(SETTINGS_TAB_ID, { activate: true });
+    syncTabsFromManager(true);
     state.activeView = 'settings';
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
   } else if (tabId === MANUAL_TAB_ID) {
-    state.activeTabId = MANUAL_TAB_ID;
+    tabManager.openTab(MANUAL_TAB_ID, { activate: true });
+    syncTabsFromManager(true);
     state.activeView = 'manual';
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
+  } else if (tabId === EXTENSIONS_TAB_ID) {
+    tabManager.openTab(EXTENSIONS_TAB_ID, { activate: true });
+    syncTabsFromManager(true);
+    state.activeView = 'extensions';
+    windowSync?.publishPresence();
+    renderDesktopTabBar();
+    renderActiveView();
   } else if (isEmptyTabId(tabId)) {
-    state.activeTabId = tabId;
+    tabManager.openTab(tabId, { activate: true });
+    syncTabsFromManager(true);
     state.activeView = 'editor';
     windowSync?.publishPresence();
     renderDesktopTabBar();
@@ -281,52 +405,189 @@ function activateDesktopTab(tabId: string): void {
       state.activeView === 'help' ||
       state.activeView === 'developer' ||
       state.activeView === 'settings' ||
-      state.activeView === 'manual'
+      state.activeView === 'manual' ||
+      state.activeView === 'extensions'
         ? 'editor'
         : state.activeView;
     actions.switchBook(tabId);
   }
 }
 
+function renderTabDropIndicator(insertionIndex: number | null): void {
+  if (!desktopTabBarEl) return;
+  const tabStrip = desktopTabBarEl.querySelector<HTMLElement>('.qv-tab-strip');
+  if (!tabStrip) return;
+  const existing = tabStrip.querySelector<HTMLElement>('.qv-tab-drop-indicator');
+  if (insertionIndex === null) {
+    existing?.remove();
+    return;
+  }
+  const tabs = Array.from(tabStrip.querySelectorAll<HTMLElement>('.qv-book-tab'));
+  const clampedIdx = Math.max(0, Math.min(tabs.length, insertionIndex));
+  const stripRect = tabStrip.getBoundingClientRect();
+  let leftPx = 4;
+  if (tabs.length > 0) {
+    if (clampedIdx < tabs.length) {
+      const r = tabs[clampedIdx].getBoundingClientRect();
+      leftPx = r.left - stripRect.left + tabStrip.scrollLeft - 1;
+    } else {
+      const last = tabs[tabs.length - 1].getBoundingClientRect();
+      leftPx = last.right - stripRect.left + tabStrip.scrollLeft + 2;
+    }
+  }
+  const indicator = existing ?? el('div', { className: 'qv-tab-drop-indicator', attrs: { 'aria-hidden': 'true' } });
+  indicator.style.left = `${Math.max(2, Math.round(leftPx))}px`;
+  if (!existing) tabStrip.appendChild(indicator);
+}
+
+function captureTabHandoffPayload(tabId: string): DetachHandoffPayload | null {
+  if (isEmptyTabId(tabId) || isNonBookTabId(tabId)) return null;
+  const targetBook =
+    state.project.id === tabId
+      ? state.project
+      : state.library.books.find((b) => b.id === tabId);
+  if (!targetBook) return null;
+  const isCurrent = state.project.id === tabId;
+  const proseEl = isCurrent ? mainStageEl?.querySelector<HTMLTextAreaElement>('.bv-prose-textarea') : null;
+  return {
+    project: targetBook,
+    activeView: isCurrent ? state.activeView : 'editor',
+    activeSceneId: isCurrent ? state.activeSceneId : getAllScenes(targetBook)[0]?.scene.id ?? '',
+    editorSubMode: isCurrent ? state.editorSubMode : 'draft',
+    typesetSubTab: isCurrent ? state.typesetSubTab : 'interior',
+    showBinder: isCurrent ? state.showBinder : true,
+    showInspector: isCurrent ? state.showInspector : true,
+    scrollTop: proseEl?.scrollTop ?? 0,
+    selectionStart: proseEl?.selectionStart ?? 0,
+    selectionEnd: proseEl?.selectionEnd ?? 0,
+    createdAt: Date.now(),
+  };
+}
+
+function prepareDetachPersistence(tabId: string): void {
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const handoff = captureTabHandoffPayload(tabId);
+  if (handoff) {
+    const syncedLib = upsertBookInLibrary(state.library, state.project);
+    state.library = syncedLib;
+    saveDetachHandoff(tabId, handoff);
+    const libForDisk: BookLibraryState = {
+      ...syncedLib,
+      books: syncedLib.books.map(stripPrivateAuthorSecrets),
+    };
+    void persistLibrary(JSON.stringify(libForDisk));
+  }
+}
+
 const tabDragController = new TabDragController({
   getWindowLabel: () => currentWindowLabel,
-  getTabIds: () => state.openBookTabIds,
-  setTabIds: (nextIds) => {
-    state.openBookTabIds = nextIds;
+  getTabIds: () => tabManager.getTabIds(),
+  getActiveTabId: () => tabManager.getActiveTabId(),
+  immediateMergeOnTargetHover: true,
+  getTargetWindowStripMetrics: (targetWindowLabel) => {
+    const rec = windowSync?.getWindowPresenceByLabel(targetWindowLabel);
+    if (!rec) return null;
+    return {
+      tabWidthPx: rec.tabWidthPx,
+      tabCount: rec.tabCount,
+      stripLeftOffsetPx: rec.stripLeftOffsetPx,
+    };
+  },
+  onHoverTargetWindow: (targetWindowLabel, insertionIndex, tabTitle) => {
+    windowSync?.sendTabHoverPreview(targetWindowLabel, insertionIndex, tabTitle);
+  },
+  onLeaveTargetWindow: (targetWindowLabel) => {
+    windowSync?.sendTabHoverClear(targetWindowLabel);
+  },
+  onLiveDetachSpawn: async (tabId, tabTitle, screenX, screenY) => {
+    const isEmpty = isEmptyTabId(tabId);
+    prepareDetachPersistence(tabId);
+    const res = await openBookInNewDesktopWindow(
+      isEmpty ? EMPTY_TAB_PREFIX : tabId,
+      isEmpty ? 'Quillvibe - New Tab' : `Quillvibe - ${tabTitle}`,
+      { maximized: false, focused: false, posX: screenX, posY: screenY },
+    );
+    return res.ok && res.label ? res.label : null;
+  },
+  onLiveDetachCancel: (windowLabel) => {
+    void closeDesktopWindowByLabel(windowLabel);
+  },
+  onLiveDetachCommit: (windowLabel, tabId) => {
+    actions.closeBookTab(tabId);
+    void focusDesktopWindow(windowLabel);
+  },
+  onOrderChange: (nextIds) => {
+    tabManager.setOrder(nextIds, { persist: false });
+    syncTabsFromManager(false);
     windowSync?.publishPresence();
   },
   onActivateTab: (tabId) => activateDesktopTab(tabId),
-  onFinishInStrip: () => renderDesktopTabBar(),
+  onFinishInStrip: (orderChanged) => {
+    if (orderChanged && isTauriRuntime()) {
+      tabManager.savePersistedOrder(currentWindowLabel);
+    }
+    renderDesktopTabBar();
+  },
+  onCancel: (restoredIds) => {
+    tabManager.setOrder(restoredIds, { persist: false });
+    syncTabsFromManager(false);
+    renderDesktopTabBar();
+  },
   onDetachToNewWindow: (tabId, tabTitle, screenX, screenY) => {
     const isEmpty = isEmptyTabId(tabId);
+    const prevOrder = tabManager.getTabIds();
+    const prevActiveId = tabManager.getActiveTabId();
+
+    prepareDetachPersistence(tabId);
+
+    // Immediately remove tab from the source window so it never duplicates across strips
+    actions.closeBookTab(tabId);
+
     void openBookInNewDesktopWindow(
       isEmpty ? EMPTY_TAB_PREFIX : tabId,
       isEmpty ? 'Quillvibe - New Tab' : `Quillvibe - ${tabTitle}`,
-      { maximized: false, posX: screenX, posY: screenY },
-    );
-    actions.closeBookTab(tabId);
+      { maximized: false, focused: true, posX: screenX, posY: screenY },
+    ).then((res) => {
+      if (!res.ok) {
+        setTabOrderAndActive(prevOrder, prevActiveId, true);
+        renderDesktopTabBar();
+        if (!isNonBookTabId(prevActiveId) && state.project.id !== prevActiveId) {
+          actions.switchBook(prevActiveId);
+        }
+        actions.notify(res.error || 'Could not open detached desktop window.');
+      }
+    });
   },
   onMergeIntoWindow: (targetWindowLabel, tabId, insertionIndex) => {
+    if (persistTimer !== null) {
+      window.clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    windowSync?.sendTabHoverClear(targetWindowLabel);
+    const handoff = captureTabHandoffPayload(tabId);
+    if (handoff) {
+      saveDetachHandoff(tabId, handoff);
+    }
+    if (state.project.id === tabId) {
+      state.library = upsertBookInLibrary(state.library, state.project);
+      windowSync?.broadcastBookUpdated(state.project.id, state.project);
+    }
     windowSync?.sendTabDropIntoWindow(targetWindowLabel, tabId, insertionIndex);
     void focusDesktopWindow(targetWindowLabel);
-    if (state.openBookTabIds.length > 1) {
+    if (tabManager.getTabIds().length > 1) {
       actions.closeBookTab(tabId);
     } else {
-      if (persistTimer !== null) {
-        window.clearTimeout(persistTimer);
-        persistTimer = null;
-      }
       const serializedBook = serializeExtensionFile('.qv', state.project);
       const libForDisk: BookLibraryState = {
         ...state.library,
         books: state.library.books.map(stripPrivateAuthorSecrets),
       };
-      void Promise.all([
-        persistProject(serializedBook),
-        persistLibrary(JSON.stringify(libForDisk)),
-      ]).finally(() => {
-        window.setTimeout(() => void closeDesktopWindow(), 120);
-      });
+      void persistProject(serializedBook);
+      void persistLibrary(JSON.stringify(libForDisk));
+      void closeDesktopWindowByLabel(currentWindowLabel);
     }
   },
 });
@@ -496,7 +757,10 @@ function maybeNotifySharedBook(bookId: string): void {
 
 function isFullStageView(view: StudioViewId): boolean {
   return (
+    view === 'bible' ||
+    view === 'graph' ||
     view === 'typeset' ||
+    view === 'extensions' ||
     view === 'course' ||
     view === 'help' ||
     view === 'developer' ||
@@ -656,8 +920,8 @@ function syncResponsiveDrawerClasses(): void {
 
 function allowedViewsForTier(tier: ToolTier): StudioViewId[] {
   const extra: StudioViewId[] = isTauriRuntime()
-    ? ['course', 'help', 'settings', 'manual']
-    : ['course', 'help', 'developer', 'settings', 'manual'];
+    ? ['extensions', 'course', 'help', 'settings', 'manual']
+    : ['extensions', 'course', 'help', 'developer', 'settings', 'manual'];
   if (tier === 'basic') return ['editor', ...extra];
   if (tier === 'intermediate') return ['editor', 'corkboard', 'outline', 'typeset', ...extra];
   return ['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset', ...extra];
@@ -861,9 +1125,10 @@ function renderActiveView(): void {
   const isHelpTab = state.activeTabId === HELP_TAB_ID || state.activeView === 'help';
   const isSettingsTab = state.activeTabId === SETTINGS_TAB_ID || state.activeView === 'settings';
   const isManualTab = state.activeTabId === MANUAL_TAB_ID || state.activeView === 'manual';
+  const isExtensionsTab = state.activeTabId === EXTENSIONS_TAB_ID || state.activeView === 'extensions';
   const isDevTab = !isTauriRuntime() && state.activeView === 'developer';
-  const isStandalonePage = isCourseTab || isHelpTab || isDevTab || isSettingsTab || isManualTab;
-  const isFullStagePage = isNewTab || isStandalonePage || state.activeView === 'typeset';
+  const isStandalonePage = isCourseTab || isHelpTab || isDevTab || isSettingsTab || isManualTab || isExtensionsTab;
+  const isFullStagePage = isNewTab || isStandalonePage || isFullStageView(state.activeView);
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
   shellEl.classList.toggle('is-typeset-studio', isFullStagePage);
@@ -881,9 +1146,11 @@ function renderActiveView(): void {
             ? 'Settings, Layouts & Themes'
             : isManualTab
               ? 'Help, Course & Manual'
-              : isDevTab
-                ? 'Developer Portal'
-                : state.project.title;
+              : isExtensionsTab
+                ? 'Extensions & File Formats'
+                : isDevTab
+                  ? 'Developer Portal'
+                  : state.project.title;
     if (bookTitleInputEl.value !== desiredTitle) bookTitleInputEl.value = desiredTitle;
     bookTitleInputEl.disabled = isNewTab || isStandalonePage;
   }
@@ -911,12 +1178,8 @@ function renderActiveView(): void {
         state.openBookTabIds.includes(bookId),
       onPickBook: (bookId) => {
         const emptyId = state.activeTabId;
-        const alreadyInWindow = state.openBookTabIds.includes(bookId);
-        if (alreadyInWindow) {
-          state.openBookTabIds = state.openBookTabIds.filter((id) => id !== emptyId);
-        } else {
-          state.openBookTabIds = state.openBookTabIds.map((id) => (id === emptyId ? bookId : id));
-        }
+        tabManager.replaceTab(emptyId, bookId, { activate: true });
+        syncTabsFromManager(true);
         actions.switchBook(bookId);
       },
       onCreateBlankBook: (title, penName) => {
@@ -924,8 +1187,9 @@ function renderActiveView(): void {
         const res = addBookToLibrary(upsertBookInLibrary(state.library, state.project), title, penName);
         state.library = res.library;
         state.project = res.newBook;
-        state.openBookTabIds = state.openBookTabIds.map((id) => (id === emptyId ? res.newBook.id : id));
-        state.activeTabId = res.newBook.id;
+        rememberLastBook(res.newBook.id);
+        tabManager.replaceTab(emptyId, res.newBook.id, { activate: true });
+        syncTabsFromManager(true);
         state.activeView = 'editor';
         state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
         state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
@@ -939,6 +1203,7 @@ function renderActiveView(): void {
       },
     });
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -948,6 +1213,7 @@ function renderActiveView(): void {
     clearNode(inspectorEl);
     renderCoursePageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -957,6 +1223,7 @@ function renderActiveView(): void {
     clearNode(inspectorEl);
     renderHelpPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -966,6 +1233,7 @@ function renderActiveView(): void {
     clearNode(inspectorEl);
     renderDeveloperPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -975,6 +1243,7 @@ function renderActiveView(): void {
     clearNode(inspectorEl);
     renderSettingsPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -984,6 +1253,17 @@ function renderActiveView(): void {
     clearNode(inspectorEl);
     renderManualPageView(mainStageEl, actions);
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
+    immersiveHud?.sync();
+    return;
+  }
+
+  if (isExtensionsTab) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderExtensionsPageView(mainStageEl, actions);
+    syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     return;
   }
@@ -1097,6 +1377,208 @@ function promptQuillvibePasswordModal(
   });
 }
 
+const EXTERNAL_DOC_IMPORT_EXTS = new Set(['.docx', '.html', '.htm', '.rtf', '.md', '.markdown', '.txt']);
+
+async function openSelectedBrowserFile(file: File): Promise<void> {
+  const lower = file.name.toLowerCase();
+  const dotIdx = lower.lastIndexOf('.');
+  const ext = dotIdx >= 0 ? lower.slice(dotIdx) : '';
+  if (EXTERNAL_DOC_IMPORT_EXTS.has(ext)) {
+    const imported = await importAnyExternalDocumentFile(file);
+    actions.replaceLibrary({
+      activeBookId: imported.id,
+      books: [...state.library.books, imported],
+    });
+    actions.notify(`Imported “${imported.title}”`);
+    return;
+  }
+  const opened = await readPickedBrowserFile(file);
+  const resolved = resolveOpenedFilePayload(opened);
+  await handleOpenedFile(resolved.input, opened.filename, {
+    base64Encoded: resolved.base64Encoded,
+    allowLegacy: false,
+  });
+}
+
+function showOpenFileDropDialog(): void {
+  document.getElementById('bv-open-file-modal')?.remove();
+
+  const close = () => backdrop.remove();
+  const desktopMode = isTauriRuntime();
+
+  const fileInput = el('input', {
+    attrs: {
+      type: 'file',
+      accept:
+        '.qv,.qvbible,.qvscene,.qvstyle,.qvdesign,.qvext,.docx,.md,.markdown,.txt,.html,.htm,.rtf',
+    },
+    style: { display: 'none' },
+    on: {
+      change: async () => {
+        const picked = fileInput.files?.[0];
+        fileInput.value = '';
+        if (!picked) return;
+        close();
+        try {
+          await openSelectedBrowserFile(picked);
+        } catch (err) {
+          actions.notify(err instanceof Error ? err.message : 'Unable to open selected file.');
+        }
+      },
+    },
+  });
+
+  const dropzone = el(
+    'div',
+    {
+      className: 'qv-open-dropzone',
+      attrs: { tabindex: '0', role: 'button', 'aria-label': 'Drop a Quillvibe or manuscript file here' },
+      on: {
+        click: () => {
+          if (desktopMode) {
+            void (async () => {
+              const opened = await openQuillvibeFile();
+              if (!opened) return;
+              close();
+              const resolved = resolveOpenedFilePayload(opened);
+              await handleOpenedFile(resolved.input, opened.filename, {
+                base64Encoded: resolved.base64Encoded,
+                allowLegacy: false,
+              });
+            })();
+          } else {
+            fileInput.click();
+          }
+        },
+        dragenter: (e) => {
+          e.preventDefault();
+          dropzone.classList.add('is-drag-over');
+        },
+        dragover: (e) => {
+          e.preventDefault();
+          dropzone.classList.add('is-drag-over');
+        },
+        dragleave: () => {
+          dropzone.classList.remove('is-drag-over');
+        },
+        drop: (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('is-drag-over');
+          const dropped = e.dataTransfer?.files?.[0];
+          if (!dropped) return;
+          close();
+          void openSelectedBrowserFile(dropped).catch((err) => {
+            actions.notify(err instanceof Error ? err.message : 'Unable to open dropped file.');
+          });
+        },
+      },
+    },
+    icon('folder', 26),
+    el('strong', { text: 'Drop a Quillvibe or Manuscript File Here' }),
+    el('span', {
+      className: 'bv-label',
+      text: 'Supports .qv, .qvbible, .qvscene, .qvstyle, .qvdesign, .qvext, .docx, .md, .txt, .html, .rtf',
+    }),
+  );
+
+  const browseBtn = el(
+    'button',
+    {
+      className: 'bv-btn bv-btn-primary',
+      attrs: { type: 'button' },
+      on: {
+        click: () => {
+          if (desktopMode) {
+            void (async () => {
+              const opened = await openQuillvibeFile();
+              if (!opened) return;
+              close();
+              const resolved = resolveOpenedFilePayload(opened);
+              await handleOpenedFile(resolved.input, opened.filename, {
+                base64Encoded: resolved.base64Encoded,
+                allowLegacy: false,
+              });
+            })();
+          } else {
+            fileInput.click();
+          }
+        },
+      },
+    },
+    icon('folder', 14),
+    'Browse Files…',
+  );
+
+  const importDocBtn = el(
+    'button',
+    {
+      className: 'bv-btn',
+      text: 'Import Word / Markdown…',
+      attrs: { type: 'button' },
+      on: {
+        click: () => {
+          close();
+          void actions.importExternalDocument();
+        },
+      },
+    },
+  );
+
+  const modal = el(
+    'div',
+    {
+      className: 'bv-modal',
+      style: { maxWidth: '520px' },
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Open File' },
+    },
+    el(
+      'div',
+      { className: 'bv-panel-head' },
+      el('span', { className: 'bv-panel-title', text: 'Open Book, Package, or Manuscript' }),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: 'Close',
+        attrs: { type: 'button' },
+        on: { click: close },
+      }),
+    ),
+    el(
+      'div',
+      { className: 'bv-modal-body', style: { gap: '14px' } },
+      fileInput,
+      dropzone,
+      el(
+        'div',
+        { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' } },
+        ...(desktopMode ? [importDocBtn] : []),
+        browseBtn,
+        el('button', {
+          className: 'bv-btn',
+          text: 'Cancel',
+          attrs: { type: 'button' },
+          on: { click: close },
+        }),
+      ),
+    ),
+  );
+
+  const backdrop = el(
+    'div',
+    {
+      className: 'bv-modal-backdrop',
+      id: 'bv-open-file-modal',
+      on: {
+        click: (e) => {
+          if (e.target === backdrop) close();
+        },
+      },
+    },
+    modal,
+  );
+  backdrop.addEventListener('bv-close-modal', close);
+  document.body.appendChild(backdrop);
+}
+
 async function handleOpenedFile(
   input: Uint8Array | string,
   filename: string,
@@ -1105,10 +1587,11 @@ async function handleOpenedFile(
   const lower = filename.toLowerCase();
   if (lower.endsWith('.qvext') || lower.endsWith('.bvext')) {
     const rawJson = typeof input === 'string' ? input : new TextDecoder().decode(input);
-    void showExtensionsModal(actions, {
+    setExtensionsPageOptions({
       initialTab: 'external',
       pendingExternalRawJson: rawJson,
     });
+    actions.openExtensionsModal('external');
     return;
   }
 
@@ -1132,6 +1615,7 @@ async function handleOpenedFile(
     const applied = applyOpenedExtensionFile(decoded.parsed, baseProject);
     state.project = applied.project;
     state.library = upsertBookInLibrary(state.library, state.project);
+    rememberLastBook(state.project.id);
     const shouldUseNewTab = Boolean(
       isTauriRuntime() &&
         state.settings.enableDesktopBookTabs &&
@@ -1139,18 +1623,14 @@ async function handleOpenedFile(
     );
     if (shouldUseNewTab) {
       if (isEmptyTabId(state.activeTabId)) {
-        state.openBookTabIds = state.openBookTabIds.map((id) =>
-          id === state.activeTabId ? state.project.id : id,
-        );
-      } else if (!state.openBookTabIds.includes(state.project.id)) {
-        state.openBookTabIds = [...state.openBookTabIds, state.project.id];
+        tabManager.replaceTab(state.activeTabId, state.project.id, { activate: true });
+      } else {
+        tabManager.openTab(state.project.id, { activate: true });
       }
-      state.activeTabId = state.project.id;
+      syncTabsFromManager(true);
     } else if (isNonBookTabId(state.activeTabId)) {
-      state.activeTabId = state.project.id;
-      if (!state.openBookTabIds.includes(state.project.id)) {
-        state.openBookTabIds = [...state.openBookTabIds, state.project.id];
-      }
+      tabManager.openTab(state.project.id, { activate: true });
+      syncTabsFromManager(true);
     }
     state.activeView = applied.focusView;
     if (applied.focusTypesetSubTab) {
@@ -1267,6 +1747,7 @@ const actions: AppActions = {
       }
     }
     syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
     immersiveHud?.sync();
     if (patch.enableDesktopBookTabs !== undefined && patch.enableDesktopBookTabs !== prevDesktopTabs) {
       renderDesktopTabBar();
@@ -1288,6 +1769,7 @@ const actions: AppActions = {
     const nextProj = normalizeProjectDefaults(updater(state.project));
     nextProj.updatedAt = new Date().toISOString();
     state.project = nextProj;
+    rememberLastBook(state.project.id);
     if (
       state.settings.linkPaperThemeToAppTheme &&
       state.project.paperTheme !== prevPaper
@@ -1296,6 +1778,7 @@ const actions: AppActions = {
       if (state.settings.appTheme !== nextAppTheme) {
         state.settings = saveSettings({ ...state.settings, appTheme: nextAppTheme });
         applySettingsToDocument(state.settings);
+        syncThemeButtonIcon();
       }
     }
     schedulePersist();
@@ -1330,6 +1813,7 @@ const actions: AppActions = {
       state.project = updateSceneInProject(state.project, state.activeSceneId, { title: value });
     }
     state.project.updatedAt = new Date().toISOString();
+    rememberLastBook(state.project.id);
     schedulePersist();
     updateWordCountersOnly();
     const undoBtn = mainStageEl?.querySelector<HTMLButtonElement>('[aria-label="Undo edit"]');
@@ -1349,6 +1833,35 @@ const actions: AppActions = {
     renderActiveView();
   },
 
+  returnToWriting() {
+    if (!isTauriRuntime()) {
+      actions.setState({ activeView: 'editor' }, true);
+      return;
+    }
+    const validBooks = state.library.books;
+    const latestSorted = sortLibraryBooksByLatest(validBooks);
+    const preferredId =
+      lastOpenedBookId && validBooks.some((b) => b.id === lastOpenedBookId)
+        ? lastOpenedBookId
+        : latestSorted[0]?.id ?? state.project.id;
+
+    state.activeView = 'editor';
+    if (preferredId && validBooks.some((b) => b.id === preferredId)) {
+      tabManager.openTab(preferredId, { activate: true });
+      if (state.project.id !== preferredId) {
+        actions.switchBook(preferredId);
+      } else {
+        syncTabsFromManager(true);
+        rememberLastBook(preferredId);
+        windowSync?.publishPresence();
+        renderDesktopTabBar();
+        renderActiveView();
+      }
+      return;
+    }
+    actions.setState({ activeView: 'editor' }, true);
+  },
+
   openBibleEntry(category, entryId) {
     state.activeView = 'bible';
     state.bibleCategory = category;
@@ -1357,7 +1870,20 @@ const actions: AppActions = {
   },
 
   openExtensionsModal(initialTab?: ExtensionsModalTab) {
-    void showExtensionsModal(actions, { initialTab });
+    setExtensionsPageOptions({ initialTab });
+    if (!isTauriRuntime()) {
+      actions.setState({ activeView: 'extensions' }, true);
+      return;
+    }
+    if (isEmptyTabId(state.activeTabId)) {
+      tabManager.replaceTab(state.activeTabId, EXTENSIONS_TAB_ID, { activate: true });
+    } else {
+      tabManager.openTab(EXTENSIONS_TAB_ID, { activate: true });
+    }
+    syncTabsFromManager(true);
+    state.activeView = 'extensions';
+    renderDesktopTabBar();
+    renderActiveView();
   },
 
   openLibraryModal() {
@@ -1375,13 +1901,11 @@ const actions: AppActions = {
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
-      state.openBookTabIds = state.openBookTabIds
-        .filter((id) => id !== SETTINGS_TAB_ID)
-        .map((id) => (id === state.activeTabId ? SETTINGS_TAB_ID : id));
-    } else if (!state.openBookTabIds.includes(SETTINGS_TAB_ID)) {
-      state.openBookTabIds = [...state.openBookTabIds, SETTINGS_TAB_ID];
+      tabManager.replaceTab(state.activeTabId, SETTINGS_TAB_ID, { activate: true });
+    } else {
+      tabManager.openTab(SETTINGS_TAB_ID, { activate: true });
     }
-    state.activeTabId = SETTINGS_TAB_ID;
+    syncTabsFromManager(true);
     state.activeView = 'settings';
     renderDesktopTabBar();
     renderActiveView();
@@ -1394,13 +1918,11 @@ const actions: AppActions = {
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
-      state.openBookTabIds = state.openBookTabIds
-        .filter((id) => id !== MANUAL_TAB_ID)
-        .map((id) => (id === state.activeTabId ? MANUAL_TAB_ID : id));
-    } else if (!state.openBookTabIds.includes(MANUAL_TAB_ID)) {
-      state.openBookTabIds = [...state.openBookTabIds, MANUAL_TAB_ID];
+      tabManager.replaceTab(state.activeTabId, MANUAL_TAB_ID, { activate: true });
+    } else {
+      tabManager.openTab(MANUAL_TAB_ID, { activate: true });
     }
-    state.activeTabId = MANUAL_TAB_ID;
+    syncTabsFromManager(true);
     state.activeView = 'manual';
     renderDesktopTabBar();
     renderActiveView();
@@ -1420,13 +1942,11 @@ const actions: AppActions = {
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
-      state.openBookTabIds = state.openBookTabIds
-        .filter((id) => id !== COURSE_TAB_ID)
-        .map((id) => (id === state.activeTabId ? COURSE_TAB_ID : id));
-    } else if (!state.openBookTabIds.includes(COURSE_TAB_ID)) {
-      state.openBookTabIds = [...state.openBookTabIds, COURSE_TAB_ID];
+      tabManager.replaceTab(state.activeTabId, COURSE_TAB_ID, { activate: true });
+    } else {
+      tabManager.openTab(COURSE_TAB_ID, { activate: true });
     }
-    state.activeTabId = COURSE_TAB_ID;
+    syncTabsFromManager(true);
     state.activeView = 'course';
     renderDesktopTabBar();
     renderActiveView();
@@ -1447,13 +1967,11 @@ const actions: AppActions = {
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
-      state.openBookTabIds = state.openBookTabIds
-        .filter((id) => id !== HELP_TAB_ID)
-        .map((id) => (id === state.activeTabId ? HELP_TAB_ID : id));
-    } else if (!state.openBookTabIds.includes(HELP_TAB_ID)) {
-      state.openBookTabIds = [...state.openBookTabIds, HELP_TAB_ID];
+      tabManager.replaceTab(state.activeTabId, HELP_TAB_ID, { activate: true });
+    } else {
+      tabManager.openTab(HELP_TAB_ID, { activate: true });
     }
-    state.activeTabId = HELP_TAB_ID;
+    syncTabsFromManager(true);
     state.activeView = 'help';
     renderDesktopTabBar();
     renderActiveView();
@@ -1518,13 +2036,12 @@ const actions: AppActions = {
   openBookInTab(bookId: string) {
     if (!state.library.books.some((b) => b.id === bookId)) return;
     const wasEmpty = isEmptyTabId(state.activeTabId);
-    if (!state.openBookTabIds.includes(bookId)) {
-      state.openBookTabIds = [...state.openBookTabIds, bookId];
-    }
+    tabManager.openTab(bookId, { activate: false });
     if (state.project.id !== bookId || wasEmpty) {
       actions.switchBook(bookId);
     } else {
-      state.activeTabId = bookId;
+      tabManager.setActiveTabId(bookId);
+      syncTabsFromManager(true);
       windowSync?.publishPresence();
       renderDesktopTabBar();
       renderActiveView();
@@ -1534,46 +2051,44 @@ const actions: AppActions = {
 
   openEmptyTab() {
     const newId = createEmptyTabId();
-    state.openBookTabIds = [...state.openBookTabIds, newId];
-    state.activeTabId = newId;
+    tabManager.openTab(newId, { activate: true });
+    syncTabsFromManager(true);
     windowSync?.publishPresence();
     renderDesktopTabBar();
     renderActiveView();
   },
 
   closeBookTab(tabId: string) {
-    const validTabs = state.openBookTabIds.filter(
-      (id) => isNonBookTabId(id) || state.library.books.some((b) => b.id === id),
-    );
-    if (validTabs.length <= 1) return;
-    const idx = validTabs.indexOf(tabId);
-    if (idx === -1) return;
-    const nextTabs = validTabs.filter((id) => id !== tabId);
-    state.openBookTabIds = nextTabs;
-    if (state.activeTabId === tabId) {
-      const fallbackId = nextTabs[Math.max(0, idx - 1)] ?? nextTabs[0];
-      if (fallbackId) {
-        if (isNonBookTabId(fallbackId)) {
-          state.activeTabId = fallbackId;
-          state.activeView =
-            fallbackId === COURSE_TAB_ID
-              ? 'course'
-              : fallbackId === HELP_TAB_ID
-                ? 'help'
-                : fallbackId === SETTINGS_TAB_ID
-                  ? 'settings'
-                  : fallbackId === MANUAL_TAB_ID
-                    ? 'manual'
+    tabDragController.handleTabRemoved(tabId);
+    const validIds = new Set(state.library.books.map((b) => b.id));
+    tabManager.prune((id) => validIds.has(id), state.project.id);
+    const wasActive = tabManager.getActiveTabId() === tabId;
+    const res = tabManager.closeTab(tabId);
+    if (!res.closed) return;
+    syncTabsFromManager(true);
+    pendingFocusTabIdAfterRender = res.nextActiveId;
+    if (wasActive && res.nextActiveId) {
+      if (isNonBookTabId(res.nextActiveId)) {
+        state.activeView =
+          res.nextActiveId === COURSE_TAB_ID
+            ? 'course'
+            : res.nextActiveId === HELP_TAB_ID
+              ? 'help'
+              : res.nextActiveId === SETTINGS_TAB_ID
+                ? 'settings'
+                : res.nextActiveId === MANUAL_TAB_ID
+                  ? 'manual'
+                  : res.nextActiveId === EXTENSIONS_TAB_ID
+                    ? 'extensions'
                     : 'editor';
-          windowSync?.publishPresence();
-          renderDesktopTabBar();
-          renderActiveView();
-          return;
-        }
-        state.activeView = 'editor';
-        actions.switchBook(fallbackId);
+        windowSync?.publishPresence();
+        renderDesktopTabBar();
+        renderActiveView();
         return;
       }
+      state.activeView = 'editor';
+      actions.switchBook(res.nextActiveId);
+      return;
     }
     windowSync?.publishPresence();
     renderDesktopTabBar();
@@ -1622,10 +2137,9 @@ const actions: AppActions = {
     const updatedLib = switchActiveBook(baseLib, bookId);
     state.library = updatedLib;
     state.project = getActiveBookFromLibrary(updatedLib);
-    if (!state.openBookTabIds.includes(state.project.id)) {
-      state.openBookTabIds = [...state.openBookTabIds, state.project.id];
-    }
-    state.activeTabId = state.project.id;
+    rememberLastBook(state.project.id);
+    tabManager.openTab(state.project.id, { activate: true });
+    syncTabsFromManager(true);
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
@@ -1645,15 +2159,16 @@ const actions: AppActions = {
     };
     state.library = sortedLib;
     state.project = getActiveBookFromLibrary(sortedLib);
+    rememberLastBook(state.project.id);
     const validIds = new Set(sortedLib.books.map((b) => b.id));
-    const keptTabs = state.openBookTabIds.filter((id) => isNonBookTabId(id) || validIds.has(id));
-    if (!keptTabs.includes(state.project.id)) {
-      keptTabs.push(state.project.id);
+    tabManager.prune((id) => validIds.has(id), state.project.id);
+    if (!tabManager.hasTab(state.project.id)) {
+      tabManager.openTab(state.project.id, { activate: false });
     }
-    state.openBookTabIds = keptTabs;
-    if (!isNonBookTabId(state.activeTabId) || !keptTabs.includes(state.activeTabId)) {
-      state.activeTabId = state.project.id;
+    if (!isNonBookTabId(state.activeTabId) || !tabManager.hasTab(state.activeTabId)) {
+      tabManager.setActiveTabId(state.project.id);
     }
+    syncTabsFromManager(true);
     state.activeSceneId = getAllScenes(state.project)[0]?.scene.id ?? '';
     state.activeBibleId = state.project.bible.characters[0]?.id ?? '';
     state.activeGraphNodeId = state.project.storyGraph?.nodes[0]?.id ?? '';
@@ -1684,13 +2199,7 @@ const actions: AppActions = {
   },
 
   async openAnyQuillvibeFile() {
-    const opened = await openQuillvibeFile();
-    if (!opened) return;
-    const resolved = resolveOpenedFilePayload(opened);
-    await handleOpenedFile(resolved.input, opened.filename, {
-      base64Encoded: resolved.base64Encoded,
-      allowLegacy: false,
-    });
+    showOpenFileDropDialog();
   },
 
   async importLegacyBookFile() {
@@ -2278,22 +2787,60 @@ function renderDesktopTabBar(): void {
   if (topbarLogoEl) topbarLogoEl.style.display = showTabs ? 'none' : '';
   if (topbarWinControlsEl) topbarWinControlsEl.style.display = showTabs ? 'none' : '';
   if (topbarNewWinBtnEl) topbarNewWinBtnEl.style.display = showTabs ? 'none' : '';
-  if (!showTabs) return;
+  if (!showTabs) {
+    lastTabBarRenderSig = '';
+    return;
+  }
+  if (tabDragController.isDragging()) return;
 
-  // Ensure openBookTabIds contains valid books, empty tabs, or Course/Help tabs
+  // Ensure TabManager contains valid books, empty tabs, or Course/Help tabs
   const byId = new Map(state.library.books.map((b) => [b.id, b]));
-  const validIds = state.openBookTabIds.filter((id) => isNonBookTabId(id) || byId.has(id));
-  if (validIds.length === 0) {
-    validIds.push(state.project.id);
-  }
-  if (!validIds.includes(state.activeTabId)) {
-    if (isNonBookTabId(state.activeTabId) || byId.has(state.activeTabId)) {
-      validIds.push(state.activeTabId);
-    } else {
-      state.activeTabId = validIds[0];
+  tabManager.prune((id) => byId.has(id), state.project.id);
+  const activeCandidate = state.activeTabId;
+  if (!tabManager.hasTab(activeCandidate)) {
+    if (isNonBookTabId(activeCandidate) || byId.has(activeCandidate)) {
+      tabManager.openTab(activeCandidate, { activate: true });
+    } else if (tabManager.getTabIds().length > 0) {
+      tabManager.setActiveTabId(tabManager.getTabIds()[0]);
     }
+  } else {
+    tabManager.setActiveTabId(activeCandidate);
   }
-  state.openBookTabIds = validIds;
+  syncTabsFromManager(false);
+  const validIds = tabManager.getTabIds();
+
+  const resolveTabTitle = (id: string): string => {
+    if (isEmptyTabId(id)) return 'New Tab';
+    if (id === COURSE_TAB_ID) return 'Book Writing Course';
+    if (id === HELP_TAB_ID) return 'Help & FAQ';
+    if (id === SETTINGS_TAB_ID) return 'Settings';
+    if (id === MANUAL_TAB_ID) return 'Manual & Reference';
+    if (id === EXTENSIONS_TAB_ID) return 'Extensions & Formats';
+    return byId.get(id)?.title?.trim() || 'Untitled Book';
+  };
+
+  const renderSig = JSON.stringify({
+    tabs: validIds.map((id) => [id, resolveTabTitle(id)]),
+  });
+
+  if (renderSig === lastTabBarRenderSig && desktopTabBarEl.childElementCount > 0) {
+    const existingTabs = Array.from(desktopTabBarEl.querySelectorAll<HTMLElement>('.qv-book-tab'));
+    for (const tabEl of existingTabs) {
+      const id = tabEl.dataset.tabId ?? '';
+      const isActive = id === state.activeTabId;
+      tabEl.classList.toggle('is-active', isActive);
+      tabEl.setAttribute('aria-selected', String(isActive));
+      tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
+      if (pendingFocusTabIdAfterRender && pendingFocusTabIdAfterRender === id) {
+        pendingFocusTabIdAfterRender = null;
+        tabEl.focus({ preventScroll: false });
+      }
+    }
+    tabDragController.syncUniformTabWidths();
+    tabDragController.syncNewTabButtonPosition(true);
+    return;
+  }
+  lastTabBarRenderSig = renderSig;
 
   clearNode(desktopTabBarEl);
 
@@ -2316,6 +2863,7 @@ function renderDesktopTabBar(): void {
     const isHelp = id === HELP_TAB_ID;
     const isSettings = id === SETTINGS_TAB_ID;
     const isManual = id === MANUAL_TAB_ID;
+    const isExtensions = id === EXTENSIONS_TAB_ID;
     const book = isNonBookTabId(id) ? null : byId.get(id);
     if (!isNonBookTabId(id) && !book) return;
     const isActive = id === state.activeTabId;
@@ -2330,15 +2878,24 @@ function renderDesktopTabBar(): void {
             ? 'Settings'
             : isManual
               ? 'Manual & Reference'
-              : book?.title?.trim() || 'Untitled Book';
+              : isExtensions
+                ? 'Extensions & Formats'
+                : book?.title?.trim() || 'Untitled Book';
 
     const closeBtn = canClose
       ? el(
           'button',
           {
             className: 'qv-tab-close',
-            attrs: { type: 'button', 'aria-label': `Close ${tabTitle} tab` },
+            attrs: {
+              type: 'button',
+              tabindex: '-1',
+              'aria-label': `Close ${tabTitle} tab`,
+            },
             on: {
+              pointerdown: (e) => {
+                e.stopPropagation();
+              },
               click: (e) => {
                 e.stopPropagation();
                 actions.closeBookTab(id);
@@ -2356,7 +2913,9 @@ function renderDesktopTabBar(): void {
         dataset: { tabId: id },
         attrs: {
           role: 'tab',
-          tabindex: '0',
+          draggable: 'false',
+          tabindex: isActive ? '0' : '-1',
+          'aria-label': tabTitle,
           'aria-selected': String(isActive),
           title: `${tabTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
         },
@@ -2370,7 +2929,28 @@ function renderDesktopTabBar(): void {
           keydown: (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              if (!isActive) activateTabId(id);
+              if (tabManager.getActiveTabId() !== id) activateTabId(id);
+              return;
+            }
+            if (e.key === 'Delete' && canClose) {
+              e.preventDefault();
+              actions.closeBookTab(id);
+              return;
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+              const items = Array.from(tabStrip.querySelectorAll<HTMLElement>('.qv-book-tab'));
+              const curIdx = items.indexOf(tabEl);
+              if (curIdx === -1 || items.length === 0) return;
+              e.preventDefault();
+              const nextIdx =
+                e.key === 'Home'
+                  ? 0
+                  : e.key === 'End'
+                    ? items.length - 1
+                    : e.key === 'ArrowLeft'
+                      ? (curIdx - 1 + items.length) % items.length
+                      : (curIdx + 1) % items.length;
+              items[nextIdx]?.focus();
             }
           },
         },
@@ -2382,25 +2962,20 @@ function renderDesktopTabBar(): void {
     tabDragController.attachTab(tabEl, tabStrip, desktopTabBarEl!, {
       tabId: id,
       tabTitle,
-      isActive,
     });
 
     attachContextMenu(tabEl, () => [
       {
         heading: tabTitle,
         items: [
-          ...(!isSpecialPageTabId(id)
-            ? [
-                {
-                  label: 'Pop Out to New Window',
-                  icon: 'window-new' as const,
-                  onSelect: () => {
-                    void actions.openNewWindow(isEmpty ? EMPTY_TAB_PREFIX : id);
-                    if (canClose) actions.closeBookTab(id);
-                  },
-                },
-              ]
-            : []),
+          {
+            label: 'Pop Out to New Window',
+            icon: 'window-new' as const,
+            onSelect: () => {
+              void actions.openNewWindow(isEmpty ? EMPTY_TAB_PREFIX : id);
+              if (canClose) actions.closeBookTab(id);
+            },
+          },
           {
             label: 'New Empty Tab',
             icon: 'plus',
@@ -2424,7 +2999,8 @@ function renderDesktopTabBar(): void {
             label: 'Close Other Tabs',
             disabled: !canClose,
             onSelect: () => {
-              state.openBookTabIds = [id];
+              tabDragController.cancelActiveDrag();
+              setTabOrderAndActive([id], id, true);
               activateTabId(id);
             },
           },
@@ -2443,8 +3019,11 @@ function renderDesktopTabBar(): void {
         title: 'New Empty Book Tab',
         short: 'Open a fresh tab to pick any recent book or start a new manuscript.',
       },
-      attrs: { type: 'button', 'aria-label': 'New empty book tab' },
-      on: { click: () => actions.openEmptyTab() },
+      attrs: { type: 'button', draggable: 'false', 'aria-label': 'New empty book tab' },
+      on: {
+        pointerdown: (e) => e.stopPropagation(),
+        click: () => actions.openEmptyTab(),
+      },
     },
     icon('plus', 13),
   );
@@ -2452,15 +3031,27 @@ function renderDesktopTabBar(): void {
   const tabMenuBtn = el(
     'button',
     {
-      className: 'qv-tab-add-btn',
+      className: 'qv-tab-menu-btn',
       tooltip: {
         title: 'Tabs & Windows Menu',
         short: 'Switch books, open an empty window, or combine all open windows into one.',
       },
-      attrs: { type: 'button', 'aria-label': 'Tabs and windows menu' },
-      on: { click: () => openTabPickerMenu(tabMenuBtn) },
+      attrs: { type: 'button', draggable: 'false', 'aria-label': 'Tabs and windows menu' },
+      on: {
+        pointerdown: (e) => e.stopPropagation(),
+        click: () => openTabPickerMenu(tabMenuBtn),
+      },
     },
     '▾',
+  );
+
+  const tabStripShell = el(
+    'div',
+    {
+      className: 'qv-tab-strip-shell',
+    },
+    tabStrip,
+    addTabBtn,
   );
 
   const dragSpacer = el('div', {
@@ -2470,12 +3061,40 @@ function renderDesktopTabBar(): void {
 
   desktopTabBarEl.append(
     logoWrap,
-    tabStrip,
-    addTabBtn,
-    tabMenuBtn,
+    tabStripShell,
     dragSpacer,
+    tabMenuBtn,
     createDesktopWindowControlsEl(),
   );
+
+  tabDragController.bindTabStripLayout(tabStrip, addTabBtn, tabStripShell, desktopTabBarEl);
+
+  if (pendingFocusTabIdAfterRender) {
+    const focusTargetId = pendingFocusTabIdAfterRender;
+    pendingFocusTabIdAfterRender = null;
+    const focusEl = Array.from(tabStrip.querySelectorAll<HTMLElement>('.qv-book-tab')).find(
+      (node) => node.dataset.tabId === focusTargetId,
+    );
+    focusEl?.focus({ preventScroll: false });
+  }
+}
+
+function syncThemeButtonIcon(): void {
+  const mode = state.settings.appTheme;
+  if (themeMorphSvgEl) {
+    themeMorphSvgEl.dataset.themeMode = mode;
+  }
+  if (themeSwitchBtnEl) {
+    const label =
+      mode === 'system'
+        ? 'Match Device'
+        : mode === 'ivory'
+          ? 'Ivory Light'
+          : mode === 'parchment'
+            ? 'Parchment'
+            : 'Obsidian Dark';
+    themeSwitchBtnEl.setAttribute('aria-label', `Switch Theme (${label})`);
+  }
 }
 
 function buildShell(root: HTMLElement): void {
@@ -2622,7 +3241,7 @@ function buildShell(root: HTMLElement): void {
     el(
       'div',
       { className: 'bv-topbar-actions' },
-      el(
+      (themeSwitchBtnEl = el(
         'button',
         {
           className: 'bv-btn bv-btn-icon',
@@ -2639,8 +3258,8 @@ function buildShell(root: HTMLElement): void {
             },
           },
         },
-        icon(state.settings.appTheme === 'obsidian' ? 'theme-sun' : 'theme-moon', 15),
-      ),
+        (themeMorphSvgEl = createMorphThemeIcon(state.settings.appTheme, 16)),
+      )),
       ...(isTauriRuntime()
         ? [
             (topbarNewWinBtnEl = el(
@@ -3273,26 +3892,105 @@ async function bootstrap(): Promise<void> {
   const skipSplashFromWindow = Boolean(winInit.__QUILLVIBE_SKIP_SPLASH__ || requestedBookId);
   if (requestedBookId && isEmptyTabId(requestedBookId)) {
     const emptyId = createEmptyTabId();
-    state.openBookTabIds = [emptyId];
-    state.activeTabId = emptyId;
-  } else if (requestedBookId && state.library.books.some((b) => b.id === requestedBookId)) {
-    state.library = switchActiveBook(state.library, requestedBookId);
-    state.project = getActiveBookFromLibrary(state.library);
-    state.openBookTabIds = [state.project.id];
-    state.activeTabId = state.project.id;
+    setTabOrderAndActive([emptyId], emptyId, false);
+  } else if (requestedBookId && isSpecialPageTabId(requestedBookId)) {
+    state.activeView = resolveSpecialPageView(requestedBookId);
+    setTabOrderAndActive([requestedBookId], requestedBookId, false);
+  } else if (requestedBookId) {
+    const handoff = consumeDetachHandoff(requestedBookId);
+    if (handoff) {
+      const normalizedHandoff = normalizeProjectDefaults(handoff.project);
+      state.library = upsertBookInLibrary(state.library, normalizedHandoff);
+      state.library = switchActiveBook(state.library, normalizedHandoff.id);
+      state.project = getActiveBookFromLibrary(state.library);
+      state.activeView = handoff.activeView;
+      state.activeSceneId = handoff.activeSceneId;
+      state.editorSubMode = handoff.editorSubMode;
+      state.typesetSubTab = handoff.typesetSubTab;
+      if (typeof handoff.showBinder === 'boolean') state.showBinder = handoff.showBinder;
+      if (typeof handoff.showInspector === 'boolean') state.showInspector = handoff.showInspector;
+      pendingDetachHandoffEditorState = {
+        sceneId: handoff.activeSceneId,
+        scrollTop: handoff.scrollTop,
+        selectionStart: handoff.selectionStart,
+        selectionEnd: handoff.selectionEnd,
+      };
+      rememberLastBook(state.project.id);
+      setTabOrderAndActive([state.project.id], state.project.id, false);
+    } else if (state.library.books.some((b) => b.id === requestedBookId)) {
+      state.library = switchActiveBook(state.library, requestedBookId);
+      state.project = getActiveBookFromLibrary(state.library);
+      rememberLastBook(state.project.id);
+      setTabOrderAndActive([state.project.id], state.project.id, false);
+    } else {
+      setTabOrderAndActive([state.project.id], state.project.id, false);
+    }
   } else {
-    state.openBookTabIds = [state.project.id];
-    state.activeTabId = state.project.id;
+    setTabOrderAndActive([state.project.id], state.project.id, false);
   }
 
   installGlobalErrorHandlers((q) => actions.openHelpPage(q));
   currentWindowLabel = await getDesktopWindowLabel();
+
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const storedBookId = window.localStorage.getItem(LAST_OPENED_BOOK_STORAGE_KEY)?.trim() ?? '';
+      if (storedBookId && state.library.books.some((b) => b.id === storedBookId)) {
+        lastOpenedBookId = storedBookId;
+      } else {
+        rememberLastBook(state.project.id);
+      }
+    } catch {
+      lastOpenedBookId = state.project.id;
+    }
+  } else {
+    lastOpenedBookId = state.project.id;
+  }
+
+  if (isTauriRuntime() && !requestedBookId) {
+    const savedTabs = tabManager.loadPersistedOrder(currentWindowLabel);
+    if (savedTabs) {
+      const validBookIds = new Set(state.library.books.map((b) => b.id));
+      const restored = savedTabs.tabIds.filter((id) => isNonBookTabId(id) || validBookIds.has(id));
+      if (restored.length > 0) {
+        const nextActive =
+          savedTabs.activeTabId && restored.includes(savedTabs.activeTabId)
+            ? savedTabs.activeTabId
+            : state.project.id;
+        setTabOrderAndActive(restored, nextActive, false);
+        if (!isNonBookTabId(nextActive) && validBookIds.has(nextActive)) {
+          if (nextActive !== state.project.id) {
+            state.library = switchActiveBook(state.library, nextActive);
+            state.project = getActiveBookFromLibrary(state.library);
+          }
+          rememberLastBook(nextActive);
+        }
+      }
+    }
+  }
 
   windowSync?.destroy();
   windowSync = new WorkspaceWindowSync({
     getWindowLabel: () => currentWindowLabel,
     getOpenBookIds: () => state.openBookTabIds,
     getActiveBookId: () => state.activeTabId,
+    getTabStripMetrics: () => {
+      const strip = desktopTabBarEl?.querySelector<HTMLElement>('.qv-tab-strip');
+      const firstTab = strip?.querySelector<HTMLElement>('.qv-book-tab');
+      const stripRect = strip?.getBoundingClientRect();
+      const tabW = firstTab?.getBoundingClientRect().width;
+      return {
+        tabWidthPx: tabW && tabW > 0 ? Math.round(tabW) : 160,
+        tabCount: tabManager.getTabIds().length,
+        stripLeftOffsetPx: stripRect && stripRect.left >= 0 ? Math.round(stripRect.left) : 44,
+      };
+    },
+    onTabHoverPreview: (_fromWindowId, insertionIndex) => {
+      renderTabDropIndicator(insertionIndex);
+    },
+    onTabHoverClear: () => {
+      renderTabDropIndicator(null);
+    },
     onRemoteBookUpdated: (bookId, remoteProject) => {
       const normalized = normalizeProjectDefaults(remoteProject);
       const exists = state.library.books.some((b) => b.id === bookId);
@@ -3338,16 +4036,18 @@ async function bootstrap(): Promise<void> {
       renderDesktopTabBar();
     },
     onTabTransferredAway: (bookId) => {
-      const remaining = state.openBookTabIds.filter((id) => id !== bookId);
+      tabDragController.handleTabRemoved(bookId);
+      const remaining = tabManager.getTabIds().filter((id) => id !== bookId);
       if (remaining.length === 0) {
         void closeDesktopWindow();
         return;
       }
-      state.openBookTabIds = remaining;
-      if (state.activeTabId === bookId) {
-        const nextId = remaining[0];
+      const wasActive = tabManager.getActiveTabId() === bookId;
+      tabManager.closeTab(bookId);
+      syncTabsFromManager(true);
+      if (wasActive) {
+        const nextId = tabManager.getActiveTabId();
         if (isNonBookTabId(nextId)) {
-          state.activeTabId = nextId;
           state.activeView =
             nextId === COURSE_TAB_ID
               ? 'course'
@@ -3357,7 +4057,9 @@ async function bootstrap(): Promise<void> {
                   ? 'settings'
                   : nextId === MANUAL_TAB_ID
                     ? 'manual'
-                    : 'editor';
+                    : nextId === EXTENSIONS_TAB_ID
+                      ? 'extensions'
+                      : 'editor';
           windowSync?.publishPresence();
           renderDesktopTabBar();
           renderActiveView();
@@ -3370,37 +4072,56 @@ async function bootstrap(): Promise<void> {
       }
     },
     onTabDroppedIntoMe: (_fromWindowId, incomingBookId, insertionIndex) => {
-      const filtered = state.openBookTabIds.filter((id) => id !== incomingBookId);
-      const clampedIdx =
-        typeof insertionIndex === 'number'
-          ? Math.max(0, Math.min(filtered.length, insertionIndex))
-          : filtered.length;
-      filtered.splice(clampedIdx, 0, incomingBookId);
-      state.openBookTabIds = filtered;
+      renderTabDropIndicator(null);
+      const handoff = isNonBookTabId(incomingBookId) ? null : consumeDetachHandoff(incomingBookId);
+      if (handoff) {
+        const normalizedHandoff = normalizeProjectDefaults(handoff.project);
+        state.library = upsertBookInLibrary(state.library, normalizedHandoff);
+      }
+      tabManager.openTab(incomingBookId, { activate: true, insertAt: insertionIndex });
+      syncTabsFromManager(true);
       if (isEmptyTabId(incomingBookId)) {
-        state.activeTabId = incomingBookId;
         state.activeView = 'editor';
         windowSync?.publishPresence();
         renderDesktopTabBar();
         renderActiveView();
+      } else if (isSpecialPageTabId(incomingBookId)) {
+        state.activeView = resolveSpecialPageView(incomingBookId);
+        windowSync?.publishPresence();
+        renderDesktopTabBar();
+        renderActiveView();
       } else {
-        state.activeView = 'editor';
+        if (handoff) {
+          state.activeView = handoff.activeView;
+          state.activeSceneId = handoff.activeSceneId;
+          state.editorSubMode = handoff.editorSubMode;
+          state.typesetSubTab = handoff.typesetSubTab;
+          if (typeof handoff.showBinder === 'boolean') state.showBinder = handoff.showBinder;
+          if (typeof handoff.showInspector === 'boolean') state.showInspector = handoff.showInspector;
+          pendingDetachHandoffEditorState = {
+            sceneId: handoff.activeSceneId,
+            scrollTop: handoff.scrollTop,
+            selectionStart: handoff.selectionStart,
+            selectionEnd: handoff.selectionEnd,
+          };
+        } else {
+          state.activeView = 'editor';
+        }
         actions.switchBook(incomingBookId);
       }
       actions.notify('Combined tab into this window');
     },
     onMergeRequested: (targetWindowId) => {
-      const myBooks = state.openBookTabIds.filter((id) => !isNonBookTabId(id));
+      const myBooks = tabManager.getTabIds().filter((id) => !isNonBookTabId(id));
       windowSync?.sendMergeOffer(targetWindowId, myBooks);
     },
     onMergeOfferReceived: (fromWindowId, incomingBookIds) => {
-      const next = [...state.openBookTabIds];
       for (const bid of incomingBookIds) {
-        if (bid && !isNonBookTabId(bid) && !next.includes(bid)) {
-          next.push(bid);
+        if (bid && !isNonBookTabId(bid)) {
+          tabManager.openTab(bid, { activate: false });
         }
       }
-      state.openBookTabIds = next;
+      syncTabsFromManager(true);
       windowSync?.publishPresence();
       renderDesktopTabBar();
       windowSync?.sendMergeAck(fromWindowId);
@@ -3417,6 +4138,7 @@ async function bootstrap(): Promise<void> {
     media.addEventListener('change', () => {
       if (state.settings.appTheme === 'system') {
         applySettingsToDocument(state.settings);
+        syncThemeButtonIcon();
         renderActiveView();
       }
     });
@@ -3438,9 +4160,8 @@ async function bootstrap(): Promise<void> {
           merged.push(state.project);
         }
         const mergedIds = new Set(merged.map((b) => b.id));
-        state.openBookTabIds = state.openBookTabIds.filter(
-          (id) => isNonBookTabId(id) || mergedIds.has(id),
-        );
+        tabManager.prune((id) => mergedIds.has(id), state.project.id);
+        syncTabsFromManager(false);
         state.library = { activeBookId: state.project.id, books: sortLibraryBooksByLatest(merged) };
         renderDesktopTabBar();
         if (isEmptyTabId(state.activeTabId)) renderActiveView();
@@ -3537,6 +4258,22 @@ async function bootstrap(): Promise<void> {
     }
   } else {
     renderActiveView();
+    if (pendingDetachHandoffEditorState) {
+      const restore = pendingDetachHandoffEditorState;
+      pendingDetachHandoffEditorState = null;
+      requestAnimationFrame(() => {
+        const proseEl = mainStageEl?.querySelector<HTMLTextAreaElement>('.bv-prose-textarea');
+        if (proseEl && state.activeSceneId === restore.sceneId) {
+          proseEl.scrollTop = restore.scrollTop;
+          const maxLen = proseEl.value.length;
+          proseEl.focus({ preventScroll: true });
+          proseEl.setSelectionRange(
+            Math.min(restore.selectionStart, maxLen),
+            Math.min(restore.selectionEnd, maxLen),
+          );
+        }
+      });
+    }
   }
 
   // Listen for files opened via OS double-click while this desktop window is already running
@@ -3569,4 +4306,15 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-void bootstrap();
+export async function bootQuillvibeApp(): Promise<AppActions> {
+  await bootstrap();
+  return actions;
+}
+
+const manualBoot =
+  typeof window !== 'undefined' &&
+  Boolean((window as unknown as { __QUILLVIBE_MANUAL_BOOT__?: boolean }).__QUILLVIBE_MANUAL_BOOT__);
+
+if (!manualBoot) {
+  void bootQuillvibeApp();
+}

@@ -10,6 +10,7 @@ export const COURSE_TAB_ID = '__qv_course_tab__';
 export const HELP_TAB_ID = '__qv_help_tab__';
 export const SETTINGS_TAB_ID = '__qv_settings_tab__';
 export const MANUAL_TAB_ID = '__qv_manual_tab__';
+export const EXTENSIONS_TAB_ID = '__qv_extensions_tab__';
 
 export function isEmptyTabId(tabId: string | null | undefined): boolean {
   return Boolean(tabId && tabId.startsWith(EMPTY_TAB_PREFIX));
@@ -20,7 +21,8 @@ export function isSpecialPageTabId(tabId: string | null | undefined): boolean {
     tabId === COURSE_TAB_ID ||
     tabId === HELP_TAB_ID ||
     tabId === SETTINGS_TAB_ID ||
-    tabId === MANUAL_TAB_ID
+    tabId === MANUAL_TAB_ID ||
+    tabId === EXTENSIONS_TAB_ID
   );
 }
 
@@ -34,8 +36,12 @@ export function createEmptyTabId(): string {
 
 export interface WindowPresenceRecord {
   windowId: string;
+  windowLabel?: string;
   openBookIds: string[];
   activeBookId: string;
+  tabWidthPx?: number;
+  tabCount?: number;
+  stripLeftOffsetPx?: number;
   updatedAt: number;
 }
 
@@ -52,6 +58,18 @@ export type SyncMessage =
       fromWindowId: string;
       toWindowId: string;
       bookId: string;
+    }
+  | {
+      type: 'tab-drag-hover';
+      targetWindowLabel: string;
+      fromWindowId: string;
+      insertionIndex: number;
+      tabTitle?: string;
+    }
+  | {
+      type: 'tab-drag-leave';
+      targetWindowLabel: string;
+      fromWindowId: string;
     }
   | {
       type: 'tab-drop-into';
@@ -80,8 +98,15 @@ export interface WindowSyncCallbacks {
   getWindowLabel(): string;
   getOpenBookIds(): string[];
   getActiveBookId(): string;
+  getTabStripMetrics?: () => {
+    tabWidthPx: number;
+    tabCount: number;
+    stripLeftOffsetPx: number;
+  };
   onRemoteBookUpdated(bookId: string, project: BookProject, rev: number): void;
   onTabTransferredAway(bookId: string): void;
+  onTabHoverPreview?: (fromWindowId: string, insertionIndex: number, tabTitle?: string) => void;
+  onTabHoverClear?: (fromWindowId: string) => void;
   onTabDroppedIntoMe(fromWindowId: string, bookId: string, insertionIndex?: number): void;
   onMergeRequested(targetWindowId: string): void;
   onMergeOfferReceived(fromWindowId: string, bookIds: string[]): void;
@@ -158,10 +183,19 @@ export class WorkspaceWindowSync {
     if (typeof window === 'undefined' || !window.localStorage) return;
     try {
       const map = this.readPresenceMap();
+      const metrics = this.callbacks.getTabStripMetrics?.();
       map[this.windowId] = {
         windowId: this.windowId,
+        windowLabel: this.callbacks.getWindowLabel(),
         openBookIds: this.callbacks.getOpenBookIds().filter((id) => !isNonBookTabId(id)),
         activeBookId: isNonBookTabId(this.callbacks.getActiveBookId()) ? '' : this.callbacks.getActiveBookId(),
+        ...(metrics
+          ? {
+              tabWidthPx: metrics.tabWidthPx,
+              tabCount: metrics.tabCount,
+              stripLeftOffsetPx: metrics.stripLeftOffsetPx,
+            }
+          : {}),
         updatedAt: Date.now(),
       };
       window.localStorage.setItem(PRESENCE_KEY, JSON.stringify(map));
@@ -192,6 +226,12 @@ export class WorkspaceWindowSync {
   getOtherOpenWindowCount(): number {
     const map = this.readPresenceMap();
     return Object.values(map).filter((rec) => rec.windowId !== this.windowId).length;
+  }
+
+  getWindowPresenceByLabel(label: string): WindowPresenceRecord | null {
+    if (!label) return null;
+    const map = this.readPresenceMap();
+    return Object.values(map).find((rec) => rec.windowLabel === label) ?? null;
   }
 
   nextRevisionFor(bookId: string): number {
@@ -231,6 +271,24 @@ export class WorkspaceWindowSync {
       fromWindowId,
       toWindowId: this.windowId,
       bookId,
+    });
+  }
+
+  sendTabHoverPreview(targetWindowLabel: string, insertionIndex: number, tabTitle?: string): void {
+    this.post({
+      type: 'tab-drag-hover',
+      targetWindowLabel,
+      fromWindowId: this.windowId,
+      insertionIndex,
+      tabTitle,
+    });
+  }
+
+  sendTabHoverClear(targetWindowLabel: string): void {
+    this.post({
+      type: 'tab-drag-leave',
+      targetWindowLabel,
+      fromWindowId: this.windowId,
     });
   }
 
@@ -286,6 +344,20 @@ export class WorkspaceWindowSync {
     } else if (msg.type === 'tab-transferred') {
       if (msg.fromWindowId === this.windowId && msg.toWindowId !== this.windowId) {
         this.callbacks.onTabTransferredAway(msg.bookId);
+      }
+    } else if (msg.type === 'tab-drag-hover') {
+      if (
+        msg.fromWindowId !== this.windowId &&
+        msg.targetWindowLabel === this.callbacks.getWindowLabel()
+      ) {
+        this.callbacks.onTabHoverPreview?.(msg.fromWindowId, msg.insertionIndex, msg.tabTitle);
+      }
+    } else if (msg.type === 'tab-drag-leave') {
+      if (
+        msg.fromWindowId !== this.windowId &&
+        msg.targetWindowLabel === this.callbacks.getWindowLabel()
+      ) {
+        this.callbacks.onTabHoverClear?.(msg.fromWindowId);
       }
     } else if (msg.type === 'tab-drop-into') {
       if (

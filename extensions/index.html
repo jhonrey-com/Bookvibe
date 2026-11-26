@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="ivory">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#f6f4ef" />
+    <title>Extensions &amp; File Formats — Quillvibe</title>
+    <meta
+      name="description"
+      content="Manage integrated and sandboxed extensions, review security permissions, and register official Quillvibe file formats (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign)."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://quillvibe.jhonrey.com/extensions" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <style>
+      #qv-boot-splash { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #f6f4ef; color: #16181f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; transition: opacity 220ms ease, visibility 220ms ease; }
+      @media (prefers-color-scheme: dark) { #qv-boot-splash { background: #121210; color: #efede8; } #qv-boot-splash .qv-boot-sub { color: #aba59b; } #qv-boot-splash .qv-boot-track { background: rgba(255,255,255,0.12); } }
+      #qv-boot-splash.is-leaving { opacity: 0; visibility: hidden; pointer-events: none; }
+      #qv-boot-splash .qv-boot-title { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+      #qv-boot-splash .qv-boot-sub { font-size: 12.5px; color: #5c606b; }
+      #qv-boot-splash .qv-boot-track { width: 148px; height: 3px; border-radius: 999px; background: rgba(22,24,31,0.12); overflow: hidden; }
+      #qv-boot-splash .qv-boot-fill { width: 44%; height: 100%; border-radius: 999px; background: #b89867; animation: qvBootSlide 1.15s cubic-bezier(0.4,0,0.2,1) infinite; }
+      @keyframes qvBootSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+    </style>
+  </head>
+  <body>
+    <div id="qv-boot-splash" role="status" aria-label="Loading Quillvibe Extensions">
+      <div class="qv-boot-title">Extensions &amp; File Formats</div>
+      <div class="qv-boot-sub">Loading sandbox permissions &amp; format handlers…</div>
+      <div class="qv-boot-track"><div class="qv-boot-fill"></div></div>
+    </div>
+    <div id="app">
+      <main style="max-width:860px;margin:0 auto;padding:32px 20px;font-family:Georgia,serif;color:#181a20">
+        <h1>Extensions &amp; Official File Formats — Quillvibe</h1>
+        <p>Manage sandboxed writing extensions, custom permissions, and file associations.</p>
+        <p><a href="https://quillvibe.jhonrey.com/write">Back to Writing</a> · <a href="https://quillvibe.jhonrey.com/settings">Settings</a></p>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

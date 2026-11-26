@@ -1,3 +1,4 @@
+import type { AppThemeId } from '../core/types';
 import { attachTooltip, type TooltipSpec } from './tooltip';
 
 export type IconName =
@@ -651,5 +652,104 @@ export function icon(name: IconName, size = 15): SVGSVGElement {
   for (const d of ICON_PATHS[name]) {
     svg.appendChild(svgEl('path', { d }));
   }
+  return svg;
+}
+
+let morphThemeMaskSeq = 0;
+
+/**
+ * Animated morphing theme icon supporting system (Match Device), ivory, parchment, and obsidian.
+ */
+export function createMorphThemeIcon(
+  mode: AppThemeId,
+  size = 16,
+): SVGSVGElement {
+  morphThemeMaskSeq += 1;
+  const maskId = `qv-tm-mask-${morphThemeMaskSeq}`;
+
+  const svg = svgEl('svg', {
+    className: 'qv-theme-morph',
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': 1.8,
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    'data-theme-mode': mode,
+    'aria-hidden': 'true',
+  });
+
+  const defs = svgEl('defs');
+  const mask = svgEl('mask', { id: maskId });
+  mask.append(
+    svgEl('rect', { x: 0, y: 0, width: 24, height: 24, fill: '#ffffff', stroke: 'none' }),
+    svgEl('circle', {
+      className: 'qv-tm-cutout',
+      cx: 16.8,
+      cy: 7.4,
+      r: 5.8,
+      fill: '#000000',
+      stroke: 'none',
+    }),
+  );
+  defs.appendChild(mask);
+
+  const coreGroup = svgEl('g', { className: 'qv-tm-core-group' });
+  coreGroup.appendChild(
+    svgEl('circle', {
+      className: 'qv-tm-core',
+      cx: 12,
+      cy: 12,
+      r: 6.2,
+      fill: 'currentColor',
+      stroke: 'none',
+      mask: `url(#${maskId})`,
+    }),
+  );
+
+  // Crisp contrast ring + half-disc arc shown in Match Device (system) mode
+  const autoRing = svgEl('circle', {
+    className: 'qv-tm-auto-ring',
+    cx: 12,
+    cy: 12,
+    r: 8.6,
+    fill: 'none',
+  });
+  const autoHalf = svgEl('path', {
+    className: 'qv-tm-auto-half',
+    d: 'M12 3.6A8.4 8.4 0 0 1 12 20.4Z',
+    fill: 'currentColor',
+    stroke: 'none',
+  });
+
+  // Radial sun rays (split into top/sides and bottom so parchment glides into a warm horizon sunrise)
+  const topRays = svgEl(
+    'g',
+    { className: 'qv-tm-rays-top' },
+    svgEl('line', { x1: 12, y1: 2, x2: 12, y2: 4.3 }),
+    svgEl('line', { x1: 4.9, y1: 4.9, x2: 6.5, y2: 6.5 }),
+    svgEl('line', { x1: 19.1, y1: 4.9, x2: 17.5, y2: 6.5 }),
+    svgEl('line', { x1: 2, y1: 12, x2: 4.3, y2: 12 }),
+    svgEl('line', { x1: 19.7, y1: 12, x2: 22, y2: 12 }),
+  );
+  const bottomRays = svgEl(
+    'g',
+    { className: 'qv-tm-rays-bottom' },
+    svgEl('line', { x1: 4.9, y1: 19.1, x2: 6.5, y2: 17.5 }),
+    svgEl('line', { x1: 12, y1: 19.7, x2: 12, y2: 22 }),
+    svgEl('line', { x1: 19.1, y1: 19.1, x2: 17.5, y2: 17.5 }),
+  );
+
+  const horizon = svgEl('line', {
+    className: 'qv-tm-horizon',
+    x1: 3.5,
+    y1: 17.8,
+    x2: 20.5,
+    y2: 17.8,
+  });
+
+  svg.append(defs, autoRing, autoHalf, coreGroup, topRays, bottomRays, horizon);
   return svg;
 }

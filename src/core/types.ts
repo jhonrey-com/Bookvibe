@@ -25,7 +25,8 @@ export type StudioViewId =
   | 'help'
   | 'developer'
   | 'settings'
-  | 'manual';
+  | 'manual'
+  | 'extensions';
 
 export type WindowTitleMode = 'book' | 'author' | 'section' | 'brand' | 'custom';
 

@@ -378,7 +378,7 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
               {
                 className: 'bv-btn',
                 attrs: { type: 'button' },
-                on: { click: () => actions.setState({ activeView: 'editor' }, true) },
+                on: { click: () => actions.returnToWriting() },
               },
               icon('quill', 14),
               'Back to Writing',

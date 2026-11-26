@@ -1,18 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quillvibe",
-  "version": "3.1.2",
+  "version": "3.2.0",
   "identifier": "app.quillvibe.studio",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "devUrl": "http://localhost:1420/desktop.html",
+    "beforeBuildCommand": "npm run build:desktop",
+    "frontendDist": "../dist-desktop"
   },
   "app": {
     "windows": [
       {
         "title": "Quillvibe",
+        "url": "desktop.html",
         "width": 1440,
         "height": 900,
         "minWidth": 640,
@@ -45,6 +46,8 @@
         "installerIcon": "icons/icon.ico",
         "headerImage": "icons/nsis-header.bmp",
         "sidebarImage": "icons/nsis-sidebar.bmp",
+        "installerHooks": "nsis/installer-hooks.nsh",
+        "startMenuFolder": "Quillvibe",
         "installMode": "currentUser",
         "displayLanguageSelector": false
       }

@@ -175,7 +175,7 @@ export async function persistLibrary(serializedLibraryJson: string): Promise<voi
   }
 }
 
-async function readPickedBrowserFile(file: File): Promise<OpenedFileResult> {
+export async function readPickedBrowserFile(file: File): Promise<OpenedFileResult> {
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
   const dotIdx = file.name.lastIndexOf('.');
@@ -660,7 +660,7 @@ export async function moveDesktopWindow(x: number, y: number, label?: string): P
 export async function listenDesktopOpenFile(
   onFile: (payload: OpenedFileResult) => void,
 ): Promise<() => void> {
-  if (!isTauriRuntime()) return () => {};
+  if (!isTauriRuntime()) return () => { };
   try {
     const { listen } = await import('@tauri-apps/api/event');
     const unlisten = await listen<OpenedFileResult>('quillvibe://open-file', (ev) => {
@@ -668,25 +668,71 @@ export async function listenDesktopOpenFile(
     });
     return unlisten;
   } catch {
-    return () => {};
+    return () => { };
+  }
+}
+
+export interface DesktopRuntimeInfo {
+  os: string;
+  arch: string;
+  version: string;
+  dataDir: string;
+  crashLogPath: string;
+  backupCount: number;
+  windowCount: number;
+}
+
+export async function getDesktopRuntimeInfo(): Promise<DesktopRuntimeInfo | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    return await tauriInvoke<DesktopRuntimeInfo>('get_desktop_runtime_info');
+  } catch {
+    return null;
+  }
+}
+
+export async function listenDesktopMenuAction(
+  onAction: (actionId: string) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) return () => { };
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen<string>('quillvibe://menu-action', (ev) => {
+      if (typeof ev.payload === 'string' && ev.payload.trim()) {
+        onAction(ev.payload.trim());
+      }
+    });
+    return unlisten;
+  } catch {
+    return () => { };
+  }
+}
+
+export async function closeDesktopWindowByLabel(label: string): Promise<boolean> {
+  if (!isTauriRuntime() || !label) return false;
+  try {
+    return await tauriInvoke<boolean>('close_desktop_window_by_label', { label });
+  } catch {
+    return false;
   }
 }
 
 export async function openBookInNewDesktopWindow(
   bookId?: string,
   title?: string,
-  options?: { maximized?: boolean; posX?: number; posY?: number },
-): Promise<{ ok: boolean; error?: string }> {
+  options?: { maximized?: boolean; focused?: boolean; posX?: number; posY?: number },
+): Promise<{ ok: boolean; label?: string; error?: string }> {
   if (!isTauriRuntime()) return { ok: false, error: 'Multi-window mode requires the desktop app.' };
   try {
-    await tauriInvoke<string>('open_book_in_new_window', {
+    const label = await tauriInvoke<string>('open_book_in_new_window', {
       bookId: bookId ?? null,
       title: title ?? 'Quillvibe',
       maximized: options?.maximized ?? true,
+      focused: options?.focused ?? true,
       posX: options?.posX ?? null,
       posY: options?.posY ?? null,
     });
-    return { ok: true };
+    return { ok: true, label };
   } catch (err) {
     return {
       ok: false,

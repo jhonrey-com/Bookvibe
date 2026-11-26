@@ -8,7 +8,7 @@
 > **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 31 Lessons)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
 > **Developer Portal (`.qvext` Add-ons):** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/developer</code></strong></a> *(Companion Extension Builder App Coming Soon)*  
-> **Download Desktop App (`v3.1.2` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Download Desktop App (`v3.2.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
@@ -49,7 +49,7 @@ Many writers end up juggling several separate programs—one for writing chapter
 - **Built-in proofreading marks**: Mark up drafts with 15 traditional proofreading symbols right on the page, preview the clean result, and accept changes with automatic backup snapshots.
 - **Ready for publishing & easy `.docx` migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and export full **`.docx`** manuscripts (for standard word processors and cloud document editors), `.md`, `.rtf`, or `.json`.
 
-### Live Screenshots (`v3.1.2`)
+### Live Screenshots (`v3.2.0`)
 
 <p align="center">
   <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, centered navigation bar, and Inspector" width="100%" />
@@ -69,7 +69,7 @@ Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener nor
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.1.2</code>)</strong></a> (published under **`jhonrey.com`**):
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.2.0</code>)</strong></a> (published under **`jhonrey.com`**):
 - **Windows:** `.msi` or branded `-setup.exe` (with custom app icon & **Check for Updates** inside `/settings`)
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`
@@ -104,10 +104,16 @@ npm install
 # Start browser UI preview at http://localhost:1420
 npm run dev
 
-# Or run / bundle the native desktop app
+# Build isolated web (dist/) or desktop (dist-desktop/) frontend targets
+npm run build:web
+npm run build:desktop
+
+# Run or package the native Rust/Tauri desktop application
 npm run tauri:dev
 npm run tauri:build
 ```
+
+Desktop vs web separation, window-state persistence, rolling backups, and crash diagnostics are documented in [docs/DESKTOP-ARCHITECTURE.md](docs/DESKTOP-ARCHITECTURE.md).
 
 ---
 
@@ -181,6 +187,7 @@ Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-
 | `Ctrl / Cmd + B` / `I` | Bold / Italic formatting around selected text |
 | `Ctrl / Cmd + Shift + N` *(Desktop)* | Open current book in a new desktop window |
 | `Ctrl / Cmd + W` *(Desktop)* | Close the active book tab (when multiple tabs are open) |
+| `Ctrl / Cmd + =` / `-` / `0` *(Boards)* | Zoom in, zoom out, or reset/fit viewport in Book Cover Studio & Story Graph (trackpad pinch supported) |
 | `Ctrl / Cmd + Shift + F` | Toggle Zen Focus mode |
 | `F11` *(Desktop App)* | Toggle fullscreen focus mode with movable clock, sprint timer, word count, and alarm |
 | `F1` | Open Help & Icon Guide |
@@ -197,6 +204,14 @@ Quillvibe keeps built-in toolkits separate from optional `.qvext` community add-
 - **Complete UI & FAQ Reference:** Read <a href="docs/FAQ-AND-CONTROLS.md" target="_blank" rel="noopener noreferrer"><strong>docs/FAQ-AND-CONTROLS.md</strong></a>.
 - **Project Wiki & Roadmap:** Browse the <a href="https://github.com/jhonrey-com/Quillvibe/wiki" target="_blank" rel="noopener noreferrer"><strong>Quillvibe GitHub Wiki</strong></a>.
 - **Contributing:** Read <a href="CONTRIBUTING.md" target="_blank" rel="noopener noreferrer"><strong>CONTRIBUTING.md</strong></a> before opening pull requests.
+
+- **Dedicated Full Pages (`/settings`, `/manual`, `/extensions`, `/course`, `/help`):** Settings, Reference Manual, and Extensions & Official File Formats open in structured full-page workspaces; clicking **Back to Writing** returns straight to your most recently edited or opened book.
+- **Native Desktop Shell (`desktop.html` + Rust Backend):** Dedicated `dist-desktop/` build target paired with Tauri v2 window-state restoration (monitor/DPI clamped), 5-snapshot rolling local backups, panic crash logging (`quillvibe-crash.log`), OS file associations, single-instance double-click opening, Chrome-style tab reordering with tear-off multi-window management, and fullscreen focus HUD.
+
+### Release Quality Policy
+Public GitHub releases are published only after passing TypeScript (`tsc --noEmit`), Vitest (`vitest run`), Cargo unit tests (`cargo test`), isolated `build:web` + `build:desktop` builds, and live verification on both localhost web and the compiled desktop executable.
+
+---
 
 ## License
 
