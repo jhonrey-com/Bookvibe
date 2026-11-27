@@ -267,6 +267,7 @@ fn write_http_response(stream: &mut TcpStream, status: &str, body: &str) {
     let _ = stream.write_all(resp.as_bytes());
     let _ = stream.write_all(bytes);
     let _ = stream.flush();
+    let _ = stream.shutdown(std::net::Shutdown::Write);
 }
 
 pub fn start_lan_sync_host(
@@ -309,6 +310,8 @@ pub fn start_lan_sync_host(
         while active_clone.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, _addr)) => {
+                    // BSD/macOS inherits O_NONBLOCK from listener onto accepted TcpStream.
+                    let _ = stream.set_nonblocking(false);
                     if let Some(until) = locked_until {
                         if Instant::now() < until {
                             write_http_response(
@@ -510,7 +513,13 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
     let mut raw = Vec::with_capacity(4096);
     let mut tmp = [0u8; 4096];
     let mut split_idx: Option<usize> = None;
+    let mut expected_len: Option<usize> = None;
     loop {
+        if let (Some(split), Some(cl)) = (split_idx, expected_len) {
+            if raw.len() >= split + 4 + cl {
+                break;
+            }
+        }
         match stream.read(&mut tmp) {
             Ok(0) => break,
             Ok(n) => {
@@ -521,6 +530,17 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
                             return Err(String::from("Peer HTTP headers exceeded size limit."));
                         }
                         split_idx = Some(pos);
+                        let hdr_str = String::from_utf8_lossy(&raw[..pos]);
+                        for line in hdr_str.lines() {
+                            if let Some((k, v)) = line.split_once(':') {
+                                if k.trim().eq_ignore_ascii_case("content-length") {
+                                    if let Ok(len) = v.trim().parse::<usize>() {
+                                        expected_len = Some(len.min(MAX_LAN_BODY_BYTES));
+                                    }
+                                    break;
+                                }
+                            }
+                        }
                     } else if raw.len() > MAX_HTTP_HEADER_BYTES {
                         return Err(String::from("Peer HTTP headers exceeded size limit."));
                     }
@@ -542,7 +562,12 @@ fn read_http_response_from_peer(stream: &mut TcpStream) -> Result<(String, u16, 
         .nth(1)
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(500);
-    let body = raw[split + 4..].to_vec();
+    let mut body = raw[split + 4..].to_vec();
+    if let Some(cl) = expected_len {
+        if body.len() > cl {
+            body.truncate(cl);
+        }
+    }
     Ok((hdr, code, body))
 }
 
