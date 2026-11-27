@@ -139,6 +139,7 @@ import {
 import { createVerticalResizer } from './ui/resizer';
 import { hideTooltip } from './ui/tooltip';
 import { TOOLTIP_CATALOG } from './ui/tooltips-catalog';
+import { openUniversalSearch } from './ui/universal-search';
 import { renderBibleView } from './views/bible';
 import { renderBinder } from './views/binder';
 import { showCollabModal } from './views/collab-modal';
@@ -150,6 +151,7 @@ import { renderExtensionsPageView, setExtensionsPageOptions } from './views/exte
 import { renderGraphView } from './views/graph';
 import { renderHelpPageView, setHelpPageSearch } from './views/help-page';
 import { renderInspector } from './views/inspector';
+import { renderLandingPageView } from './views/landing-page';
 import { showLibraryModal } from './views/library-modal';
 import { renderNewTabView } from './views/new-tab';
 import { renderOutlineView } from './views/outline';
@@ -199,7 +201,8 @@ async function runWithExportLoading<T>(label: string, task: () => Promise<T>): P
   }
 }
 
-const isWideDesktop = typeof window === 'undefined' || window.innerWidth > 1180;
+const COMPACT_SIDEBAR_BREAKPOINT = 1180;
+const isWideDesktop = typeof window === 'undefined' || window.innerWidth > COMPACT_SIDEBAR_BREAKPOINT;
 const isMediumOrLarger = typeof window === 'undefined' || window.innerWidth > 960;
 
 const state: AppState = {
@@ -240,6 +243,10 @@ let immersiveHud: ImmersiveHudHandle | null = null;
 let alarmController: AlarmController | null = null;
 let immersiveBtnEl: HTMLButtonElement | null = null;
 let desktopTabBarEl: HTMLElement | null = null;
+let desktopTabBarMounted = false;
+let desktopTabStripEl: HTMLElement | null = null;
+let desktopTabAddBtnEl: HTMLButtonElement | null = null;
+let desktopTabStripShellEl: HTMLElement | null = null;
 let topbarLogoEl: HTMLElement | null = null;
 let topbarWinControlsEl: HTMLElement | null = null;
 let topbarNewWinBtnEl: HTMLButtonElement | null = null;
@@ -757,6 +764,7 @@ function maybeNotifySharedBook(bookId: string): void {
 
 function isFullStageView(view: StudioViewId): boolean {
   return (
+    view === 'landing' ||
     view === 'bible' ||
     view === 'graph' ||
     view === 'typeset' ||
@@ -921,7 +929,7 @@ function syncResponsiveDrawerClasses(): void {
 function allowedViewsForTier(tier: ToolTier): StudioViewId[] {
   const extra: StudioViewId[] = isTauriRuntime()
     ? ['extensions', 'course', 'help', 'settings', 'manual']
-    : ['extensions', 'course', 'help', 'developer', 'settings', 'manual'];
+    : ['landing', 'extensions', 'course', 'help', 'developer', 'settings', 'manual'];
   if (tier === 'basic') return ['editor', ...extra];
   if (tier === 'intermediate') return ['editor', 'corkboard', 'outline', 'typeset', ...extra];
   return ['editor', 'corkboard', 'outline', 'bible', 'graph', 'typeset', ...extra];
@@ -1121,18 +1129,21 @@ function renderActiveView(): void {
     tierPillBtnEl.textContent = `Workspace: ${formatWorkspaceLayoutName(effTier)}`;
   }
   const isNewTab = isEmptyTabId(state.activeTabId);
+  const isLandingPage = !isTauriRuntime() && state.activeView === 'landing';
   const isCourseTab = state.activeTabId === COURSE_TAB_ID || state.activeView === 'course';
   const isHelpTab = state.activeTabId === HELP_TAB_ID || state.activeView === 'help';
   const isSettingsTab = state.activeTabId === SETTINGS_TAB_ID || state.activeView === 'settings';
   const isManualTab = state.activeTabId === MANUAL_TAB_ID || state.activeView === 'manual';
   const isExtensionsTab = state.activeTabId === EXTENSIONS_TAB_ID || state.activeView === 'extensions';
   const isDevTab = !isTauriRuntime() && state.activeView === 'developer';
-  const isStandalonePage = isCourseTab || isHelpTab || isDevTab || isSettingsTab || isManualTab || isExtensionsTab;
+  const isStandalonePage =
+    isLandingPage || isCourseTab || isHelpTab || isDevTab || isSettingsTab || isManualTab || isExtensionsTab;
   const isFullStagePage = isNewTab || isStandalonePage || isFullStageView(state.activeView);
   shellEl.classList.toggle('is-zen', state.zenMode);
   shellEl.classList.toggle('is-immersive', state.immersiveMode);
   shellEl.classList.toggle('is-typeset-studio', isFullStagePage);
   shellEl.classList.toggle('is-standalone-page', isStandalonePage);
+  shellEl.classList.toggle('is-landing-page', isLandingPage);
   immersiveBtnEl?.classList.toggle('is-active', state.immersiveMode);
   syncResponsiveDrawerClasses();
   if (bookTitleInputEl) {
@@ -1167,6 +1178,16 @@ function renderActiveView(): void {
     Array.from(mobileBottomNavEl.children).forEach((child, idx) => {
       child.classList.toggle('is-active', opts[idx]?.id === state.activeView);
     });
+  }
+
+  if (isLandingPage) {
+    clearNode(binderEl);
+    clearNode(inspectorEl);
+    renderLandingPageView(mainStageEl, actions, () => state);
+    syncWindowAndDocumentTitle();
+    syncThemeButtonIcon();
+    immersiveHud?.sync();
+    return;
   }
 
   if (isNewTab) {
@@ -1705,8 +1726,10 @@ const actions: AppActions = {
         if (window.innerWidth > 960) {
           state.showBinder = savedDrawerStateBeforeTypeset.binder;
         }
-        if (window.innerWidth > 1180) {
+        if (window.innerWidth > COMPACT_SIDEBAR_BREAKPOINT) {
           state.showInspector = savedDrawerStateBeforeTypeset.inspector;
+        } else if (state.showBinder && savedDrawerStateBeforeTypeset.inspector) {
+          state.showInspector = false;
         }
         savedDrawerStateBeforeTypeset = null;
       }
@@ -1823,14 +1846,14 @@ const actions: AppActions = {
   },
 
   selectScene(sceneId, switchToEditor = true) {
-    state.activeSceneId = sceneId;
-    if (switchToEditor) {
-      state.activeView = 'editor';
-    }
-    if (window.innerWidth <= 960) {
-      state.showBinder = false;
-    }
-    renderActiveView();
+    actions.setState(
+      {
+        activeSceneId: sceneId,
+        ...(switchToEditor ? { activeView: 'editor' } : {}),
+        ...(window.innerWidth <= 960 ? { showBinder: false } : {}),
+      },
+      true,
+    );
   },
 
   returnToWriting() {
@@ -1863,10 +1886,14 @@ const actions: AppActions = {
   },
 
   openBibleEntry(category, entryId) {
-    state.activeView = 'bible';
-    state.bibleCategory = category;
-    state.activeBibleId = entryId;
-    renderActiveView();
+    actions.setState(
+      {
+        activeView: 'bible',
+        bibleCategory: category,
+        activeBibleId: entryId,
+      },
+      true,
+    );
   },
 
   openExtensionsModal(initialTab?: ExtensionsModalTab) {
@@ -1928,17 +1955,10 @@ const actions: AppActions = {
     renderActiveView();
   },
 
-  openCoursePage(moduleId?: string) {
-    setCoursePageSelection(moduleId);
+  openCoursePage(moduleId?: string, lessonId?: string) {
+    setCoursePageSelection(moduleId, lessonId);
     if (!isTauriRuntime()) {
-      if (state.activeView === 'course') {
-        renderActiveView();
-        return;
-      }
-      const win = window.open('/course', '_blank', 'noopener,noreferrer');
-      if (!win) {
-        actions.setState({ activeView: 'course' }, true);
-      }
+      actions.setState({ activeView: 'course' }, true);
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
@@ -1955,15 +1975,7 @@ const actions: AppActions = {
   openHelpPage(query?: string) {
     setHelpPageSearch(query);
     if (!isTauriRuntime()) {
-      if (state.activeView === 'help') {
-        renderActiveView();
-        return;
-      }
-      const url = query?.trim() ? `/help?q=${encodeURIComponent(query.trim())}` : '/help';
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        actions.setState({ activeView: 'help' }, true);
-      }
+      actions.setState({ activeView: 'help' }, true);
       return;
     }
     if (isEmptyTabId(state.activeTabId)) {
@@ -2807,7 +2819,8 @@ function renderDesktopTabBar(): void {
     tabManager.setActiveTabId(activeCandidate);
   }
   syncTabsFromManager(false);
-  const validIds = tabManager.getTabIds();
+  const validIds = tabManager.getTabIds().filter((id) => isNonBookTabId(id) || byId.has(id));
+  const canClose = validIds.length > 1;
 
   const resolveTabTitle = (id: string): string => {
     if (isEmptyTabId(id)) return 'New Tab';
@@ -2819,109 +2832,126 @@ function renderDesktopTabBar(): void {
     return byId.get(id)?.title?.trim() || 'Untitled Book';
   };
 
-  const renderSig = JSON.stringify({
-    tabs: validIds.map((id) => [id, resolveTabTitle(id)]),
-  });
+  if (!desktopTabBarMounted || !desktopTabStripEl?.isConnected || !desktopTabAddBtnEl || !desktopTabStripShellEl) {
+    clearNode(desktopTabBarEl);
+    const logoWrap = el(
+      'div',
+      { className: 'qv-tabbar-logo', attrs: { 'data-tauri-drag-region': '' } },
+      quillvibeLogo(18),
+    );
 
-  if (renderSig === lastTabBarRenderSig && desktopTabBarEl.childElementCount > 0) {
-    const existingTabs = Array.from(desktopTabBarEl.querySelectorAll<HTMLElement>('.qv-book-tab'));
-    for (const tabEl of existingTabs) {
-      const id = tabEl.dataset.tabId ?? '';
-      const isActive = id === state.activeTabId;
-      tabEl.classList.toggle('is-active', isActive);
-      tabEl.setAttribute('aria-selected', String(isActive));
-      tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
-      if (pendingFocusTabIdAfterRender && pendingFocusTabIdAfterRender === id) {
-        pendingFocusTabIdAfterRender = null;
-        tabEl.focus({ preventScroll: false });
-      }
-    }
-    tabDragController.syncUniformTabWidths();
-    tabDragController.syncNewTabButtonPosition(true);
-    return;
+    const tabStrip = el('div', {
+      className: 'qv-tab-strip',
+      attrs: { role: 'tablist', 'aria-label': 'Open books and tabs' },
+    });
+
+    const addTabBtn = el(
+      'button',
+      {
+        className: 'qv-tab-add-btn',
+        tooltip: {
+          title: 'New Empty Book Tab',
+          short: 'Open a fresh tab to pick any recent book or start a new manuscript.',
+        },
+        attrs: { type: 'button', draggable: 'false', 'aria-label': 'New empty book tab' },
+        on: {
+          pointerdown: (e) => e.stopPropagation(),
+          click: () => actions.openEmptyTab(),
+        },
+      },
+      icon('plus', 13),
+    );
+
+    const tabMenuBtn = el(
+      'button',
+      {
+        className: 'qv-tab-menu-btn',
+        tooltip: {
+          title: 'Tabs & Windows Menu',
+          short: 'Switch books, open an empty window, or combine all open windows into one.',
+        },
+        attrs: { type: 'button', draggable: 'false', 'aria-label': 'Tabs and windows menu' },
+        on: {
+          pointerdown: (e) => e.stopPropagation(),
+          click: () => openTabPickerMenu(tabMenuBtn),
+        },
+      },
+      '▾',
+    );
+
+    const tabStripShell = el(
+      'div',
+      {
+        className: 'qv-tab-strip-shell',
+      },
+      tabStrip,
+      addTabBtn,
+    );
+
+    const dragSpacer = el('div', {
+      className: 'qv-tabbar-spacer',
+      attrs: { 'data-tauri-drag-region': '' },
+    });
+
+    desktopTabBarEl.append(
+      logoWrap,
+      tabStripShell,
+      dragSpacer,
+      tabMenuBtn,
+      createDesktopWindowControlsEl(),
+    );
+
+    desktopTabStripEl = tabStrip;
+    desktopTabAddBtnEl = addTabBtn;
+    desktopTabStripShellEl = tabStripShell;
+    desktopTabBarMounted = true;
+    tabDragController.bindTabStripLayout(tabStrip, addTabBtn, tabStripShell, desktopTabBarEl);
   }
-  lastTabBarRenderSig = renderSig;
 
-  clearNode(desktopTabBarEl);
-
-  const logoWrap = el(
-    'div',
-    { className: 'qv-tabbar-logo', attrs: { 'data-tauri-drag-region': '' } },
-    quillvibeLogo(18),
-  );
-
-  const tabStrip = el('div', {
-    className: 'qv-tab-strip',
-    attrs: { role: 'tablist', 'aria-label': 'Open books and tabs' },
-  });
-
+  const tabStrip = desktopTabStripEl;
   const activateTabId = activateDesktopTab;
 
-  validIds.forEach((id) => {
-    const isEmpty = isEmptyTabId(id);
-    const isCourse = id === COURSE_TAB_ID;
-    const isHelp = id === HELP_TAB_ID;
-    const isSettings = id === SETTINGS_TAB_ID;
-    const isManual = id === MANUAL_TAB_ID;
-    const isExtensions = id === EXTENSIONS_TAB_ID;
-    const book = isNonBookTabId(id) ? null : byId.get(id);
-    if (!isNonBookTabId(id) && !book) return;
-    const isActive = id === state.activeTabId;
-    const canClose = validIds.length > 1;
-    const tabTitle = isEmpty
-      ? 'New Tab'
-      : isCourse
-        ? 'Book Writing Course'
-        : isHelp
-          ? 'Help & FAQ'
-          : isSettings
-            ? 'Settings'
-            : isManual
-              ? 'Manual & Reference'
-              : isExtensions
-                ? 'Extensions & Formats'
-                : book?.title?.trim() || 'Untitled Book';
-
-    const closeBtn = canClose
-      ? el(
-          'button',
-          {
-            className: 'qv-tab-close',
-            attrs: {
-              type: 'button',
-              tabindex: '-1',
-              'aria-label': `Close ${tabTitle} tab`,
-            },
-            on: {
-              pointerdown: (e) => {
-                e.stopPropagation();
-              },
-              click: (e) => {
-                e.stopPropagation();
-                actions.closeBookTab(id);
-              },
-            },
+  const createTabElement = (id: string, initialTitle: string): HTMLElement => {
+    const closeBtn = el(
+      'button',
+      {
+        className: 'qv-tab-close',
+        attrs: {
+          type: 'button',
+          tabindex: '-1',
+          'aria-label': `Close ${initialTitle} tab`,
+        },
+        on: {
+          pointerdown: (e) => {
+            e.stopPropagation();
           },
-          '×',
-        )
-      : null;
+          click: (e) => {
+            e.stopPropagation();
+            if (tabManager.getTabIds().length > 1) {
+              actions.closeBookTab(id);
+            }
+          },
+        },
+      },
+      '×',
+    );
 
     const tabEl = el(
       'div',
       {
-        className: `qv-book-tab${isActive ? ' is-active' : ''}`,
-        dataset: { tabId: id },
+        className: 'qv-book-tab',
+        dataset: { tabId: id, tabTitle: initialTitle },
         attrs: {
           role: 'tab',
           draggable: 'false',
-          tabindex: isActive ? '0' : '-1',
-          'aria-label': tabTitle,
-          'aria-selected': String(isActive),
-          title: `${tabTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
+          tabindex: '-1',
+          'aria-label': initialTitle,
+          'aria-selected': 'false',
+          title: `${initialTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
         },
         on: {
           auxclick: (e) => {
-            if (e.button === 1 && canClose) {
+            if (e.button === 1 && tabManager.getTabIds().length > 1) {
               e.preventDefault();
               actions.closeBookTab(id);
             }
@@ -2932,7 +2962,7 @@ function renderDesktopTabBar(): void {
               if (tabManager.getActiveTabId() !== id) activateTabId(id);
               return;
             }
-            if (e.key === 'Delete' && canClose) {
+            if (e.key === 'Delete' && tabManager.getTabIds().length > 1) {
               e.preventDefault();
               actions.closeBookTab(id);
               return;
@@ -2955,119 +2985,140 @@ function renderDesktopTabBar(): void {
           },
         },
       },
-      el('span', { className: 'qv-book-tab-title', text: tabTitle }),
+      el('span', { className: 'qv-book-tab-title', text: initialTitle }),
       closeBtn,
     );
 
     tabDragController.attachTab(tabEl, tabStrip, desktopTabBarEl!, {
       tabId: id,
-      tabTitle,
+      tabTitle: initialTitle,
     });
 
-    attachContextMenu(tabEl, () => [
-      {
-        heading: tabTitle,
-        items: [
-          {
-            label: 'Pop Out to New Window',
-            icon: 'window-new' as const,
-            onSelect: () => {
-              void actions.openNewWindow(isEmpty ? EMPTY_TAB_PREFIX : id);
-              if (canClose) actions.closeBookTab(id);
+    attachContextMenu(tabEl, () => {
+      const liveTitle = resolveTabTitle(id);
+      const liveCanClose = tabManager.getTabIds().length > 1;
+      const liveIsEmpty = isEmptyTabId(id);
+      return [
+        {
+          heading: liveTitle,
+          items: [
+            {
+              label: 'Pop Out to New Window',
+              icon: 'window-new' as const,
+              onSelect: () => {
+                void actions.openNewWindow(liveIsEmpty ? EMPTY_TAB_PREFIX : id);
+                if (liveCanClose) actions.closeBookTab(id);
+              },
             },
-          },
-          {
-            label: 'New Empty Tab',
-            icon: 'plus',
-            onSelect: () => actions.openEmptyTab(),
-          },
-          ...((windowSync?.getOtherOpenWindowCount() ?? 0) > 0
-            ? [
-                {
-                  label: 'Combine All Windows Into This Window',
-                  icon: 'split' as const,
-                  onSelect: () => actions.mergeAllWindowsHere(),
-                },
-              ]
-            : []),
-          {
-            label: 'Close Tab',
-            disabled: !canClose,
-            onSelect: () => actions.closeBookTab(id),
-          },
-          {
-            label: 'Close Other Tabs',
-            disabled: !canClose,
-            onSelect: () => {
-              tabDragController.cancelActiveDrag();
-              setTabOrderAndActive([id], id, true);
-              activateTabId(id);
+            {
+              label: 'New Empty Tab',
+              icon: 'plus',
+              onSelect: () => actions.openEmptyTab(),
             },
-          },
-        ],
-      },
-    ]);
+            ...((windowSync?.getOtherOpenWindowCount() ?? 0) > 0
+              ? [
+                  {
+                    label: 'Combine All Windows Into This Window',
+                    icon: 'split' as const,
+                    onSelect: () => actions.mergeAllWindowsHere(),
+                  },
+                ]
+              : []),
+            {
+              label: 'Close Tab',
+              disabled: !liveCanClose,
+              onSelect: () => actions.closeBookTab(id),
+            },
+            {
+              label: 'Close Other Tabs',
+              disabled: !liveCanClose,
+              onSelect: () => {
+                tabDragController.cancelActiveDrag();
+                setTabOrderAndActive([id], id, true);
+                activateTabId(id);
+              },
+            },
+          ],
+        },
+      ];
+    });
 
-    tabStrip.appendChild(tabEl);
+    return tabEl;
+  };
+
+  const renderSig = JSON.stringify({
+    tabs: validIds.map((id) => [id, resolveTabTitle(id)]),
+    canClose,
   });
 
-  const addTabBtn = el(
-    'button',
-    {
-      className: 'qv-tab-add-btn',
-      tooltip: {
-        title: 'New Empty Book Tab',
-        short: 'Open a fresh tab to pick any recent book or start a new manuscript.',
-      },
-      attrs: { type: 'button', draggable: 'false', 'aria-label': 'New empty book tab' },
-      on: {
-        pointerdown: (e) => e.stopPropagation(),
-        click: () => actions.openEmptyTab(),
-      },
-    },
-    icon('plus', 13),
-  );
+  if (renderSig === lastTabBarRenderSig && tabStrip.childElementCount === validIds.length) {
+    const existingTabs = Array.from(tabStrip.querySelectorAll<HTMLElement>('.qv-book-tab'));
+    for (const tabEl of existingTabs) {
+      const id = tabEl.dataset.tabId ?? '';
+      const isActive = id === state.activeTabId;
+      tabEl.classList.toggle('is-active', isActive);
+      tabEl.setAttribute('aria-selected', String(isActive));
+      tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
+      if (pendingFocusTabIdAfterRender && pendingFocusTabIdAfterRender === id) {
+        pendingFocusTabIdAfterRender = null;
+        tabEl.focus({ preventScroll: false });
+      }
+    }
+    tabDragController.syncUniformTabWidths();
+    tabDragController.syncNewTabButtonPosition(true);
+    return;
+  }
+  lastTabBarRenderSig = renderSig;
 
-  const tabMenuBtn = el(
-    'button',
-    {
-      className: 'qv-tab-menu-btn',
-      tooltip: {
-        title: 'Tabs & Windows Menu',
-        short: 'Switch books, open an empty window, or combine all open windows into one.',
-      },
-      attrs: { type: 'button', draggable: 'false', 'aria-label': 'Tabs and windows menu' },
-      on: {
-        pointerdown: (e) => e.stopPropagation(),
-        click: () => openTabPickerMenu(tabMenuBtn),
-      },
-    },
-    '▾',
-  );
+  const existingById = new Map<string, HTMLElement>();
+  for (const child of Array.from(tabStrip.children)) {
+    const node = child as HTMLElement;
+    const tid = node.dataset.tabId ?? '';
+    if (!tid || !validIds.includes(tid)) {
+      node.remove();
+    } else {
+      existingById.set(tid, node);
+    }
+  }
 
-  const tabStripShell = el(
-    'div',
-    {
-      className: 'qv-tab-strip-shell',
-    },
-    tabStrip,
-    addTabBtn,
-  );
+  validIds.forEach((id, index) => {
+    const tabTitle = resolveTabTitle(id);
+    const isActive = id === state.activeTabId;
+    let tabEl = existingById.get(id);
+    if (!tabEl) {
+      tabEl = createTabElement(id, tabTitle);
+    }
 
-  const dragSpacer = el('div', {
-    className: 'qv-tabbar-spacer',
-    attrs: { 'data-tauri-drag-region': '' },
+    tabEl.classList.toggle('is-active', isActive);
+    tabEl.dataset.tabTitle = tabTitle;
+    tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
+    tabEl.setAttribute('aria-label', tabTitle);
+    tabEl.setAttribute('aria-selected', String(isActive));
+    tabEl.setAttribute(
+      'title',
+      `${tabTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
+    );
+
+    const titleEl = tabEl.querySelector<HTMLElement>('.qv-book-tab-title');
+    if (titleEl && titleEl.textContent !== tabTitle) {
+      titleEl.textContent = tabTitle;
+    }
+
+    const closeBtn = tabEl.querySelector<HTMLButtonElement>('.qv-tab-close');
+    if (closeBtn) {
+      closeBtn.style.display = canClose ? '' : 'none';
+      closeBtn.disabled = !canClose;
+      closeBtn.setAttribute('aria-label', `Close ${tabTitle} tab`);
+    }
+
+    const currentAtIdx = tabStrip.children[index];
+    if (currentAtIdx !== tabEl) {
+      tabStrip.insertBefore(tabEl, currentAtIdx ?? null);
+    }
   });
 
-  desktopTabBarEl.append(
-    logoWrap,
-    tabStripShell,
-    dragSpacer,
-    tabMenuBtn,
-    createDesktopWindowControlsEl(),
-  );
-
-  tabDragController.bindTabStripLayout(tabStrip, addTabBtn, tabStripShell, desktopTabBarEl);
+  tabDragController.syncUniformTabWidths();
+  tabDragController.syncNewTabButtonPosition(true);
 
   if (pendingFocusTabIdAfterRender) {
     const focusTargetId = pendingFocusTabIdAfterRender;
@@ -3135,7 +3186,9 @@ function buildShell(root: HTMLElement): void {
         click: () => {
           const nextShow = !state.showBinder;
           const patch: Partial<AppState> = { showBinder: nextShow };
-          if (nextShow && window.innerWidth <= 960) patch.showInspector = false;
+          if (nextShow && window.innerWidth <= COMPACT_SIDEBAR_BREAKPOINT) {
+            patch.showInspector = false;
+          }
           actions.setState(patch, false);
         },
       },
@@ -3175,7 +3228,9 @@ function buildShell(root: HTMLElement): void {
         click: () => {
           const nextShow = !state.showInspector;
           const patch: Partial<AppState> = { showInspector: nextShow };
-          if (nextShow && window.innerWidth <= 960) patch.showBinder = false;
+          if (nextShow && window.innerWidth <= COMPACT_SIDEBAR_BREAKPOINT) {
+            patch.showBinder = false;
+          }
           actions.setState(patch, false);
         },
       },
@@ -3241,6 +3296,20 @@ function buildShell(root: HTMLElement): void {
     el(
       'div',
       { className: 'bv-topbar-actions' },
+      el(
+        'button',
+        {
+          className: 'bv-btn bv-btn-icon',
+          tooltip: {
+            title: 'Universal Search',
+            short: 'Search courses, FAQs, error codes, tools, scenes, and Story Bible entries.',
+            shortcut: 'Ctrl+K',
+          },
+          attrs: { type: 'button', 'aria-label': 'Universal Search (Ctrl+K)' },
+          on: { click: () => openUniversalSearch(actions, () => state) },
+        },
+        icon('search', 15),
+      ),
       (themeSwitchBtnEl = el(
         'button',
         {
@@ -3670,7 +3739,7 @@ function buildShell(root: HTMLElement): void {
   }
 
   window.addEventListener('resize', () => {
-    if (window.innerWidth <= 960 && state.showBinder && state.showInspector) {
+    if (window.innerWidth <= COMPACT_SIDEBAR_BREAKPOINT && state.showBinder && state.showInspector) {
       state.showInspector = false;
     }
     const effTier = getEffectiveTier();
@@ -3700,6 +3769,9 @@ function wireGlobalShortcutsAndDrop(): void {
       if (isPlainInput) return;
       e.preventDefault();
       actions.redo();
+    } else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openUniversalSearch(actions, () => state);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       if (state.activeView === 'editor') {
@@ -3736,6 +3808,7 @@ function wireGlobalShortcutsAndDrop(): void {
     } else if (e.key === 'Escape') {
       hideContextMenu();
       const modals = [
+        'qv-universal-search-modal',
         'bv-extensions-modal',
         'bv-library-modal',
         'bv-collab-modal',
@@ -4238,6 +4311,13 @@ async function bootstrap(): Promise<void> {
   if (isFullStageView(state.activeView)) {
     state.showBinder = false;
     state.showInspector = false;
+  } else if (
+    typeof window !== 'undefined' &&
+    window.innerWidth <= COMPACT_SIDEBAR_BREAKPOINT &&
+    state.showBinder &&
+    state.showInspector
+  ) {
+    state.showInspector = false;
   }
 
   buildShell(root);
@@ -4295,8 +4375,10 @@ async function bootstrap(): Promise<void> {
   }
 
   if (
+    state.activeView !== 'landing' &&
     state.activeView !== 'course' &&
     state.activeView !== 'help' &&
+    state.activeView !== 'developer' &&
     !skipSplashFromWindow &&
     !startupFile
   ) {

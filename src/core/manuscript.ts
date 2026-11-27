@@ -203,6 +203,48 @@ export function updateSceneInProject(
   return next;
 }
 
+/**
+ * Updates a Part title unless it is locked or empty.
+ */
+export function renamePartInProject(project: BookProject, partId: string, title: string): BookProject {
+  const cleaned = title.trim();
+  if (!cleaned) return project;
+  const existing = project.parts.find((p) => p.id === partId);
+  if (!existing || existing.locked) return project;
+  const next = structuredClone(project);
+  const target = next.parts.find((p) => p.id === partId);
+  if (target) target.title = cleaned;
+  return next;
+}
+
+/**
+ * Updates a Chapter title unless its parent Part or the Chapter itself is locked or empty.
+ */
+export function renameChapterInProject(project: BookProject, chapterId: string, title: string): BookProject {
+  const cleaned = title.trim();
+  if (!cleaned) return project;
+  let foundLocked = false;
+  let exists = false;
+  for (const part of project.parts) {
+    const ch = part.chapters.find((c) => c.id === chapterId);
+    if (ch) {
+      exists = true;
+      foundLocked = Boolean(part.locked || ch.locked);
+      break;
+    }
+  }
+  if (!exists || foundLocked) return project;
+  const next = structuredClone(project);
+  for (const part of next.parts) {
+    const target = part.chapters.find((c) => c.id === chapterId);
+    if (target) {
+      target.title = cleaned;
+      break;
+    }
+  }
+  return next;
+}
+
 export function deleteSceneFromProject(
   project: BookProject,
   sceneId: string,

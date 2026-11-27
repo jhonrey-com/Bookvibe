@@ -9,6 +9,7 @@ export interface RouteMatch {
 }
 
 const VIEW_TO_PATH: Record<StudioViewId, string> = {
+  landing: '/',
   editor: '/write',
   corkboard: '/corkboard',
   outline: '/outline',
@@ -23,13 +24,13 @@ const VIEW_TO_PATH: Record<StudioViewId, string> = {
   extensions: '/extensions',
 };
 
-export function resolvePathToRoute(pathname: string, isFirstWebVisit = false): RouteMatch {
+export function resolvePathToRoute(pathname: string, _isFirstWebVisit = false): RouteMatch {
   const clean = pathname.replace(/\/+$/, '').toLowerCase() || '/';
 
-  if (clean === '/start') {
-    return { view: 'editor', showStartSplash: true, canonicalPath: '/start' };
+  if (clean === '/' || clean === '/index.html') {
+    return { view: 'landing', showStartSplash: false, canonicalPath: '/' };
   }
-  if (clean === '/' && isFirstWebVisit) {
+  if (clean === '/start') {
     return { view: 'editor', showStartSplash: true, canonicalPath: '/start' };
   }
   if (clean === '/course' || clean.startsWith('/course/')) {

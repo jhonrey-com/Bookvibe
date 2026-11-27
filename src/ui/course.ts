@@ -1,6 +1,24 @@
-import type { AppActions, TypesetSubTab } from '../core/app-context';
+import type { AppActions, EditorSubMode, TypesetSubTab } from '../core/app-context';
+import { isTauriRuntime } from '../core/bridge';
 import type { StudioViewId, ToolTier } from '../core/types';
-import { el, icon } from './dom';
+import { el, icon, svgEl } from './dom';
+
+export type CourseTrackId = 'manuscript' | 'story-graph' | 'cover-studio' | 'craft-publishing';
+export type CoursePlatform = 'both' | 'web' | 'desktop';
+
+export const COURSE_PLATFORM_OPTIONS: ReadonlyArray<{ id: 'all' | 'web' | 'desktop'; label: string }> = [
+  { id: 'all', label: 'All Editions' },
+  { id: 'web', label: 'Website Edition' },
+  { id: 'desktop', label: 'Desktop App' },
+];
+
+export const COURSE_TRACK_OPTIONS: ReadonlyArray<{ id: 'all' | CourseTrackId; label: string }> = [
+  { id: 'all', label: 'All Tracks' },
+  { id: 'manuscript', label: 'Manuscript' },
+  { id: 'story-graph', label: 'Story Graph' },
+  { id: 'cover-studio', label: 'Cover Studio' },
+  { id: 'craft-publishing', label: 'Craft & Press' },
+];
 
 export interface CourseCheckpoint {
   question: string;
@@ -27,16 +45,55 @@ export interface CourseLesson {
   minTier: ToolTier;
   targetView: StudioViewId;
   targetTypesetTab?: TypesetSubTab;
+  targetEditorSubMode?: EditorSubMode;
   targetSelector?: string;
 }
 
 export interface CourseModule {
   id: string;
   number: number;
+  track?: CourseTrackId;
+  platform?: CoursePlatform;
   title: string;
   summary: string;
   audience: string;
   lessons: readonly CourseLesson[];
+}
+
+const MODULE_TRACK_MAP: Partial<Record<string, CourseTrackId>> = {
+  'mod-setup': 'manuscript',
+  'mod-draft': 'manuscript',
+  'mod-proof': 'manuscript',
+  'mod-plot': 'story-graph',
+  'mod-series-world': 'story-graph',
+  'mod-cover': 'cover-studio',
+  'mod-typeset': 'craft-publishing',
+  'mod-publish': 'craft-publishing',
+  'mod-security': 'craft-publishing',
+  'mod-teams': 'craft-publishing',
+  'mod-desktop': 'manuscript',
+  'mod-scene-craft': 'craft-publishing',
+  'mod-dialogue': 'craft-publishing',
+  'mod-prepress': 'cover-studio',
+  'mod-web-browser': 'manuscript',
+  'mod-desktop-tabs': 'manuscript',
+  'mod-desktop-os': 'craft-publishing',
+};
+
+const MODULE_PLATFORM_MAP: Partial<Record<string, CoursePlatform>> = {
+  'mod-desktop': 'desktop',
+  'mod-cs-deep-2': 'desktop',
+  'mod-web-browser': 'web',
+  'mod-desktop-tabs': 'desktop',
+  'mod-desktop-os': 'desktop',
+};
+
+export function getModuleTrack(mod: CourseModule): CourseTrackId {
+  return mod.track ?? MODULE_TRACK_MAP[mod.id] ?? 'craft-publishing';
+}
+
+export function getModulePlatform(mod: CourseModule): CoursePlatform {
+  return mod.platform ?? MODULE_PLATFORM_MAP[mod.id] ?? 'both';
 }
 
 const COURSE_PROGRESS_KEY = 'quillvibe.courseProgress.v1';
@@ -368,7 +425,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
           ],
           correctIndex: 0,
           explanation:
-            'Intermediate unlocks Corkboard, Outline, Proofreading tools, and Studio Typesetting, reserving Bible/Graph/Advanced Cover tools for Advanced tier.',
+            'Intermediate adds Corkboard, Outline, Proofreading tools, and Studio Typesetting, keeping Bible, Graph, and Advanced Cover tools in Full Studio tier.',
         },
         actionLabel: 'Open Outline',
         minTier: 'intermediate',
@@ -418,7 +475,7 @@ export const COURSE_MODULES: readonly CourseModule[] = [
         title: 'Map Relationships & Arcs on the Dual-Mode Story Graph',
         durationMin: 6,
         instruction:
-          'Switch seamlessly between Spatial Storyboard (cards, Act Group frames, 90-degree obstacle-avoiding elbow connectors, double-click node creation, and .canvas export) and Force Graph (physics layout, hop filters, and shortest path tracing).',
+          'Switch cleanly between Spatial Storyboard (cards, Act Group frames, 90-degree obstacle-avoiding elbow connectors, double-click node creation, and .canvas export) and Force Graph (physics layout, hop filters, and shortest path tracing).',
         objective: 'Visualize causal chains, Act structures, and [[wikilink]] connections cleanly across both spatial boards and dynamic networks.',
         concepts: [
           'In Spatial Storyboard mode, double-click anywhere on the canvas to drop a node, drag Act Group frames to move contained cards together, drag any card port dot to link or spawn a connected card, and drag a selected elbow line handle to fine-tune orthogonal spacing.',
@@ -1318,6 +1375,1665 @@ export const COURSE_MODULES: readonly CourseModule[] = [
       },
     ],
   },
+  {
+    id: 'mod-scene-craft',
+    number: 11,
+    title: 'Scene Craft, Pacing & Narrative Tension',
+    summary:
+      'Structure scenes around a clear goal, rising complications, and a quiet turn at the close using Binder cards and Word Targets.',
+    audience: 'Fiction and narrative nonfiction writers shaping chapter flow',
+    lessons: [
+      {
+        id: 'm11-goal-turn',
+        title: 'Goal, Obstacle & Turn Inside Every Scene',
+        durationMin: 5,
+        instruction:
+          'Give each active scene a concrete short-term goal in the Scene Inspector Synopsis and verify the ending shifts what your character knows or risks.',
+        objective: 'Prevent drifting chapters by anchoring every scene to a clear question and turn.',
+        concepts: [
+          'Chapters lose momentum when characters walk into a room, talk pleasantly, and leave with nothing changed. A durable scene opens with an immediate objective—deliver a chart before high water, find a missing ledger, or talk down a panicking witness—and closes only after that situation tilts.',
+          'Writing a two-sentence synopsis in the Scene Inspector before drafting gives you a compass. When dialogue wanders, one glance at the Inspector reminds you what must break or shift before the scene ends.',
+        ],
+        steps: [
+          'Select your active scene in the Manuscript Binder and open the Scene Inspector on the right.',
+          'Write one sentence for the scene Goal and one sentence for the ending Turn inside Synopsis.',
+          'Draft directly on the page until you reach that shift, then stop cleanly instead of padding the exit.',
+        ],
+        example: {
+          heading: 'Harbor Scene Turn',
+          body: 'Opening goal: Convince the harbor master to sign the departure bond before fog closes the bell buoy. Ending turn: The bond is signed, but only because the harbor master swaps one crew member for his own informant.',
+        },
+        proTip:
+          'If a scene synopsis takes five lines to explain, the scene is usually trying to hold two separate moments. Split it with Split Scene.',
+        checkpoint: {
+          question: 'Where should you record the short two-sentence Goal and Turn before drafting?',
+          options: [
+            'In the Scene Inspector Synopsis field beside your active sheet',
+            'Inside the Export ISBN box in Settings',
+            'As a filename suffix when saving .qvstyle presets',
+          ],
+          correctIndex: 0,
+          explanation:
+            'The Scene Inspector Synopsis travels with the scene card on Corkboard and Outline Ledger without cluttering your manuscript prose.',
+        },
+        actionLabel: 'Open Manuscript & Inspector',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-inspector',
+      },
+      {
+        id: 'm11-pacing-ratios',
+        title: 'Balancing Action Scenes With Quiet Sequels in Outline',
+        durationMin: 4,
+        instruction:
+          'Switch to Outline Ledger and alternate fast high-tension scenes with short reflective scenes so the middle of the book breathes.',
+        objective: 'Spot rushed stretches or slow patches across an entire act at one glance.',
+        concepts: [
+          'Readers tire quickly when every chapter is a chase, and drift when five consecutive chapters sit at breakfast tables thinking about yesterday. Strong books pair fast scene Confrontations with shorter Sequel scenes where characters weigh fallout and pick a next move.',
+          'Outline Ledger shows every scene status, POV, location, and exact word count row by row. Looking at word-count rhythm across Part I and Part II shows immediately whether an act needs tightening or room to land.',
+        ],
+        steps: [
+          'Open Outline from the top navigation bar (Editorial or Full Studio layout).',
+          'Scan the word count and timeline columns across a single Part or chapter arc.',
+          'Tag high-tension turns vs. quiet reaction scenes in Synopsis or Status so gaps stand out immediately.',
+        ],
+        example: {
+          heading: 'Act Two Midpoint Check',
+          body: 'Three 3,200-word storms back-to-back? Insert a 650-word harbor-dock watch scene where characters repair gear and quietly argue what the cost was.',
+        },
+        proTip:
+          'Exporting an Outline CSV lets you print a one-page beat sheet for margin pencil notes away from screens.',
+        checkpoint: {
+          question: 'Which workspace gives a single table of word counts, POVs, timelines, and statuses across your book?',
+          options: [
+            'Outline Ledger',
+            'Book Cover Studio Layers',
+            'Font Uploader',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Outline Ledger lists every chapter and scene in a filterable spreadsheet table for pacing and continuity audits.',
+        },
+        actionLabel: 'Open Outline Ledger',
+        minTier: 'intermediate',
+        targetView: 'outline',
+        targetSelector: '.bv-outline-scroll',
+      },
+      {
+        id: 'm11-opening-hooks',
+        title: 'Opening Late, Leaving Early & Trimming Throat-Clearing',
+        durationMin: 4,
+        instruction:
+          'Use Proofread Copyediting Marks and Snapshots to test starting your opening scene on paragraph four instead of paragraph one.',
+        objective: 'Cut warmup paragraphs safely while keeping original lines backed up in Snapshots.',
+        concepts: [
+          'Writers often warm up during the first three paragraphs of a morning session—describing weather, waking up, or repeating yesterday’s facts—before the real friction begins on paragraph four. Once the scene is alive, those warmup lines slow down the reader’s entrance.',
+          'Taking a Revision Snapshot before pruning lets you mark cuts with zero fear: you can restore or inspect the deleted opening anytime in Revision Diff.',
+        ],
+        steps: [
+          'Click Snapshot in the top editor subbar to save a clean copy of the scene before cutting.',
+          'Switch to Proofread mode and highlight the opening warmup lines, right-clicking to apply a Delete mark.',
+          'Toggle Clean Preview to read straight from the stronger fourth paragraph onward.',
+        ],
+        example: {
+          heading: 'Cutting Morning Arrival Lines',
+          body: 'Cut two paragraphs about walking down wet granite steps and start with: "Three ships had already slipped their chains before the harbor clock struck five."',
+        },
+        proTip:
+          'Always compare before and after in Diff mode after trimming a scene ending—the last spoken line is often stronger when left alone without an extra summary sentence.',
+        checkpoint: {
+          question: 'What keeps a recoverable copy of trimmed opening paragraphs before accepting Proofread deletions?',
+          options: [
+            'Saving a scene Snapshot (or automatic backup snapshot)',
+            'Clearing local browser storage',
+            'Switching themes to Obsidian',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Snapshots store immutable copies of any scene draft inside your .qv book file so nothing is ever lost when pruning.',
+        },
+        actionLabel: 'Open Proofread Mode',
+        minTier: 'intermediate',
+        targetView: 'editor',
+        targetSelector: '.bv-prose-textarea',
+      },
+    ],
+  },
+  {
+    id: 'mod-dialogue',
+    number: 12,
+    title: 'Dialogue Craft, Voice & Subtext',
+    summary:
+      'Keep spoken exchanges sharp, distinguish speakers without name clutter, and compare voice revisions in Split View.',
+    audience: 'Writers polishing character voice and dramatic dialogue',
+    lessons: [
+      {
+        id: 'm12-subtext',
+        title: 'Saying One Thing While Protecting Another',
+        durationMin: 4,
+        instruction:
+          'Track each speaker’s hidden motive in Story Bible notes and open that character beside your manuscript in Split View.',
+        objective: 'Replace blunt on-the-nose speeches with terse dialogue shaped by character agendas.',
+        concepts: [
+          'Dialogue stalls when two speakers state facts strictly for the reader’s benefit ("As you know, Captain, my brother drowned last winter"). Real speakers rarely explain what both of them already know; they deflect, steer around sore topics, or ask small practical questions about larger fears.',
+          'Keeping a Character’s private secret open in Split View beside your prose editor keeps every line tethered to what that character refuses to admit out loud.',
+        ],
+        steps: [
+          'Add a brief "Private Agenda / Will Not Admit" note inside your character’s Story Bible entry.',
+          'Open Manuscript -> Split View and select that Character entry in the side reference pane.',
+          'Rewrite flat explanatory lines so each character presses toward a practical want while guarding that secret.',
+        ],
+        example: {
+          heading: 'Indirect Exchange',
+          body: 'Instead of "I am worried you will lose the ship," write: "How many spare lanterns did you pack? Because the northern shoal has no keeper this month."',
+        },
+        proTip:
+          'Read long conversations aloud in Typewriter focus—if you run out of breath mid-sentence, trim subordinate clauses.',
+        checkpoint: {
+          question: 'How can you view a character’s private Story Bible notes right beside your scene while rewriting dialogue?',
+          options: [
+            'Select Split View in the Manuscript subbar and pick that character as the reference pane',
+            'Export the book to EPUB after every sentence',
+            'Rename the chapter title to the character’s motive',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Split View displays any Story Bible card or another scene alongside your live draft without leaving the editor.',
+        },
+        actionLabel: 'Open Manuscript Split Mode',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-editor-panes',
+      },
+      {
+        id: 'm12-beats-tags',
+        title: 'Clean Dialogue Tags & Physical Action Beats',
+        durationMin: 3,
+        instruction:
+          'Replace repetitive adverbial tags with concise physical beats and simple "said"/"asked" punctuation in Draft mode.',
+        objective: 'Keep attribution invisible so reader attention stays on speech cadence and gesture.',
+        concepts: [
+          'Visible stage directions like "he hissed angrily" or "she exclaimed thoughtfully" interrupt pacing and duplicate emotion the line should already carry. Quiet tags ("said", "asked") disappear on the page, while short physical beats anchor where characters stand and what their hands are doing.',
+          'When more than two speakers share a room, alternate dialogue lines with brief concrete actions so readers never need to count back up the page to identify who spoke.',
+        ],
+        steps: [
+          'Scan one finished conversation page in your active scene.',
+          'Replace ornate speech verbs and adverb tags with plain "said" or cut the tag completely when two speakers alternate.',
+          'Anchor key pauses with small prop beats—folding a map, setting down a cup, wiping spectacles.',
+        ],
+        example: {
+          heading: 'Before & After Tag Trim',
+          body: 'Before: "Leave the manifest here," he barked coldly. After: He laid a paperweight across the manifest. "Leave it."',
+        },
+        proTip:
+          'Interior Typeset smart quotes automatically format straight apostrophes and opening/closing quotation marks when exporting print PDF and EPUB.',
+        checkpoint: {
+          question: 'Why do experienced editors prefer simple "said" tags mixed with brief action beats?',
+          options: [
+            'Plain tags stay nearly invisible so speech cadence and gesture carry the emotion cleanly',
+            'Printer ink costs more for longer verbs',
+            'Action beats disable spellcheck automatically',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Minimal attribution avoids melodrama and keeps reader immersion centered on the speakers.',
+        },
+        actionLabel: 'Draft Dialogue Scene',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-prose-textarea',
+      },
+      {
+        id: 'm12-voice-cadence',
+        title: 'Distinguishing Character Voices Without Dialect Spelling',
+        durationMin: 4,
+        instruction:
+          'Cover speaker names during revision and check whether syntax length, favored nouns, and blind spots distinguish each character.',
+        objective: 'Create recognizable voices through word choice and sentence rhythm rather than heavy phonetic spellings.',
+        concepts: [
+          'Phonetic misspellings ("wuz", "git", "dunno") slow reading speed and quickly look cartoonish. Distinct voice lives in what someone notices first, whether they answer questions directly or tell short stories, and whether they speak in four-word fragments or careful qualified clauses.',
+          'A surveyor notices drainage, sightlines, and brass fittings; a cook notices fuel, freshness, and knife wear. Logging each character’s speech rhythm and profession vocabulary in Story Bible prevents voices from blurring together in Chapter Twelve.',
+        ],
+        steps: [
+          'Open Story Bible -> Characters and record a short "Speech Rhythm & Blind Spots" line per lead character.',
+          'Pick a tense conversation in Manuscript and read each character’s spoken lines back-to-back.',
+          'Tighten filler greetings and swap generic nouns for words rooted in each character’s craft.',
+        ],
+        example: {
+          heading: 'Contrasting Two Vocabularies',
+          body: 'Character A speaks in ledger quantities ("short by twelve shillings, due Friday"); Character B speaks in weather and tide ("two hours left on the ebb").',
+        },
+        proTip:
+          'Use Proofread Substitute marks during pass two strictly to tune a single character’s voice across three chapters in one sweep.',
+        checkpoint: {
+          question: 'What distinguishes two characters’ spoken voices more cleanly than heavy phonetic misspellings?',
+          options: [
+            'Sentence rhythm, profession vocabulary, and what each speaker avoids mentioning',
+            'Setting every character line in italics',
+            'Using exclamation marks after every sentence',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Authentic voice comes from cadence, worldview, and word choice rather than distracting spelling.',
+        },
+        actionLabel: 'Open Story Bible Characters',
+        minTier: 'advanced',
+        targetView: 'bible',
+        targetSelector: '.bv-bible-layout',
+      },
+    ],
+  },
+  {
+    id: 'mod-series-world',
+    number: 13,
+    title: 'Series Continuity & Cross-Linked Worldbuilding',
+    summary:
+      'Use [[wikilinks]], #tags, custom Story Bible categories, and Story Graph Auto-Sync to hold trilogies and complex settings together.',
+    audience: 'Authors writing multi-POV novels, historical fiction, or series',
+    lessons: [
+      {
+        id: 'm13-wikilinks-sync',
+        title: 'Two-Way Prose Links With [[Wikilinks]] & Story Graph Auto-Sync',
+        durationMin: 4,
+        instruction:
+          'Reference Story Bible names inside scenes with [[Name]] or plain mentions, then toggle Auto-Sync Book inside Story Graph.',
+        objective: 'Trace where characters, items, and subplots intersect without maintaining manual spreadsheets.',
+        concepts: [
+          'As manuscripts pass 60,000 words, remembering whether a minor witness visited a warehouse in Chapter Three or Chapter Seven becomes fragile. Quillvibe detects character and place mentions automatically and pairs two-way Auto-Sync between chapters and the Story Graph.',
+          'Turning on Auto-Sync Book updates node links directly from scene references so your Spatial Storyboard or Force Graph mirrors real manuscript ties.',
+        ],
+        steps: [
+          'Switch to Full Studio layout and open Story Graph.',
+          'Enable Auto-Sync Book in the Story Graph toolbar to wire scenes to linked characters and places.',
+          'Inspect shortest narrative paths in Force Graph to check whether two plot threads collide early enough.',
+        ],
+        example: {
+          heading: 'Checking a Clue Path',
+          body: 'Notice in Force Graph that a key compass is mentioned in Chapter One and Chapter Nine with zero intermediate nodes—time to plant a passing mention in Chapter Five.',
+        },
+        proTip:
+          'Story Graph also imports and exports standard .canvas JSON diagrams if you sketch boards elsewhere.',
+        checkpoint: {
+          question: 'What does Auto-Sync Book do inside Story Graph?',
+          options: [
+            'Synchronizes scene references and Story Bible connections automatically with graph nodes and edges',
+            'Uploads your manuscript to public social feeds',
+            'Locks all chapters from editing',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Auto-Sync keeps Story Graph topology aligned with your live chapters and Story Bible entries.',
+        },
+        actionLabel: 'Open Story Graph',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-graph-layout',
+      },
+      {
+        id: 'm13-custom-categories',
+        title: 'Custom Bible Categories for Factions, Ships, Magic & Calendars',
+        durationMin: 3,
+        instruction:
+          'Add project-specific Story Bible categories and shareable .qvbible worldbooks for multi-book series.',
+        objective: 'Organize domain rules—ships, guilds, historical laws, or dialects—cleanly alongside characters.',
+        concepts: [
+          'Not every world fits strictly inside Characters, Locations, and Lore. Maritime fiction needs vessel logs, court mysteries need trial statutes, and speculative series need system limits. Custom Story Bible categories keep specialized rules searchable without stuffing unrelated details into character bios.',
+          'Exporting a .qvbible file extracts only your Story Bible knowledge base so you can import the same world cleanly into Book II.',
+        ],
+        steps: [
+          'Open Story Bible and click the New Category action to create a custom shelf (e.g. Vessels or Guilds).',
+          'Add key entries with reference portraits and custom metadata fields.',
+          'Export as .qvbible in Settings -> Export or top bar to preserve a standalone series bible.',
+        ],
+        example: {
+          heading: 'Series Bible Reuse',
+          body: 'Finish Book I, export World-of-Narrows.qvbible, start a fresh .qv file for Book II, and import the .qvbible without copying Chapter One prose.',
+        },
+        proTip:
+          'You can attach reference photos to any Story Bible card without bloating exported EPUB interiors.',
+        checkpoint: {
+          question: 'Which native Quillvibe file exports only Characters, Locations, Lore, and custom Bible shelves?',
+          options: ['.qvbible', '.qvstyle', '.qvdesign'],
+          correctIndex: 0,
+          explanation:
+            '.qvbible stores and merges Story Bible notes across books independently of scene prose.',
+        },
+        actionLabel: 'Open Story Bible',
+        minTier: 'advanced',
+        targetView: 'bible',
+        targetSelector: '.bv-bible-list',
+      },
+      {
+        id: 'm13-series-lock',
+        title: 'Locking Finalized Chapters & Separating Continuity Notes',
+        durationMin: 3,
+        instruction:
+          'Lock completed Part I chapters in the Binder once continuity is verified so later rewrites never break settled canon.',
+        objective: 'Prevent accidental typos or deletions in finished front chapters while revising the ending.',
+        concepts: [
+          'When rushing late-book revisions, an errant Ctrl+V or wrong-tab edit can quietly corrupt an already proofread early chapter. Locking settled chapters or full Parts inside the Binder puts them safely in read-only mode while still letting you view them in Split View and include them in exports.',
+          'Combined with Author Keys and Copyright Seals, your settled canon remains protected across long multi-month drafts.',
+        ],
+        steps: [
+          'Verify your settled Part or Chapter prose in Proofread mode.',
+          'Click the Lock icon beside that Chapter or Part in the Manuscript Binder (or right-click -> Lock).',
+          'Unlock anytime with one click if a later plot discovery genuinely requires an earlier adjustment.',
+        ],
+        example: {
+          heading: 'Safe Sequel Prep',
+          body: 'Lock all chapters in Book I right before drafting Book II so opening Book I for reference never introduces accidental keystrokes.',
+        },
+        proTip:
+          'Pair Binder chapter locking with password-locked .qv backups when sending manuscripts to external beta readers.',
+        checkpoint: {
+          question: 'Can a locked chapter still be viewed in Split Reference and included in EPUB/PDF exports?',
+          options: [
+            'Yes — locking prevents accidental text edits while keeping reading and exporting active',
+            'No — locked chapters are removed from exports',
+            'Only inside Obsidian theme',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Chapter locks protect settled prose from unintended edits without excluding those pages from your book.',
+        },
+        actionLabel: 'Check Binder Locks',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-binder',
+      },
+    ],
+  },
+  {
+    id: 'mod-prepress',
+    number: 14,
+    title: 'Cover Typography, Print Prepress & Release Checks',
+    summary:
+      'Audit thumbnail legibility, trim bleed math, spine width, and full export checklists before sending a book to printers or stores.',
+    audience: 'Self-publishing authors and small-press production editors',
+    lessons: [
+      {
+        id: 'm14-cover-thumb',
+        title: 'Thumbnail Legibility & Spine Hierarchy on Book Covers',
+        durationMin: 4,
+        instruction:
+          'Zoom out to 25% in Book Cover Studio to verify that title contrast and silhouette read at bookstore thumbnail size.',
+        objective: 'Ensure cover typography stays readable on phones and small storefront tiles.',
+        concepts: [
+          'Most readers first see your cover at roughly 160 pixels wide inside a digital catalog before ever holding a full-size hardcover. Ornate thin display type, low-contrast gradients, or busy backgrounds collapse into grey noise at thumbnail scale.',
+          'Zooming out to 25%–35% in Cover Studio shows immediately whether title weight, letter spacing, and background value separation pass the three-second squint test.',
+        ],
+        steps: [
+          'Open Studio -> Book Cover Studio and switch zoom down to 25% or 35%.',
+          'Check whether the main Title and Author Name stay crisp over artwork across all themes.',
+          'Switch to Spine and Back Cover faces to confirm readable author/title orientation and barcode margin.',
+        ],
+        example: {
+          heading: 'Squint Test Fix',
+          body: 'If your serif title disappears into ocean spray at 30% zoom, add a subtle dark gradient scrim behind the upper third or boost title contrast instead of adding thick neon strokes.',
+        },
+        proTip:
+          'Use Cover Studio Draft Variants (desktop app) to test two typography pairings and compare them side-by-side before exporting PNG 3x or Print PDF.',
+        checkpoint: {
+          question: 'Why should you inspect your finished cover at 25%–35% zoom before exporting?',
+          options: [
+            'To verify that title contrast and hierarchy remain legible at online thumbnail size',
+            'Because PDF files cannot hold full-resolution fonts',
+            'To delete hidden layers automatically',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Most readers discover books at thumbnail scale first; early contrast checks catch thin or crowded typography.',
+        },
+        actionLabel: 'Open Book Cover Studio',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-stage',
+      },
+      {
+        id: 'm14-prepress-check',
+        title: 'Interior Print Audit: Trim Size, Widows, Drop Caps & EPUB Test',
+        durationMin: 5,
+        instruction:
+          'Run through Interior Typeset settings, verify smart quotes and front/back matter, and inspect exported PDF, EPUB 3, and .docx builds.',
+        objective: 'Catch pagination surprises, unformatted italics, or missing metadata before upload.',
+        concepts: [
+          'Print-on-demand printers and digital storefronts reject packages with missing spine width calculations, inconsistent trim dimensions, unclosed smart quotes, or broken table-of-contents headings. Checking both Print PDF pages and a real e-reader test guarantees consistency across print and screen.',
+          'Saving your house interior rules as a reusable .qvstyle file lets every book in a trilogy share identical margins, numerals, headers, and typography.',
+        ],
+        steps: [
+          'Open Studio -> Interior Typeset and verify Trim Size (for example 6x9 trade or 5.5x8.5), margins, and Running Header text.',
+          'Open Studio -> Publish & Export to inspect live pagination, ISBN, and Publisher Name.',
+          'Export Print PDF, EPUB 3, and .docx, then open each file in an external reader to spot-check Chapter One and Back Matter.',
+        ],
+        example: {
+          heading: 'Final Pre-Release Run',
+          body: 'Export PDF -> check page numbers and margins. Export EPUB -> check chapter links and cover thumbnail. Export .qv -> store offline archival copy with Author Key.',
+        },
+        proTip:
+          'Save a locked .qv master file alongside your final Print PDF so you always retain source prose, cover layers, and proofread history.',
+        checkpoint: {
+          question: 'Which native file saves your reusable trim size, typography, and margin layout for future books?',
+          options: ['.qvstyle', '.qvbible', '.qvext'],
+          correctIndex: 0,
+          explanation:
+            '.qvstyle stores print trim dimensions, margins, typography, drop caps, and paper preset rules cleanly.',
+        },
+        actionLabel: 'Open Interior Typeset',
+        minTier: 'intermediate',
+        targetView: 'typeset',
+        targetTypesetTab: 'interior',
+        targetSelector: '.bv-typeset-layout',
+      },
+      {
+        id: 'm14-archive-key',
+        title: 'Author Keys, Copyright Seals & Clean Archival Backups',
+        durationMin: 3,
+        instruction:
+          'Verify your Origin Author Key and Work Copyright Seal in Library & Publish, and keep redundant offline .qv copies.',
+        objective: 'Ensure long-term ownership records and recoverable backups stay independent of any single platform.',
+        concepts: [
+          'Every book should live in more than one place before release day. Keeping a signed, optionally password-locked .qv master archive alongside open .docx and .md exports ensures you can reopen or convert your manuscript decades later regardless of shifting cloud services.',
+          'Your Origin Author Key and Work Copyright Seal embed verifiable authorship metadata and rights territory right inside the exported archive.',
+        ],
+        steps: [
+          'Open Library -> Author Identity to verify your Pen Name and local Origin Author Key.',
+          'Open Studio -> Publish & Export -> Seals & Keys to confirm ISBN, edition year, and Work Copyright Seal.',
+          'Click Save -> .qv (with an optional password for sensitive unreleased manuscripts) and store a copy on an offline drive.',
+        ],
+        example: {
+          heading: '3-2-1 Author Backup Rule',
+          body: 'One working .qv on your primary laptop, one encrypted .qv copy on a USB SSD, and one export bundle (.pdf + .epub + .docx) dated cleanly.',
+        },
+        proTip:
+          'Use Settings -> Check for Updates (Desktop App) or visit quillvibe.jhonrey.com/help whenever exporting with a new release.',
+        checkpoint: {
+          question: 'Which Quillvibe format preserves your complete manuscript, Story Bible, Story Graph, cover artwork, and Author Key in one archive?',
+          options: ['.qv', '.txt', '.html'],
+          correctIndex: 0,
+          explanation:
+            'The .qv workspace container keeps every part of your book project unified and optionally password-encrypted.',
+        },
+        actionLabel: 'Open Publish & Export',
+        minTier: 'intermediate',
+        targetView: 'typeset',
+        targetTypesetTab: 'publish',
+        targetSelector: '.bv-typeset-layout',
+      },
+    ],
+  },
+  {
+    id: 'mod-ms-deep-1',
+    number: 15,
+    track: 'manuscript',
+    title: 'Manuscript Workspace 101: Architecture & Draft Environment',
+    summary:
+      'Foundational university seminar on Quillvibe’s three-column Manuscript architecture: Parts/Chapters/Scenes hierarchy, paper ergonomics, and focus geometry.',
+    audience: 'Writers mastering long-form book organization from zero to clean draft',
+    lessons: [
+      {
+        id: 'm15-binder-tree',
+        title: '1.1 Binder Hierarchy: Parts, Chapters, Scenes & Drag Reordering',
+        durationMin: 6,
+        instruction:
+          'Inspect the left Manuscript Binder, create structured Parts and Chapters, reorder scenes cleanly, and lock finalized chapters from unintended keystrokes.',
+        objective: 'Architect multi-act book manuscripts cleanly without splitting chapters into stray files.',
+        concepts: [
+          'Long-form writing breaks down quickly inside flat single-document word processors once manuscripts cross 20,000 words: scrolling becomes slow, chapter headings shift unintentionally, and moving a scene across acts takes brittle cut-and-paste operations. Quillvibe separates book macro-structure into a deterministic three-tier hierarchy: Part -> Chapter -> Scene.',
+          'Parts serve as thematic or structural volumes (Act I, Part II, Appendix). Chapters establish numbered print breaks in Typeset and EPUB table-of-contents exports. Scenes remain modular drafting tiles that tally independent word targets in the Scene Inspector while accumulating live rollups up to Chapter and whole-Book word counts in the bottom status bar.',
+          'Each column divider (<->) between the Binder, Paper Sheet, and Inspector drags smoothly to match your monitor width, while viewports narrower than 1180px automatically collapse the opposite drawer so your active writing sheet never gets crushed.',
+        ],
+        steps: [
+          'Click "+ Part" and "+ Ch" at the top of the Manuscript Binder to scaffold an Act/Part and Chapter container.',
+          'Drag the vertical <-> border between the Binder and Paper Sheet to tune your sidebar reading width (190px to 440px).',
+          'Hover any completed Chapter or Part and toggle its Lock icon once edits settle to make those scenes read-only until unlocked.',
+          'Watch the bottom status bar tally Scene words, Chapter total, Book progress, estimated printed pages, and reading time in real time.',
+        ],
+        example: {
+          heading: 'Four-Part Historical Novel Skeleton',
+          body: 'Part I — Low Water (Chapters 1–4) -> Part II — Equinoctial Bore (Chapters 5–10) -> Part III — Copperplate Soundings (Chapters 11–16) -> Epilogue.',
+        },
+        proTip:
+          'Double-click any vertical <-> column resizer handle anytime to snap Binder or Inspector widths straight back to factory proportions.',
+        checkpoint: {
+          question: 'What is the three-tier structural hierarchy inside the Quillvibe Manuscript Binder?',
+          options: [
+            'Part -> Chapter -> Scene',
+            'Folder -> Canvas -> Layer',
+            'Book -> Paragraph -> Sentence',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Quillvibe organizes manuscripts as Parts containing Chapters containing modular Scenes so reordering and word tracking stay predictable.',
+        },
+        actionLabel: 'Inspect Binder Column',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetEditorSubMode: 'draft',
+        targetSelector: '.bv-binder',
+      },
+      {
+        id: 'm15-binder-rename',
+        title: '1.2 Naming & Renaming Parts and Chapters in the Left Binder',
+        durationMin: 4,
+        instruction:
+          'Give every Part division and Chapter heading an intentional title directly inside the left Manuscript Binder.',
+        objective: 'Rename Parts and Chapters cleanly in place so running headers, breadcrumbs, and tables of contents stay accurate.',
+        concepts: [
+          'New Parts ("Part 2") and new Chapters ("Chapter 2") receive sequential default labels when created with "+ Part" or "+ Ch". Replacing placeholder labels early keeps scene navigation clear inside the left Binder and updates the top paper breadcrumb above every scene.',
+          'Quillvibe gives you three ways to rename any Part or Chapter in the left-side Binder: double-click the title directly, click the small quill rename icon that appears when hovering the row, or right-click the row and select "Rename Part" or "Rename Chapter". Press Enter to save or Esc to cancel.',
+          'Locked Parts and locked Chapters block accidental renames as well as text edits. Toggle the row’s Lock icon off before renaming finalized sections, then lock them again afterward. Updated names flow automatically into Interior Typeset running headers, Print PDFs, and EPUB tables of contents.',
+        ],
+        steps: [
+          'Double-click any Part label or Chapter title in the left Manuscript Binder to open the inline rename field.',
+          'Alternatively, hover a Part or Chapter row and click its quill Rename button, or right-click -> Rename Part / Rename Chapter.',
+          'Type the updated title (for example, "Part I — Low Water" or "The Brass Astrolabe") and press Enter to save.',
+          'Switch back to your active Scene sheet and verify the updated Part and Chapter names appear in the top paper eyebrow header.',
+        ],
+        example: {
+          heading: 'Clear Narrative Divisions',
+          body: 'Renaming "Part 1" -> "Part I — Low Water" and "Chapter 1" -> "The Brass Astrolabe" updates every scene eyebrow, Corkboard group, and EPUB TOC entry automatically.',
+        },
+        proTip:
+          'If a double-click does not open the rename box, check for a small Lock icon beside the row—unlocking a finalized Part or Chapter re-enables renaming.',
+        checkpoint: {
+          question: 'Which three gestures let you rename a Part or Chapter in the left Manuscript Binder?',
+          options: [
+            'Double-click its label, click its hover Rename quill icon, or right-click -> Rename Part / Rename Chapter',
+            'Delete the chapter and retype every scene from scratch',
+            'Edit a manual CSS rule inside Extensions',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Inline double-click, the row hover Rename icon, and the row right-click menu all edit Part and Chapter titles cleanly in place.',
+        },
+        actionLabel: 'Highlight Manuscript Binder',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetEditorSubMode: 'draft',
+        targetSelector: '.bv-binder',
+      },
+      {
+        id: 'm15-paper-ergonomics',
+        title: '1.3 Paper Themes, Typography Stack & Formatting Without Visual Noise',
+        durationMin: 5,
+        instruction:
+          'Configure Ivory Light, Warm Parchment, or Obsidian Dark paper independently or linked to your studio theme, and format bold, italics, headings, and epigraphs cleanly.',
+        objective: 'Establish comfortable typography metrics and low-strain lighting for marathon drafting sessions.',
+        concepts: [
+          'Visual contrast fatigue comes from two sources: mismatched screen luminance against surrounding studio panels, and overly wide text lines where the eye loses its anchor returning to the left margin. Inside Settings -> Workspace & Editor, Quillvibe constrains the paper sheet measure around classic book proportions (~650px–740px) paired with EB Garamond, Baskerville, Palatino, or any custom .ttf/.otf font.',
+          'Unlike cloud note apps crowded with floating slash menus on every keystroke, Draft Mode uses plain Markdown formatting markers (**bold**, *italic*, ## section break, > blockquote, * * * scene break) that export crisply into Print PDF, EPUB 3, and styled .docx documents without proprietary markup lock-in.',
+          'Spellcheck underlines remain off by default during first-draft momentum and can be turned on per-studio in Settings when copyediting.',
+        ],
+        steps: [
+          'Open the Paper Theme selector (Ivory / Parchment / Obsidian) on the Draft subbar to test paper contrast independently from your chrome.',
+          'Format text directly with Ctrl+B, Ctrl+I, or click B / I / H2 / Quote / * * * in the subbar—or right-click anywhere inside your prose.',
+          'Open Settings -> Workspace & Editor -> Link Paper Theme & Application Theme if you want studio theme switching to move paper colors automatically.',
+        ],
+        example: {
+          heading: 'Low-Strain Evening Setup',
+          body: 'Use Ivory paper in bright daylight and switch to Parchment (#f7f2e8 warm cream) or Obsidian (#191815 dark charcoal paper) after sunset.',
+        },
+        proTip:
+          'Press Ctrl+Shift+F anytime to hide sidebars and top bars into Zen Focus mode, or F11 in the Desktop App for fullscreen with your floating clock and sprint timer.',
+        checkpoint: {
+          question: 'Why does Quillvibe use lightweight Markdown markers (**bold**, *italic*, * * *) inside Draft Mode?',
+          options: [
+            'So drafting stays clean while Print PDF, EPUB 3, and .docx exporters convert formatting consistently with zero vendor lock-in',
+            'Because desktop apps cannot export .docx files',
+            'To disable undo/redo history',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Lightweight semantic syntax keeps prose readable across decades and exports cleanly into print, e-reader, and word-processor formats.',
+        },
+        actionLabel: 'Inspect Paper Bar',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetEditorSubMode: 'draft',
+        targetSelector: '.bv-paper-sheet',
+      },
+      {
+        id: 'm15-sprint-inspector',
+        title: '1.4 Scene Inspector Metadata, Sprint Timers & Multi-Window Desks',
+        durationMin: 5,
+        instruction:
+          'Log Scene Synopsis, POV, Location, Timeline, Status, and Word Targets in the right Scene Inspector while pacing daily writing blocks with the Sprint Timer.',
+        objective: 'Keep drafting goals and metadata synced directly with Corkboard, Outline Ledger, and Story Graph.',
+        concepts: [
+          'Every field inside the Scene Inspector—Title, Synopsis, Status (Outline / Draft / Revision / Final), POV Character, Location, Timeline Stamp, and Scene Word Target—populates Corkboard index cards and Outline Ledger spreadsheet columns automatically. Updating POV or Timeline once inside the Inspector updates all structural planning views without duplicate typing.',
+          'The bottom Sprint Bar measures live "+Nw" session output against a selectable countdown (15m, 25m, 45m, 60m) paired with configurable gentle audio chime presets via Alarm Preferences.',
+        ],
+        steps: [
+          'Open the right Scene Inspector panel and enter POV, Location, Timeline Stamp, and a Target word count for your active scene.',
+          'Pick a sprint length (25m) in the bottom-right Sprint Bar and click Start to track net words written during your sprint.',
+          'Notice how Snapshot capture (Camera icon or Ctrl+S) creates point-in-time scene saves before major rewrites.',
+        ],
+        example: {
+          heading: 'Daily Two-Sprint Routine',
+          body: 'Two focused 25-minute sprints targeting +450 words each yield ~900 clean words/day—enough for a 75,000-word draft in under three months.',
+        },
+        proTip:
+          'Set custom Scene Targets (e.g., 1,200w for pivotal scenes, 450w for short bridge scenes) so Corkboard card progress meters accurately reflect intentional pacing.',
+        checkpoint: {
+          question: 'Where do Scene Inspector fields like POV, Timeline, and Word Target also appear automatically?',
+          options: [
+            'On Corkboard cards and Outline Ledger columns',
+            'Inside external .qvext permission lists only',
+            'Only inside cover spine dimensions',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Inspector metadata feeds both Corkboard index cards and Outline Ledger rows directly.',
+        },
+        actionLabel: 'Inspect Scene Inspector',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetEditorSubMode: 'draft',
+        targetSelector: '.bv-inspector',
+      },
+    ],
+  },
+  {
+    id: 'mod-ms-deep-2',
+    number: 16,
+    track: 'manuscript',
+    title: 'Manuscript Workspace 201: Inline Proofreading, Resizable Split & Diff',
+    summary:
+      'Advanced editing studio covering inline Proofread Markup inside Draft Mode, draggable-resizable Split Reference cross-checking, word-level Revision Diffs, and inline illustrations.',
+    audience: 'Writers moving from first draft to surgical structural & line revision',
+    lessons: [
+      {
+        id: 'm16-inline-proofread',
+        title: '2.1 Inline Proofread Markup & 15 Standard Copyediting Marks',
+        durationMin: 6,
+        instruction:
+          'Toggle Proofread directly inside Draft Mode (no separate page clutter), apply copyediting marks via right-click or palette buttons, test Clean Preview, and manage the collapsible Marks drawer.',
+        objective: 'Conduct disciplined line edits with full accept/stet/reject auditability.',
+        concepts: [
+          'In Editorial and Full Studio layouts, clicking "Proofread" right on the Draft sheet header transforms your page cleanly into an interactive proof surface backed by a collapsible, resizable Marks ledger pane on the right. Because Proofread lives inside Draft Mode, you switch back to live drafting with one click without juggling multiple heavy modes.',
+          'Quillvibe implements 15 authentic publishing copyediting marks: Delete, Insert Caret, Substitute, Author Query (AQ), Highlight, Transpose, Stet (leave untouched), New Paragraph, Run-In, Close Up, Insert Space, Capitalize, Lowercase, Italicize, and Bold.',
+          'When proofread marks exist in a scene, Clean Preview lets you read how the paragraph flows if every open suggestion were accepted, without mutating your underlying source draft until you explicitly click Accept or Accept All (which automatically saves a safety Snapshot first).',
+        ],
+        steps: [
+          'Click "Proofread" inside the Draft sheet header strip (top right of the paper sheet).',
+          'Highlight any word or sentence on the sheet and right-click—or use "Quick Mark by Phrase" in the collapsible Marks pane—to attach a Delete, Substitute, or Query mark.',
+          'Drag the vertical <-> divider between your manuscript and the Marks drawer to widen or narrow your review column.',
+          'Toggle "Clean Preview" to read the tightened flow before clicking Accept or Stet.',
+        ],
+        example: {
+          heading: 'Tightening Passive Clutter',
+          body: 'Highlight "had been quietly trying to decide whether to signal", right-click -> Substitute -> "weighed signaling", preview Clean Preview, then Accept.',
+        },
+        proTip:
+          'Need to cross-check Story Bible notes mid-proofread? Switch directly between Reference, Diff, and Marks using the tabs at the top of the collapsible right companion drawer—or click × to collapse back to full Draft width.',
+        checkpoint: {
+          question: 'What happens automatically right before "Accept All Marks" applies copyedits to your manuscript?',
+          options: [
+            'Quillvibe captures a safety Revision Snapshot so original prose stays recoverable',
+            'All Story Bible entries are cleared',
+            'The scene becomes permanently locked',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Automatic backup snapshots ensure bulk copyediting changes can always be inspected or restored via Revision Diff.',
+        },
+        actionLabel: 'Open Inline Proofread in Draft',
+        minTier: 'intermediate',
+        targetView: 'editor',
+        targetEditorSubMode: 'proofread',
+        targetSelector: '.bv-pr-toolbar',
+      },
+      {
+        id: 'm16-split-diff',
+        title: '2.2 Resizable Split Reference Pane & Word-Level Revision Diff',
+        durationMin: 6,
+        instruction:
+          'Open Split Ref inside Draft Mode to read any Scene or Story Bible card side-by-side, switch to Diff to compare drafts against snapshots, and drag the vertical divider to resize.',
+        objective: 'Maintain continuity across chapters and verify revision cuts word-for-word without leaving Draft Mode.',
+        concepts: [
+          'Continuity errors happen when authors switch tabs back and forth while trying to recall what a character wore in Chapter Two or the exact wording of an earlier scene. Opening "Split Ref" docks a collapsible companion reader beside your live Draft sheet where you can select any Scene, Character, Location, or Lore card.',
+          'Switching the companion drawer to "Diff" compares your active prose word-by-word against any captured Revision Snapshot, coloring additions in emerald and deletions in crimson strike-through with "+N added / -N removed" net word statistics and one-click Snapshot Restore.',
+          'Just like the Binder and Inspector, the Split Reference / Diff companion pane includes a draggable vertical <-> handle (saved between sessions, 260px–640px) and an instant × Collapse button so your canvas remains serene.',
+        ],
+        steps: [
+          'Click "Split Ref" inside the Draft sheet header strip to dock the companion pane beside your manuscript.',
+          'Use the Reference dropdown to display an earlier scene (e.g. Chapter 1) or a Character card while typing new prose on the left.',
+          'Drag the 5px vertical <-> divider between left paper and right pane to set your preferred column ratio; double-click the handle to reset to 360px.',
+          'Click the "Diff" tab inside the companion header (or "Diff" on the Draft header) to audit changes against any Snapshot, then click × to collapse cleanly.',
+        ],
+        example: {
+          heading: 'Cross-Checking Clue Continuity',
+          body: 'Open Chapter I on the Split Reference pane while drafting Chapter IX so tide timings, brass instrument names, and signal codes align verbatim.',
+        },
+        proTip:
+          'Press Ctrl+S anytime while drafting inside the Manuscript workspace to capture a named Revision Snapshot in half a second before starting bold rewrites.',
+        checkpoint: {
+          question: 'How do you resize or close the Split Reference / Diff companion drawer in Draft Mode?',
+          options: [
+            'Drag the vertical <-> divider handle to resize (double-click resets), and click × or toggle the button to collapse',
+            'Export to PDF and reopen the browser',
+            'Edit CSS files manually',
+          ],
+          correctIndex: 0,
+          explanation:
+            'The Draft companion drawer mirrors Quillvibe’s sidebars with persistent <-> drag-resizing and one-click × collapse.',
+        },
+        actionLabel: 'Open Resizable Split Reference',
+        minTier: 'intermediate',
+        targetView: 'editor',
+        targetEditorSubMode: 'split',
+        targetSelector: '.bv-split-pane',
+      },
+      {
+        id: 'm16-inline-images',
+        title: '2.3 Inline Scene Illustrations: Wrap Flow, Snap Guides & Bg Removal',
+        durationMin: 4,
+        instruction:
+          'Insert or drag photos, maps, or sketches onto the Manuscript sheet, configure text wrap modes, align with snap-to-grid guides, and remove plain backgrounds locally.',
+        objective: 'Lay out illustrated fiction, travel memoirs, or illuminated handbooks directly inside your scene.',
+        concepts: [
+          'For illustrated fiction, historical plates, or decorative chapter maps, placing images inside external layout tools forces constant re-imports whenever prose changes. Quillvibe lets you drop PNG, JPEG, or WebP artwork directly onto the Manuscript page and store responsive wrap geometry inside your .qv scene.',
+          'Five text-wrapping modes (Wrap Left, Wrap Right, Top & Bottom, Inline, Behind Text) preview live around your prose paragraphs, complete with corner resize handles, magnetic alignment guides, and client-side background tolerance removal with instant Restore Original.',
+        ],
+        steps: [
+          'Drag an image file onto the Manuscript paper sheet or click Insert Image in the formatting toolbar.',
+          'Select a wrap mode (for example Wrap Right or Top & Bottom) and drag corner handles with Snap-to-Grid enabled.',
+          'Optional: click Remove Background on line-art sketches over white paper and adjust Tolerance until edges read crisp.',
+        ],
+        example: {
+          heading: 'Archipelago Chart Marginalia',
+          body: 'Drop a nautical chart sketch at 38% width with Wrap Right beside the harbor sounding opening paragraphs.',
+        },
+        proTip:
+          'Keep browser-mode scene images crisp and compressed under 1–2 MB so local IndexedDB/storage stays fast on every device.',
+        checkpoint: {
+          question: 'Where does Quillvibe run the image Background Remover calculation?',
+          options: [
+            'Locally offline on your own device with reversible Restore Original',
+            'On an external cloud AI server requiring login',
+            'Only after publishing an ISBN',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Background tolerance stripping runs locally in-canvas on your device and keeps original bytes recoverable.',
+        },
+        actionLabel: 'Open Draft Toolbar',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetEditorSubMode: 'draft',
+        targetSelector: '.bv-subbar',
+      },
+    ],
+  },
+  {
+    id: 'mod-sg-deep-1',
+    number: 17,
+    track: 'story-graph',
+    title: 'Story Graph 101: Spatial Storyboard, Nodes, Live Wires & Groups',
+    summary:
+      'Complete practical manual for Story Graph’s Spatial Storyboard: node anatomy, real-time obstacle-avoiding connectors, inline edge labeling, and optional Act Group frames.',
+    audience: 'Writers visually mapping plot beats, character ties, and act arcs',
+    lessons: [
+      {
+        id: 'm17-storyboard-canvas',
+        title: '1.1 Storyboard Navigation, Node Creation & Board Surface Themes',
+        durationMin: 6,
+        instruction:
+          'Pan, zoom (10%–500%), switch curated board surfaces, double-click anywhere to spawn Plot, Character, Faction, Item, or Scene cards, and click empty space to deselect.',
+        objective: 'Navigate the infinite Story Graph board smoothly and build clean modular idea maps.',
+        concepts: [
+          'Story Graph operates in Full Studio layout in two complementary views: Spatial Storyboard (structured card layout with Act groups and crisp orthogonal connectors) and Force Graph (60 FPS physics constellation). Navigation behaves like modern vector studios: drag empty canvas to pan, scroll wheel or pinch trackpad to zoom around cursor, or use Ctrl+0 / Shift+1 to fit all cards.',
+          'Notice card color accents by entity type across ten semantic categories: Character, Plot, Scene, Storyline, Faction, Location, Item, Lore, Note, and Custom. Clicking any card opens its Markdown notes and [[Wikilink]] controls in the right Properties sidebar; clicking empty board background—or pressing Escape—clears selection immediately.',
+          'Double-clicking any synced Character, Location, Lore, or Scene card jumps straight into its Manuscript scene or Story Bible entry without hunting through menus.',
+        ],
+        steps: [
+          'Open Story Graph from the top studio bar (ensure Full Studio layout is enabled).',
+          'Pick a surface theme from the Board Surface dropdown (Obsidian Dots, Slate Blueprint, Warm Paper, Charcoal Solid, or Ivory Grid).',
+          'Double-click empty board space to spawn a new Node, or press Shift+Drag to marquee-select a cluster of cards.',
+          'Click any empty canvas background area (or press Esc) to cleanly deselect all cards, groups, and lines.',
+        ],
+        example: {
+          heading: 'Daylight Paper Board Setup',
+          body: 'Authors drafting in Ivory Light often set Story Graph Board Surface to Warm Paper or Ivory Grid so eyes never snap between dark canvas and white prose pages.',
+        },
+        proTip:
+          'Press Shift+2 anytime to zoom the camera tightly onto just your currently selected card(s) without losing context on giant trilogy boards.',
+        checkpoint: {
+          question: 'How do you quickly deselect any active node, connector line, or group frame in Story Graph?',
+          options: [
+            'Click any empty background area of the canvas or press Esc',
+            'Delete the node first',
+            'Reload the entire application',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Clicking open board background or pressing Escape clears active node, edge, and group selections cleanly.',
+        },
+        actionLabel: 'Open Story Graph Board',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-graph-canvas-wrap',
+      },
+      {
+        id: 'm17-live-wires',
+        title: '1.2 Real-Time Connector Wiring, Obstacle Routing & Inline Labels',
+        durationMin: 6,
+        instruction:
+          'Drag port dots from any edge of a card to another card (or empty canvas), test 90-degree Elbow vs. Curved routing, and drag cards while watching every line reroute live.',
+        objective: 'Create unambiguous, readable relationship diagrams where connectors never lose alignment during layout moves.',
+        concepts: [
+          'Every card exposes four directional port handles (Top, Right, Bottom, Left). Pulling a wire from one port onto another card attaches a typed connector ("connects to", "betrays", "investigates", "turns into"); pulling a wire onto empty board space spawns a linked Note card right at your cursor.',
+          'Quillvibe’s orthogonal Elbow router detects intermediate cards as obstacles and routes 90-degree paths cleanly around them. Whenever you drag any card or group frame, EVERY connector across the board recalculates live on every pointer frame—both direct wires and neighboring obstacle-avoiding lines—so geometry stays exact while moving.',
+          'Double-click any connector label pill directly on the board to rename its relationship inline, or select a line to drag its midpoint elbow offset or change Solid / Dashed / Dotted pattern and arrowhead geometry.',
+        ],
+        steps: [
+          'Hover over any node card and drag from its glowing port dot onto a second card to link them.',
+          'Double-click the new label pill midway along the line (e.g. type "owes passage" or "suspects").',
+          'Drag either card across the board and observe how both attached connectors and surrounding elbow routes adjust in real time.',
+          'Click any connector line directly to adjust Routing (90° Elbow / Smooth Curve / Straight), Arrowhead (Arrow / Diamond / Circle), or Pattern.',
+        ],
+        example: {
+          heading: 'Mystery Evidence Topology',
+          body: 'Use Solid Arrows for causal timeline sequence ("leads to"), Dashed Gold Diamonds for secret allegiances ("blackmails"), and Dotted circles for unverified rumors.',
+        },
+        proTip:
+          'Hold Snap-to-Grid (On by default, 24px grid) while arranging cards horizontally—aligned card centers keep 90-degree elbow wires crisp and clean.',
+        checkpoint: {
+          question: 'What happens if you pull a port wire from a card and release it over empty canvas space?',
+          options: [
+            'Quillvibe automatically creates a new connected card right at your cursor',
+            'The card is deleted',
+            'Nothing can happen unless Auto-Sync is turned off',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Dropping a dragged port wire onto open canvas spawns and connects a fresh idea card immediately for fast brainstorming.',
+        },
+        actionLabel: 'Inspect Graph Controls',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-graph-canvas-wrap',
+      },
+      {
+        id: 'm17-group-frames',
+        title: '1.3 Act & Section Group Frames ("Act 1" Frames): Purpose, Moving & Removal',
+        durationMin: 5,
+        instruction:
+          'Understand what Group Frames (like Act 1) do, drag a group header to move all enclosed cards together, rename/color them, or remove frame boundaries cleanly without losing cards.',
+        objective: 'Use Group Frames intentionally for multi-card movement—or remove them cleanly whenever you want freeform boards.',
+        concepts: [
+          'Users often wonder what an "Act 1" frame box in Story Graph is for: it is an optional Group Frame created via the "+ Group" button (default-named Act 1, Act 2, Act 3) designed to visually partition scenes or plotlines by act/thread and let you drag an entire cluster of enclosed cards simultaneously.',
+          'Crucially, Group Frames do NOT lock or own your nodes. Moving the header moves cards resting inside its perimeter, collapsing ("Hide") tidies visual clutter, and clicking the direct × button on any group header—or clicking Remove Group Frame in Properties—deletes ONLY the boundary frame while leaving every node and connection completely intact.',
+          'Right-click any group header (or select the group to inspect it in the right panel) to rename "Act 1" to any thematic container ("Opening Harbor Investigation", "B-Plot Romance") or adjust frame color.',
+        ],
+        steps: [
+          'Click "+ Group" in the Story Graph subbar only when you want a visual Act or Subplot container around cards.',
+          'Drag the Group header bar to translate the frame and every enclosed card together; pull its bottom-right corner handle to resize its area.',
+          'Click any group header once to rename Title or adjust Frame Color inside the right Group Frame properties panel.',
+          'Click the direct × button on the group header (or "Remove Group Frame (Keep Cards)") anytime to remove the frame cleanly without touching any nodes.',
+        ],
+        example: {
+          heading: 'Three-Column Act vs. Dual Subplot Layout',
+          body: 'Rename "Act 1" -> "Opening Crisis", add a second group "Midpoint Reversal", or remove frames completely when using Force Graph or Radial layout.',
+        },
+        proTip:
+          'Turn on Auto-Layout (Columns, Radial Hubs, or Timeline Flow) from the Graph toolbar whenever cards pile up—you can undo any auto-layout immediately with Ctrl+Z.',
+        checkpoint: {
+          question: 'When you remove an "Act 1" Group Frame in Story Graph, what happens to the cards inside it?',
+          options: [
+            'All cards and connector lines stay safely on the canvas; only the decorative group border disappears',
+            'Enclosed scenes are deleted from your manuscript',
+            'Characters lose their Story Bible notes',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Group Frames are non-destructive visual organizers; deleting a group removes only the outer box while preserving every card and edge.',
+        },
+        actionLabel: 'Inspect + Group Button',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-subbar',
+      },
+    ],
+  },
+  {
+    id: 'mod-sg-deep-2',
+    number: 18,
+    track: 'story-graph',
+    title: 'Story Graph 201: Force Physics, Path Analysis & Book Auto-Sync',
+    summary:
+      'Advanced computational narrative graphing: 60 FPS Force Graph simulation, Hop Depth neighborhood isolation, Shortest Narrative Path tracing, Color Rules, and .canvas interoperability.',
+    audience: 'Authors auditing complex subplots, ensemble casts, and clue chains',
+    lessons: [
+      {
+        id: 'm18-force-hops',
+        title: '2.1 Force Graph Constellation Physics & Hop Neighborhood Isolation',
+        durationMin: 5,
+        instruction:
+          'Switch from Storyboard to Force Graph mode, drag nodes to pin anchors, tune spring tension/repulsion physics, and isolate 1-hop or 2-hop character neighborhoods.',
+        objective: 'Discover central story hubs and isolated side characters inside dense ensembles.',
+        concepts: [
+          'While Storyboard favors crisp geometric organization, complex 30-to-100 node story worlds benefit from physical equilibrium. Switching Story Graph to Force mode runs a smooth 60 FPS spring-and-repulsion physics engine that pulls heavily connected entities toward visual center hubs and pushes unrelated branches outward cleanly.',
+          'You can pin critical anchor characters (like your Protagonist or Antagonist) while leaving minor actors free to cluster naturally around the scenes they inhabit.',
+          'Turning on Hop Isolation (All / 1-Hop / 2-Hop / 3-Hop) hides everything outside the selected character’s immediate social and plot radius—ideal when checking whether one POV character touches enough plotlines in Act Two.',
+        ],
+        steps: [
+          'Click "Force Graph" in the Story Graph top toggle bar.',
+          'Drag central hubs into position (pinning them automatically) and observe edges settling into balanced constellations.',
+          'Use the Force Controls HUD to toggle Node Focus -> "1-Hop" or "2-Hop" while clicking different leads to audit connectivity.',
+        ],
+        example: {
+          heading: 'Catching an Under-Integrated Villain',
+          body: 'Select your Antagonist and enable "1-Hop": if only 2 minor scenes touch them by midpoint, weave a stronger causal link to two Protagonist allies.',
+        },
+        proTip:
+          'Pinning high-degree hub nodes prevents the simulation from drifting as you add later chapters—press the Pin switch in Node Properties anytime.',
+        checkpoint: {
+          question: 'What does Hop Depth Isolation (e.g., 1-Hop) show when a node is selected?',
+          options: [
+            'Only the selected node and entities within N direct links away, hiding unrelated clutter',
+            'Only deleted chapters',
+            'Only nodes without any connections',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Hop filtering isolates local structural neighborhoods so complex cast webs can be audited one character at a time.',
+        },
+        actionLabel: 'Switch to Story Graph Force Mode',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-graph-canvas-wrap',
+      },
+      {
+        id: 'm18-path-rules',
+        title: '2.2 Shortest Narrative Path Tracing & Dynamic Color Rules',
+        durationMin: 4,
+        instruction:
+          'Select a Start node and Target node in Path Tracing to illuminate the causal chain between them, and write dynamic Color Rules (e.g. kind:faction or #betrayal).',
+        objective: 'Verify multi-step plot setups reach their payoff cleanly and color-code large story worlds automatically.',
+        concepts: [
+          'Every mystery clue, romantic tension, or political conspiracy spans multiple intermediate scenes before resolving. Quillvibe’s Shortest Narrative Path finder computes exact breadth-first graph traversal between any Start entity and Target payoff—highlighting every intervening node and edge in warm gold.',
+          'Dynamic Color Rules let rules follow tags and categories automatically across dozens of cards without repainting nodes individually. Writing "#clue" or "kind:location" highlights every matching card consistently across exports and themes.',
+        ],
+        steps: [
+          'Select any Source -> Target pair in the Path Finder controls to trace how an early item or character connects to the climax.',
+          'Inspect empty Board Properties on the right sidebar (click blank canvas first) and add a Color Rule such as "kind:scene" or "#betrayal".',
+          'Use the live Search filter in the toolbar to dim non-matching nodes when scanning massive world maps.',
+        ],
+        example: {
+          heading: 'Gold Causal Clue Trail',
+          body: 'Trace "Brass Astrolabe" -> "Harbor Master Ledger" -> "Skerry Signal Fire": verify zero dead ends exist between discovery and resolution.',
+        },
+        proTip:
+          'Combine "#theme" tags inside Node Markdown Notes with Color Rules to visually map thematic motifs across acts.',
+        checkpoint: {
+          question: 'What does Path Tracing illuminate inside Story Graph?',
+          options: [
+            'The shortest causal chain of nodes and edges connecting a Start node to a Target node',
+            'The total file size of exported PDFs',
+            'Keyboard shortcut conflicts',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Path Tracing highlights shortest step-by-step causality links across complex plot webs.',
+        },
+        actionLabel: 'Inspect Path & Color Rules',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-graph-sidebar',
+      },
+      {
+        id: 'm18-autosync-canvas',
+        title: '2.3 Two-Way Book Auto-Sync ([[Wikilinks]]) & .canvas JSON / SVG Export',
+        durationMin: 5,
+        instruction:
+          'Keep Auto-Sync Book enabled for direct alignment with Manuscript scenes and Story Bible cards, trigger Sync [[Wikilinks]] from Markdown notes, and export Vector SVG, PNG, or .canvas files.',
+        objective: 'Ensure zero drift between story diagrams, live chapters, and standalone visual exports.',
+        concepts: [
+          'Conventional mind-mapping software drifts out of date the moment chapter three changes a character name or splits a scene. With "Auto-Sync Book" active, renaming a character in Story Bible or adding chapters in the Binder automatically maintains synced graph cards—and editing a synced card’s label or notes writes cleanly back to your Story Bible or Scene synopsis.',
+          'Adding [[Entity Name]] inside any node’s Markdown Notes wires live cross-links to matching cards when clicking "Sync [[Wikilinks]] Now". When sharing outlines with co-authors or external tools, Story Graph exports open `.canvas` JSON diagrams, Vector SVG, or crisp 2x PNG images.',
+        ],
+        steps: [
+          'Verify "Auto-Sync Book" is toggled active in the Story Graph toolbar.',
+          'Click any card and write "[[Clara Holm]]" inside Markdown Notes, then click "Sync [[Wikilinks]] Now" to create a link automatically.',
+          'Export your finished diagram via SVG, PNG, or .canvas JSON cleanly from the toolbar.',
+        ],
+        example: {
+          heading: 'Bi-Directional Bible Update',
+          body: 'Update Clara Holm’s role subtitle directly in the Story Graph inspector -> open Story Bible and see Clara’s card updated identically.',
+        },
+        proTip:
+          'Standard `.canvas` JSON export lets you back up or exchange spatial boards with JSON-Canvas compatible diagramming tools without vendor lock-in.',
+        checkpoint: {
+          question: 'What happens when you reference [[Another Card]] in Markdown Notes and click "Sync [[Wikilinks]] Now"?',
+          options: [
+            'Quillvibe automatically creates matching connector edges to those referenced cards',
+            'It locks the chapter against future typing',
+            'It clears all existing labels',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Wikilink parsing discovers matching cards in your graph and generates missing edges cleanly.',
+        },
+        actionLabel: 'Inspect Auto-Sync Toolbar',
+        minTier: 'advanced',
+        targetView: 'graph',
+        targetSelector: '.bv-subbar',
+      },
+    ],
+  },
+  {
+    id: 'mod-cs-deep-1',
+    number: 19,
+    track: 'cover-studio',
+    title: 'Book Cover Studio 101: Wrap Anatomy, Canvas & Layer Hierarchy',
+    summary:
+      'Foundational university seminar covering trade print cover anatomy (Front, Spine, Back, Dust-Jacket Flaps), precision zoom/panning, smart snapping, and non-destructive layer grouping.',
+    audience: 'Authors designing print-ready paperback, hardcover, and eBook covers',
+    lessons: [
+      {
+        id: 'm19-wrap-anatomy',
+        title: '1.1 Five-Face Full Print Anatomy: Front, Spine, Back & Jacket Flaps',
+        durationMin: 6,
+        instruction:
+          'Inspect Front, Spine, Back, Front Flap, and Back Flap templates in Book Cover Studio, set exact trim dimensions, and position spine typography safely inside bleed margins.',
+        objective: 'Compose structurally accurate book jackets that survive commercial printing trim tolerances.',
+        concepts: [
+          'A complete printed book jacket spans five interconnected panels: Front Cover (sales centerpiece), Spine (narrow vertical hinge sized proportionally from book page count and trim), Back Cover (blurb, endorsement, barcode box), and optional Dust-Jacket Flaps (author bio & synopsis).',
+          'Treating these five faces cleanly inside one project keeps palette harmony, rule alignments, and matching fonts unbroken across spine crease lines. Switching between individual Front Face eBook view and Full Print Wrap preview in Book Cover Studio lets you verify alignment before exporting.',
+          'Templates (Obsidian Foil, Ivory Classic, Editorial Band, Full Bleed, Minimal Spine) provide balanced safe-margin scaffolding you can customize completely layer by layer.',
+        ],
+        steps: [
+          'Open Studio -> Book Cover Studio (Full Studio layout).',
+          'Toggle between Front Cover and Full Print Wrap views to inspect spine crease guides and back-cover margin boundaries.',
+          'Select each Cover Face (Front, Spine, Back, Flaps) when placing title, spine author credit, and back blurb text layers.',
+        ],
+        example: {
+          heading: 'Centered 6×9 Spine Tolerance',
+          body: 'Keep spine text centered within the middle 65% of spine width so 1.5mm commercial press trimming shifts never clip descending letterforms.',
+        },
+        proTip:
+          'Upload custom .ttf or .otf display serif fonts inside Settings -> Typefaces & Fonts first so both cover display typography and interior headings belong to the same foundry family.',
+        checkpoint: {
+          question: 'Which five faces can be designed together inside one Quillvibe Book Cover Studio project?',
+          options: [
+            'Front, Back, Spine, Front Flap, and Back Flap',
+            'Only square thumbnails',
+            'Manuscript chapters only',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Book Cover Studio supports full dust-jacket wraps spanning Front, Spine, Back, and both interior flaps.',
+        },
+        actionLabel: 'Open Book Cover Studio',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-stage',
+      },
+      {
+        id: 'm19-precision-canvas',
+        title: '1.2 10%–500% Zoom, Space+Drag Panning & Magnetic Smart Guides',
+        durationMin: 5,
+        instruction:
+          'Master vector-studio canvas navigation: Space+Drag to pan, Ctrl+= / - / 0 or trackpad pinch to zoom up to 500%, double-click canvas text to edit live, and align objects via magnetic smart guides.',
+        objective: 'Achieve razor-sharp graphic alignment and rapid typography adjustments directly on the cover artboard.',
+        concepts: [
+          'Fine cover design requires moving fluidly between 30% thumbnail checks and 400% hairline kerning details. Book Cover Studio supports continuous 10%–500% zooming via trackpad pinch or Ctrl+= / - / 0 and instant Space+Drag panning without accidentally nudging locked layers.',
+          'Eight-point scaling handles paired with rotation handles let you proportion crests, bands, and rules visually, while magnetic smart guides illuminate centerlines and mutual edge alignments across adjacent shapes and typography boxes.',
+          'Double-clicking any text element edits copy, subtitle, or spine lines directly in-place on the canvas rather than hunting across forms.',
+        ],
+        steps: [
+          'Hold Space and drag across the Cover Studio artboard to pan freely at 150%–300% zoom.',
+          'Toggle Snap-to-Grid and Smart Alignment Guides in the top Cover toolbar, then drag a shape until purple center/edge guides flash into alignment.',
+          'Double-click the main book Title directly on the cover canvas to adjust wording inline, or drag top rotation/corner scale handles.',
+        ],
+        example: {
+          heading: 'Optical Centering Over Pure Math',
+          body: 'Zoom to 200%, align title left edges precisely with an editorial accent rule using Smart Guides, then zoom back to 35% to judge visual weight.',
+        },
+        proTip:
+          'Hold Shift while dragging or scaling/rotating objects to maintain clean orthogonal proportions cleanly.',
+        checkpoint: {
+          question: 'What shortcut pans the Book Cover Studio artboard cleanly without moving unlocked layers?',
+          options: [
+            'Hold Space + Drag',
+            'Double-click Delete',
+            'Press F11 repeatedly',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Space+Drag temporarily activates the hand pan tool across the entire Cover Studio viewport.',
+        },
+        actionLabel: 'Inspect Cover Artboard Controls',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-canvas-scroll',
+      },
+      {
+        id: 'm19-layers-groups',
+        title: '1.3 Marquee Multi-Select, Ctrl+G Grouping, Layer Stacking & 100-Step Undo',
+        durationMin: 5,
+        instruction:
+          'Select multiple layers via Shift+Click or marquee box, group locks with Ctrl+G, manage visibility/locks/flipping in the Layers panel, and rely on 100-step undo/redo.',
+        objective: 'Organize complex multi-shape covers cleanly so ornaments, frames, and typography never drift out of sync.',
+        concepts: [
+          'As covers accumulate background gradients, border rules, ornaments, author crests, and subheadings, editing each individual layer becomes error-prone. Dragging a selection marquee over empty margin—or holding Shift while clicking—selects multiple shapes and text layers together.',
+          'Pressing Ctrl+G groups selected artwork into a cohesive unit you can position as one assembly; clicking Eye toggles visibility during contrast tests, Lock pins settled background layers, and Bring-to-Front / Send-to-Back manages exact painter z-order.',
+          'Every geometric tweak, font switch, color shift, and path stroke logs to Book Cover Studio’s 100-step history stack so brave visual experiments carry zero risk.',
+        ],
+        steps: [
+          'Shift+Click two graphic layers (for example a decorative border rule and an emblem) or marquee-drag across them.',
+          'Press Ctrl+G to group them, reposition the unified group cleanly on the canvas, and verify stacking inside the right Layers tab.',
+          'Lock the background shape layer so selecting foreground text never grabs the sky/paper backdrop by accident.',
+        ],
+        example: {
+          heading: 'Locked Textured Backdrop Pattern',
+          body: 'Lock your full-bleed color field & gradient vignette layer immediately after setup so rapid title typography drags remain frictionless.',
+        },
+        proTip:
+          'Flip-H and Flip-V layer actions mirror asymmetric botanical ornaments symmetrically across spine or front corners in two clicks.',
+        checkpoint: {
+          question: 'Which keyboard shortcut groups multi-selected layers in Book Cover Studio?',
+          options: ['Ctrl + G', 'Ctrl + K', 'Alt + Enter'],
+          correctIndex: 0,
+          explanation:
+            'Ctrl+G bundles selected cover elements so layout adjustments and alignments move them together cleanly.',
+        },
+        actionLabel: 'Inspect Cover Layers Panel',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-right-body',
+      },
+    ],
+  },
+  {
+    id: 'mod-cs-deep-2',
+    number: 20,
+    track: 'cover-studio',
+    title: 'Book Cover Studio 201: Pro Vector Drawing, Blend Modes & Exports',
+    summary:
+      'Advanced Desktop Pro & Production cover finishing: Freehand Brush & Vector Pen path drawing, 7 optical blend modes, Draft Variants Side-by-Side Comparison, Review Pins, and .qvdesign / PNG 3x / Vector SVG / Print PDF outputs.',
+    audience: 'Authors and cover illustrators producing commercial covers and review rounds',
+    lessons: [
+      {
+        id: 'm20-vector-blends',
+        title: '2.1 Desktop Pro: Vector Pen Paths, Freehand Brush & 7 Optical Blend Modes',
+        durationMin: 6,
+        instruction:
+          'Switch to the Draw tab in the Desktop App Cover Studio, craft crisp polygons or smooth calligraphic ink paths, and apply Multiply, Screen, Overlay, or Soft Light blend modes.',
+        objective: 'Create original geometric motifs, textures, and layered lighting depth right inside Quillvibe.',
+        concepts: [
+          'While both Web and Desktop Cover Studios support vector templates, shapes, ornaments, gradients, and multi-resolution exports, the compiled Desktop App unlocks full vector illustration directly on the artboard: Freehand Brush smooth ink drawing and precision multi-vertex Vector Pen polygons.',
+          'Each vector path exposes Stroke Color, Stroke Width, Close Path Fill, Opacity sliders, and seven optical blend modes (Normal, Multiply, Screen, Overlay, Soft Light, Darken, Lighten) inside the Properties inspector. Using Multiply on dark texture washes or Soft Light on warm foil shapes integrates uploaded artwork cleanly without muddy cutouts.',
+          'You can also paste direct https:// image URLs in Desktop Uploads (for CORS-enabled assets) to embed pixels offline into your cover package.',
+        ],
+        steps: [
+          'In the Desktop App Cover Studio, select the Draw tool tab -> Freehand Brush or Vector Pen.',
+          'Plot multi-point geometric frames with Vector Pen or sketch expressive organic wave curves with Freehand Brush; toggle Close Path to fill shapes cleanly.',
+          'Adjust Blend Mode (e.g. Multiply or Overlay) and Opacity in Properties to blend shapes into underlying cover photography or paper textures.',
+        ],
+        example: {
+          heading: 'Editorial Foil Glint Over Texture',
+          body: 'Draw an angular diamond horizon in muted amber (#d9b478) over a charcoal canvas texture and switch Blend Mode to Soft Light at 68% opacity.',
+        },
+        proTip:
+          'Remember that Freehand Brush strokes, Vector Pen paths, 7 blend modes, Draft Comparisons, and Review Pins save seamlessly inside standalone `.qvdesign` files even if kept separate from manuscript text.',
+        checkpoint: {
+          question: 'Which blend mode naturally integrates highlights/warm tones gently over underlying dark cover textures?',
+          options: ['Overlay / Soft Light (Desktop Pro Vector Studio)', 'Hard Page Wrap', 'Lock Layer'],
+          correctIndex: 0,
+          explanation:
+            'Optical blend modes like Overlay, Soft Light, Multiply, and Screen composite depth natively across stacked vector and image layers.',
+        },
+        actionLabel: 'Inspect Pro Cover Tools',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-left-body',
+      },
+      {
+        id: 'm20-drafts-pins',
+        title: '2.2 Draft Variants Side-by-Side Comparison & Pin Collaboration (.qvdesign)',
+        durationMin: 5,
+        instruction:
+          'Save contrasting cover concepts as Draft Variants, compare two designs side-by-side before promoting a winner, and drop numbered Review Pins for collaborators via .qvdesign.',
+        objective: 'Run objective cover critique cycles without overwriting promising alternatives or leaking manuscript prose.',
+        concepts: [
+          'Strong cover design demands A/B discipline: testing a sparse typographic ivory jacket against a full-bleed atmospheric dusk design side by side rather than tweaking one canvas endlessly until contrast blurs. Draft Variants save named full snapshots you can inspect side-by-side in one split comparison view before clicking Promote Winner.',
+          'When working with editors, co-authors, or cover illustrators, numbered Canvas Review Pins anchor exact critique notes ("nudge subtitle up 4mm", "lighten background behind author name") right at pixel coordinates on any face.',
+          'Exporting a `.qvdesign` archive packages cover layers, custom vector paths, variants, and pins independently of unpublished chapters—so illustrators work with full vector fidelity and zero manuscript exposure.',
+        ],
+        steps: [
+          'Save your current layout as Draft A inside Cover Drafts, experiment boldly with color/type, and save Draft B.',
+          'Open Side-by-Side Comparison to evaluate hierarchy, breathing room, and title legibility between both drafts, then click Promote Winner.',
+          'Add Review Pins on Front or Spine targets, then export `.qvdesign` for collaborator review or merge incoming pins via Merge Pins Only.',
+        ],
+        example: {
+          heading: 'Safe Illustrator Handoff',
+          body: 'Send Sea-Salt-Cover.qvdesign to your illustrator instead of your full `.qv` book file; when they send back refined vectors, import and Merge Pins cleanly.',
+        },
+        proTip:
+          'Pair Side-by-Side Variant comparison with a quick check at 25% scale—if your runner-up beats your favorite at thumbnail distance, promote the clearer design.',
+        checkpoint: {
+          question: 'Why do authors exchange covers as `.qvdesign` packages instead of sharing the full `.qv` file?',
+          options: [
+            '`.qvdesign` shares full editable cover layers, variants, and review pins without exposing unpublished manuscript chapters',
+            '`.qv` cannot store cover designs',
+            '`.qvdesign` strips all fonts automatically',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Splitting cover artwork into `.qvdesign` protects manuscript confidentiality while keeping full vector editability.',
+        },
+        actionLabel: 'Inspect Cover Studio Collaborations',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'cover',
+        targetSelector: '.qv-studio-stage',
+      },
+      {
+        id: 'm20-multi-exports',
+        title: '2.3 Print PDF, Vector SVG, Transparent PNG & 1x/2x/3x Release Exports',
+        durationMin: 4,
+        instruction:
+          'Verify final color contrast, spine dimensions, and trim clearances, then export high-DPI 1x/2x/3x PNG, Transparent PNG motifs, Vector SVG, JPEG, or print-ready wrap PDF.',
+        objective: 'Generate clean production deliverables for e-readers, storefront ads, print houses, and vector presses.',
+        concepts: [
+          'Different distribution channels demand distinct formats: online bookstores expect sharp 1600×2560+ RGB PNG or JPEG front covers; promotional badges use Transparent PNG exports; large-format signage or foil dies benefit from lossless Vector SVG curves; and print-on-demand binders expect trim-exact full-wrap PDF output.',
+          'Selecting export scale (1x draft check, 2x storefront retina, 3x oversized display) renders clean high-resolution bitmaps straight from your live canvas geometry without raster blur.',
+        ],
+        steps: [
+          'Perform a final zoom-out audit at 25% (thumbnail test) and 200% (edge/alignment check) across Front, Spine, and Back.',
+          'Click Export inside Book Cover Studio to pick PNG (1x / 2x / 3x or Transparent), JPEG, Vector SVG, or Print Wrap PDF.',
+          'Bundle your final cover exports beside your `.qv` source file and Interior Typeset EPUB 3 / Print PDF inside your Publish archival folder.',
+        ],
+        example: {
+          heading: 'Complete Launch Asset Pack',
+          body: 'Export: Front Cover PNG 3x (storefronts), Full Print Wrap PDF (paperback printer), SVG emblem mark (author website), and master `.qvdesign` + `.qv` backup.',
+        },
+        proTip:
+          'Always verify exported PDFs and PNGs in an external viewer across bright and dark screen backgrounds before final upload.',
+        checkpoint: {
+          question: 'Which Cover Studio export option stays infinitely sharp at billboard or foil-stamp print sizes?',
+          options: ['Vector SVG', 'Low-res 1x JPEG', 'Plain .txt'],
+          correctIndex: 0,
+          explanation:
+            'Vector SVG preserves mathematical shapes, text geometry, and vector paths cleanly at any physical scale.',
+        },
+        actionLabel: 'Open Publish & Export Center',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'publish',
+        targetSelector: '.bv-typeset-layout',
+      },
+    ],
+  },
+  {
+    id: 'mod-web-browser',
+    number: 21,
+    track: 'manuscript',
+    platform: 'web',
+    title: 'Website Edition: Browser Saving, Clean URLs & Offline Habits',
+    summary:
+      'Write in any modern browser without installation, download manual .qv backups reliably, use direct studio routes, and transfer drafts cleanly to Desktop.',
+    audience: 'Authors writing inside quillvibe.jhonrey.com on browser or Chromebook',
+    lessons: [
+      {
+        id: 'm21-web-save',
+        title: 'Browser IndexedDB Auto-Cache vs Explicit .qv File Downloads',
+        durationMin: 4,
+        instruction:
+          'Understand how the Website edition caches edits locally in IndexedDB while relying on Ctrl+S or Save to export portable .qv files to your computer.',
+        objective: 'Protect browser-written manuscripts against cache clears or browser profile resets.',
+        concepts: [
+          'In the Website edition, every stroke is written quickly to your browser’s private IndexedDB storage so refreshing the page does not lose your chapter. Browser sandboxes cannot silently overwrite files on your hard drive without a save dialog.',
+          'Clicking Save (or pressing Ctrl+S) downloads a self-contained .qv archive containing your manuscript prose, inline images, Story Bible cards, Story Graph layout, and cover layers. Keep the latest downloaded .qv file in your personal cloud folder or USB drive at the end of every session.',
+        ],
+        steps: [
+          'Confirm "Saved" shows in the bottom status strip after typing in Manuscript.',
+          'Click Save in the top bar (or press Ctrl+S) to download a portable .qv backup archive to your Downloads folder.',
+          'Open Settings -> Workspace & Backup to verify your Web Save Interval and Open Local .qv option.',
+        ],
+        example: {
+          heading: 'Safe Web Session Wrap-Up',
+          body: 'Before clearing browser cookies or switching laptops: click Save, verify SaltCartographer.qv appears in Downloads, then drop it into your backup drive.',
+        },
+        proTip:
+          'Desktop removes the manual download step completely by writing silently to your chosen folder on every change.',
+        checkpoint: {
+          question: 'Why should Website users still click Save at the end of a browser writing session?',
+          options: [
+            'To download an independent .qv archive onto disk that survives browser cache clearing',
+            'Because Typed words vanish when switching between Draft and Corkboard',
+            'To upload chapters onto a public community feed',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Browser IndexedDB stays inside that specific browser profile; downloading a .qv archive protects your whole book on your filesystem.',
+        },
+        actionLabel: 'Inspect Top Save Bar',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-topbar',
+      },
+      {
+        id: 'm21-web-routes',
+        title: 'Direct Web URLs (/start, /write, /course, /help) & Universal Search',
+        durationMin: 3,
+        instruction:
+          'Bookmark direct browser URLs to land straight inside Drafting, Academy, or Help, and press Ctrl+K anytime to jump to any scene, guide, or studio tool.',
+        objective: 'Navigate the full web workspace cleanly via direct links and universal command search.',
+        concepts: [
+          'Unlike single-URL tools that drop you onto a marketing page every morning, Quillvibe Web separates "/" (editorial overview), "/start" (Welcome & Shelf picker), "/write" (Manuscript sheet), "/graph" (Story Graph), "/studio/cover" (Cover Studio), "/course" (Academy), "/help" (Knowledge Base), and "/settings".',
+          'Pressing Ctrl+K (or clicking the Search magnifying icon) queries open scenes, Story Bible entries, Help FAQ topics, Course lessons, and workspace commands in one filterable dialog.',
+        ],
+        steps: [
+          'Press Ctrl+K or click the Search icon in the centered top bar.',
+          'Type "proofread", "cover", or a character name to inspect instant cross-studio results.',
+          'Bookmark /write in your browser bar for instant morning entry without landing-page detours.',
+        ],
+        example: {
+          heading: 'Morning Bookmark Setup',
+          body: 'Pin https://quillvibe.jhonrey.com/write for daily drafting and https://quillvibe.jhonrey.com/course for craft study.',
+        },
+        proTip:
+          'Clicking a Universal Search course result jumps directly to that lesson inside Academy rather than resetting your progress.',
+        checkpoint: {
+          question: 'Which keyboard shortcut opens Quillvibe Universal Search from any studio or help page?',
+          options: ['Ctrl+K', 'Alt+F4', 'Shift+Tab'],
+          correctIndex: 0,
+          explanation: 'Ctrl+K opens Universal Search across manuscripts, tools, FAQs, error codes, and Academy lessons.',
+        },
+        actionLabel: 'Open Universal Search Button',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '#bv-universal-search-btn',
+      },
+      {
+        id: 'm21-web-handoff',
+        title: 'Handoff Workflow: Moving Books Between Website & Desktop App',
+        durationMin: 4,
+        instruction:
+          'Start a book in any browser, save the .qv bundle, and open the identical file inside the Desktop app with zero formatting or graph loss.',
+        objective: 'Keep manuscript prose, Story Graph positions, and covers 100% portable between Web and Desktop.',
+        concepts: [
+          'The Website and Desktop apps read the exact same .qv specification. A manuscript drafted on a tablet or public computer in the Website edition opens identically inside Windows, macOS, or Linux Desktop.',
+          'Desktop-only Pro Cover Studio vector paths remain preserved inside the .qv project even when opened later on the Web for text edits, so alternating between travel browsers and a home workstation stays lossless.',
+        ],
+        steps: [
+          'Export or Save your .qv archive from the Website session.',
+          'On Desktop, press Ctrl+O or drag the .qv file directly onto any open window or New Tab.',
+          'When returning to Desktop-exclusive features like Pro Vector Draw paths or LAN transfer, your earlier browser chapters appear immediately in the Binder.',
+        ],
+        example: {
+          heading: 'Cross-Device Week',
+          body: 'Draft Chapters 4-5 in a café browser -> Save .qv -> Double-click at home in Desktop Quillvibe for Pro Cover design and Print PDF export.',
+        },
+        proTip:
+          'Use "Save Project Bundle (.qv)" in Settings or the top bar whenever moving between two machines.',
+        checkpoint: {
+          question: 'What happens if you open a Desktop project containing Pro Cover Studio vector strokes inside the Website editor?',
+          options: [
+            'Manuscript editing and Web views work normally while stored Desktop data remains intact inside the .qv file',
+            'The Website deletes all cover layers automatically',
+            'The file extension renames itself to .txt',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Quillvibe keeps non-active edition data untouched inside the unified .qv archive.',
+        },
+        actionLabel: 'Open Settings & Backup',
+        minTier: 'basic',
+        targetView: 'settings',
+        targetSelector: '.bv-main-stage',
+      },
+    ],
+  },
+  {
+    id: 'mod-desktop-tabs',
+    number: 22,
+    track: 'manuscript',
+    platform: 'desktop',
+    title: 'Desktop Window Craft: Stacked Book Tabs, Tear-Off & OS Opening',
+    summary:
+      'Operate multiple manuscripts simultaneously with stacked Chrome-style book tabs, drag-to-detach windows, and double-click OS file opening.',
+    audience: 'Desktop App authors managing series books, side notes, or reference manuscripts',
+    lessons: [
+      {
+        id: 'm22-tab-strip',
+        title: 'Stacked Chrome-Style Book Tab Bar & New Tab Picker (Ctrl+Shift+N)',
+        durationMin: 4,
+        instruction:
+          'Open multiple .qv books or companion windows inside a single stacked tab strip, reorder tabs by dragging horizontally, or summon a fresh New Tab picker.',
+        objective: 'Keep trilogy volumes, world Bibles, and working drafts side by side inside one clean Desktop frame.',
+        concepts: [
+          'Only the installed Desktop App renders the top stacked Book Tab Bar above the main studio bar. Every tab hosts an independent book workspace with its own active scene, layout tier, and undo history.',
+          'Click "+" or press Ctrl+Shift+N to open an empty New Tab chooser where you can create a new book, pick from recently opened manuscripts, or browse OS files without disturbing open chapters.',
+        ],
+        steps: [
+          'Click the "+" button on the right edge of the Desktop Tab Bar (or press Ctrl+Shift+N).',
+          'Open a second manuscript or Reference Book from the picker list.',
+          'Drag tab pills left or right along the strip to set your reading order.',
+        ],
+        example: {
+          heading: 'Trilogy Continuity Desk',
+          body: 'Tab 1: Volume II Working Draft · Tab 2: Series Bible Reference · Tab 3: Short Story Collection — switching in one click.',
+        },
+        proTip:
+          'If a tab window stays open while you switch scenes, live conflict-safe local sync propagates changes if the same file is inspected.',
+        checkpoint: {
+          question: 'What does pressing Ctrl+Shift+N or clicking "+" on the Desktop Book Tab Bar open?',
+          options: [
+            'An empty New Tab book picker for recent manuscripts, blank books, or OS files',
+            'A public web search engine',
+            'A permanent delete dialog for open tabs',
+          ],
+          correctIndex: 0,
+          explanation:
+            'The Desktop New Tab lets you open another manuscript cleanly without closing your active chapter.',
+        },
+        actionLabel: 'Inspect Desktop Tab Bar',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-desktop-tabbar',
+      },
+      {
+        id: 'm22-tearoff-merge',
+        title: 'Vertical Tear-Off Windows & Z-Ordered Window Merging',
+        durationMin: 4,
+        instruction:
+          'Pull any book tab vertically downward off the tab strip to spawn a second monitor window, or drag a sole tab back onto another window’s tab strip to merge them.',
+        objective: 'Spread reference chapters cleanly across two monitors without copy-pasting or duplicate disk conflicts.',
+        concepts: [
+          'Desktop tabs use a central drag-and-drop window state machine: horizontal dragging reorders tabs along the bar, while pulling downward past the threshold detaches that tab into its own OS window preserving cursor grab position.',
+          'Dragging a single-tab window back into another Quillvibe window’s top strip snaps and merges it back into that window cleanly.',
+        ],
+        steps: [
+          'Hold left-click on a book tab title (with 2+ tabs open) and drag steadily downward out of the tab strip.',
+          'Position the detached window beside your main monitor or split left/right on Windows Snap.',
+          'Click the top-right New Window icon or drag a sole tab over another bar to merge back.',
+        ],
+        example: {
+          heading: 'Two-Screen Revision Pass',
+          body: 'Tear out Book 1 onto your left monitor in Story Graph view while revising Book 2 on your primary monitor.',
+        },
+        proTip:
+          'Sole-tab windows move smoothly when you drag the tab header area so window positioning feels natural on both multi-display and laptop setups.',
+        checkpoint: {
+          question: 'How do you turn one tab from a Desktop window into an independent second OS window?',
+          options: [
+            'Pull the tab vertically downward past the tab strip threshold',
+            'Double-click the status word count',
+            'Turn off Smooth Animations in Settings',
+          ],
+          correctIndex: 0,
+          explanation:
+            'Vertical tear-off detaches the selected book tab into its own synced OS window at the cursor position.',
+        },
+        actionLabel: 'View Desktop Window Controls',
+        minTier: 'intermediate',
+        targetView: 'editor',
+        targetSelector: '.bv-topbar',
+      },
+      {
+        id: 'm22-file-assoc',
+        title: 'Single-Instance File Associations (.qv, .qvbible, .qvdesign)',
+        durationMin: 3,
+        instruction:
+          'Open .qv, .qvbible, .qvscene, .qvstyle, and .qvdesign files straight from Windows Explorer, macOS Finder, or Linux file managers into a new tab in your running studio.',
+        objective: 'Launch manuscripts and standalone design packages by double-clicking them natively on your computer.',
+        concepts: [
+          'Instead of opening conflicting duplicate app instances, the Desktop build routes OS double-click open events to your existing running Quillvibe window and loads the opened file safely as a new tab.',
+          'Quillvibe recognizes five native file extensions: .qv (complete book), .qvbible (world archive), .qvscene (single scene transfer), .qvstyle (custom font/trim stylesheet), and .qvdesign (cover artwork exchange).',
+        ],
+        steps: [
+          'Double-click any saved .qv or .qvdesign file in your computer file manager while Quillvibe Desktop is open.',
+          'Verify it opens as a fresh tab beside your active project rather than overwriting your unsaved screen.',
+          'Open Extensions & Formats or Settings to review file binding preferences.',
+        ],
+        example: {
+          heading: 'Collaborator Handoff',
+          body: 'Double-clicking "Cover-Final-Alt.qvdesign" sent by a cover artist pops the editable artboard straight into a tab beside your manuscript.',
+        },
+        proTip:
+          'Keep active book drafts organized in dated folders; single-instance opening ensures double-clicking an older backup loads it in a comparison tab cleanly.',
+        checkpoint: {
+          question: 'Which native extension opens editable cover artwork cleanly in Desktop without exposing manuscript chapters?',
+          options: ['.qvdesign', '.rtf', '.txt'],
+          correctIndex: 0,
+          explanation: '.qvdesign carries Book Cover Studio layers, guides, and vector paths separately from private prose chapters.',
+        },
+        actionLabel: 'Inspect Settings & Formats',
+        minTier: 'basic',
+        targetView: 'settings',
+        targetSelector: '.bv-main-stage',
+      },
+    ],
+  },
+  {
+    id: 'mod-desktop-os',
+    number: 23,
+    track: 'craft-publishing',
+    platform: 'desktop',
+    title: 'Desktop Studio Exclusives: Fullscreen Bar, Auto-Save & Native Updater',
+    summary:
+      'Use F11 fullscreen sprint mode with live clock, automatic disk saving, local Wi-Fi/Bluetooth sharing, and built-in GitHub Release updates.',
+    audience: 'Desktop App authors maximizing daily word throughput, privacy, and app updates',
+    lessons: [
+      {
+        id: 'm23-f11-sprint',
+        title: 'F11 Fullscreen Distraction-Free Mode & Floating Sprint Bar',
+        durationMin: 3,
+        instruction:
+          'Press F11 (or click the Fullscreen icon) on Desktop to fill the entire display while retaining subtle clock, word goal, and sprint alarm status.',
+        objective: 'Write without taskbar clutter or notification distractions on Windows, macOS, and Linux.',
+        concepts: [
+          'Unlike browser F11 which hides the operating system frame generically, Desktop Fullscreen tunes top-strip density and pairs naturally with the Sprint Timer (25m/45m countdown) and Wake-Up Alarm ringtones.',
+          'Pair F11 with Focused Workspace Layout and Obsidian Dark (or Warm Parchment) to build a dedicated digital typewriter.',
+        ],
+        steps: [
+          'Click the Expand Fullscreen icon in the top toolbar or press F11 on Desktop.',
+          'Set a 25m Sprint Timer in the bottom footer and click Start.',
+          'Write two uninterrupted paragraphs before pressing F11 or Esc to restore your normal window chrome.',
+        ],
+        example: {
+          heading: 'Evening Word Sprint',
+          body: 'Obsidian Dark + F11 Fullscreen + Focused tier + 25m Pomodoro Sprint -> zero menus, high-contrast ivory serif type.',
+        },
+        proTip:
+          'You can arm a custom ringtone alarm inside the footer bar so you never need to look at your phone while drafting.',
+        checkpoint: {
+          question: 'Which key toggles native fullscreen focus inside the Desktop Studio?',
+          options: ['F11', 'Ctrl+Q', 'Backspace'],
+          correctIndex: 0,
+          explanation: 'F11 (or the toolbar Expand button) toggles native Desktop Fullscreen cleanly.',
+        },
+        actionLabel: 'Open Fullscreen Control',
+        minTier: 'basic',
+        targetView: 'editor',
+        targetSelector: '.bv-main-stage',
+      },
+      {
+        id: 'm23-native-save-lan',
+        title: 'Direct Native Disk Auto-Save & Local Wi-Fi / Bluetooth Sharing',
+        durationMin: 4,
+        instruction:
+          'Write directly to disk folders without browser download prompts and beam signed .qv manuscripts across local Wi-Fi or Bluetooth without cloud servers.',
+        objective: 'Maintain local-only privacy while moving drafts rapidly between co-authors or personal machines.',
+        concepts: [
+          'The Desktop Tauri/Rust backend reads and writes native files directly when you link a project folder, eliminating repeated Download folder copies while keeping atomic crash-safe backups.',
+          'Inside Collaboration & Publish, Desktop provides local LAN Wi-Fi and peer transfer tools to exchange encrypted or co-author-signed .qv files directly inside the same room with zero third-party servers.',
+        ],
+        steps: [
+          'Open a local .qv book file via File Open (Ctrl+O) in Desktop so changes bind directly to your disk path.',
+          'Navigate to Typeset -> Publish & Share to view Local Wi-Fi / LAN & Bluetooth transfer readiness alongside .docx/.epub exports.',
+          'Run Check Integrity before shipping any signed manuscript copy.',
+        ],
+        example: {
+          heading: 'Offline Co-Author Cabin Session',
+          body: 'Zero internet at a writing retreat -> Desktop writes natively to SSD and exchanges sealed .qv scenes directly over local Wi-Fi.',
+        },
+        proTip:
+          'Every signed transfer logs your Origin Device ID (`QVD-*`) so two co-authors can reconcile drafts confidently without overwriting each other.',
+        checkpoint: {
+          question: 'How does Desktop auto-saving differ from Website IndexedDB saving?',
+          options: [
+            'Desktop writes directly to your real filesystem path without repetitive browser download popups',
+            'Desktop disables saving unless connected to Wi-Fi',
+            'Desktop saves files only as temporary clipboard text',
+          ],
+          correctIndex: 0,
+          explanation: 'Desktop binds straight to your filesystem folder via the Rust core for zero-friction disk saves.',
+        },
+        actionLabel: 'Open Publish & Share Tools',
+        minTier: 'advanced',
+        targetView: 'typeset',
+        targetTypesetTab: 'publish',
+        targetSelector: '.bv-typeset-layout',
+      },
+      {
+        id: 'm23-updater-security',
+        title: 'Built-In GitHub Release Updater & Branded Desktop Installer',
+        durationMin: 3,
+        instruction:
+          'Check for official Quillvibe Desktop updates directly inside Settings without hunting GitHub manually, and verify signed installer packages.',
+        objective: 'Keep your installed Windows, macOS, or Linux studio current while preserving local books and fonts.',
+        concepts: [
+          'Inside Settings on Desktop, clicking Check for Updates queries official GitHub Releases metadata (`jhonrey-com/Quillvibe`) and launches a clean in-app update dialog displaying release notes and download progress.',
+          'Installed fonts (.ttf/.otf/.woff2), Author Signing Keys, and library books reside safely inside your user app data directory outside the executable folder, so upgrading from v3.2.0 to newer releases leaves every book intact.',
+        ],
+        steps: [
+          'Open Settings from the centered top bar.',
+          'Locate the Desktop Application & Updates panel and click Check for Updates.',
+          'Verify current build version matches the latest GitHub Release tag.',
+        ],
+        example: {
+          heading: 'Zero-Risk Version Upgrade',
+          body: 'Run Check for Updates -> inspect changelog -> update executable while your Story Bible, Cover Studio layers, and custom fonts remain untouched.',
+        },
+        proTip:
+          'Export a full .qv backup before major major-number updates as good archival hygiene alongside automatic disk saves.',
+        checkpoint: {
+          question: 'Where do your books and custom fonts stay when the Desktop app updates to a newer version?',
+          options: [
+            'Safely untouched in your user data directory outside the application executable',
+            'Deleted so you start blank after each release',
+            'Uploaded publicly to GitHub Issues',
+          ],
+          correctIndex: 0,
+          explanation: 'Book libraries, signing keys, and typefaces live in user data storage independent of the app binary.',
+        },
+        actionLabel: 'Open Desktop Settings',
+        minTier: 'basic',
+        targetView: 'settings',
+        targetSelector: '.bv-main-stage',
+      },
+    ],
+  },
 ];
 
 export function readCompletedCourseLessons(): Set<string> {
@@ -1351,9 +3067,16 @@ export function toggleCourseLessonDone(lessonId: string, forceState?: boolean): 
   return done;
 }
 
-export function getCourseCompletionSummary(): { completed: number; total: number; pct: number } {
+export function getCourseCompletionSummary(
+  platformFilter: 'all' | 'web' | 'desktop' = 'all',
+): { completed: number; total: number; pct: number } {
   const done = readCompletedCourseLessons();
-  const all = COURSE_MODULES.flatMap((m) => m.lessons);
+  const matchingModules = COURSE_MODULES.filter((m) => {
+    if (platformFilter === 'all') return true;
+    const p = getModulePlatform(m);
+    return p === 'both' || p === platformFilter;
+  });
+  const all = matchingModules.flatMap((m) => m.lessons);
   const completed = all.filter((l) => done.has(l.id)).length;
   const total = all.length;
   return { completed, total, pct: total > 0 ? Math.round((completed / total) * 100) : 0 };
@@ -1361,15 +3084,196 @@ export function getCourseCompletionSummary(): { completed: number; total: number
 
 let activeCourseDrawer: HTMLElement | null = null;
 let activeModuleIndex = 0;
+let drawerCollapsed = false;
+let drawerPos: { left: number; top: number } | null = null;
+let drawerResizeHandler: (() => void) | null = null;
+
+interface ActiveGuideSession {
+  lessonId: string;
+  engaged: boolean;
+  cursorEl: HTMLElement | null;
+  rippleEl: HTMLElement | null;
+  speechEl: HTMLElement | null;
+  arrivalTimer: number | null;
+  cursorFadeTimer: number | null;
+  idleTimer: number | null;
+  pulseTimer: number | null;
+  targetEl: HTMLElement | null;
+  onTargetInteract: (() => void) | null;
+}
+
+let activeGuide: ActiveGuideSession | null = null;
+let onActiveLessonMarkedDone: ((lessonId: string, isDone: boolean) => void) | null = null;
+
+function clampDrawerPosition(drawer: HTMLElement, left: number, top: number): { left: number; top: number } {
+  if (typeof window === 'undefined') return { left, top };
+  const pad = 12;
+  const w = drawer.offsetWidth > 0 ? drawer.offsetWidth : Math.min(400, window.innerWidth - 28);
+  const h = drawer.offsetHeight > 0 ? drawer.offsetHeight : drawerCollapsed ? 46 : Math.min(540, window.innerHeight - 56);
+  const maxLeft = Math.max(pad, window.innerWidth - w - pad);
+  const maxTop = Math.max(pad, window.innerHeight - h - pad);
+  const clamped = {
+    left: Math.round(Math.max(pad, Math.min(maxLeft, left))),
+    top: Math.round(Math.max(pad, Math.min(maxTop, top))),
+  };
+  drawer.style.left = `${clamped.left}px`;
+  drawer.style.top = `${clamped.top}px`;
+  drawer.style.right = 'auto';
+  drawer.style.bottom = 'auto';
+  drawerPos = clamped;
+  if (activeGuide?.speechEl?.isConnected) {
+    positionSpeechDialogBesideDrawer(activeGuide.speechEl);
+  }
+  return clamped;
+}
+
+function rectsOverlap(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): boolean {
+  return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+}
+
+function dodgeDrawerFromRect(targetRect: DOMRect): void {
+  if (typeof window === 'undefined' || !activeCourseDrawer || !activeCourseDrawer.isConnected) return;
+  const drawer = activeCourseDrawer;
+  const dr = drawer.getBoundingClientRect();
+  const margin = 20;
+  const paddedTarget = {
+    left: targetRect.left - margin,
+    top: targetRect.top - margin,
+    right: targetRect.right + margin,
+    bottom: targetRect.bottom + margin,
+  };
+
+  if (!rectsOverlap(dr, paddedTarget)) return;
+
+  const w = dr.width || Math.min(400, window.innerWidth - 28);
+  const h = dr.height || 460;
+  const pad = 16;
+  const candidates = [
+    { left: pad, top: Math.max(pad, window.innerHeight - h - 42) },
+    { left: Math.max(pad, window.innerWidth - w - pad), top: Math.max(pad, window.innerHeight - h - 42) },
+    { left: pad, top: 60 },
+    { left: Math.max(pad, window.innerWidth - w - pad), top: 60 },
+  ];
+
+  let best = candidates[0];
+  for (const cand of candidates) {
+    const cRect = { left: cand.left, top: cand.top, right: cand.left + w, bottom: cand.top + h };
+    if (!rectsOverlap(cRect, paddedTarget)) {
+      best = cand;
+      break;
+    }
+  }
+
+  // Fallback to whichever corner sits farthest from target center if target spans across screen
+  if (
+    rectsOverlap({ left: best.left, top: best.top, right: best.left + w, bottom: best.top + h }, paddedTarget)
+  ) {
+    const tCx = (targetRect.left + targetRect.right) * 0.5;
+    const tCy = (targetRect.top + targetRect.bottom) * 0.5;
+    let bestDist = -1;
+    for (const cand of candidates) {
+      const dist = Math.hypot(cand.left + w * 0.5 - tCx, cand.top + h * 0.5 - tCy);
+      if (dist > bestDist) {
+        bestDist = dist;
+        best = cand;
+      }
+    }
+  }
+
+  clampDrawerPosition(drawer, best.left, best.top);
+}
+
+function positionSpeechDialogBesideDrawer(speech: HTMLElement): void {
+  if (typeof window === 'undefined') return;
+  const sW = speech.offsetWidth > 0 ? speech.offsetWidth : Math.min(310, window.innerWidth - 32);
+  const sH = speech.offsetHeight > 0 ? speech.offsetHeight : 148;
+  const dr = activeCourseDrawer?.isConnected ? activeCourseDrawer.getBoundingClientRect() : null;
+
+  if (!dr || window.innerWidth <= 900) {
+    speech.classList.remove('is-tail-left');
+    speech.style.left = `${Math.max(16, Math.round((window.innerWidth - sW) * 0.5))}px`;
+    speech.style.top = '64px';
+    speech.style.right = 'auto';
+    speech.style.bottom = 'auto';
+    return;
+  }
+
+  const spaceLeft = dr.left - 14;
+  const spaceRight = window.innerWidth - dr.right - 14;
+  const placeOnLeft =
+    spaceRight < sW + 12
+      ? true
+      : spaceLeft < sW + 12
+        ? false
+        : dr.left > window.innerWidth * 0.45;
+
+  const rawLeft = placeOnLeft ? dr.left - sW - 14 : dr.right + 14;
+  const left = Math.max(12, Math.min(window.innerWidth - sW - 12, Math.round(rawLeft)));
+  const top = Math.max(
+    12,
+    Math.min(window.innerHeight - sH - 12, Math.round(dr.top + Math.max(0, dr.height - sH - 16))),
+  );
+  speech.classList.toggle('is-tail-left', !placeOnLeft);
+  speech.style.left = `${left}px`;
+  speech.style.top = `${top}px`;
+  speech.style.right = 'auto';
+  speech.style.bottom = 'auto';
+}
+
+function clearActiveGuideOverlay(): void {
+  if (!activeGuide) return;
+  if (activeGuide.arrivalTimer !== null) window.clearTimeout(activeGuide.arrivalTimer);
+  if (activeGuide.cursorFadeTimer !== null) window.clearTimeout(activeGuide.cursorFadeTimer);
+  if (activeGuide.idleTimer !== null) window.clearTimeout(activeGuide.idleTimer);
+  if (activeGuide.pulseTimer !== null) window.clearTimeout(activeGuide.pulseTimer);
+  if (activeGuide.targetEl && activeGuide.onTargetInteract) {
+    activeGuide.targetEl.removeEventListener('pointerdown', activeGuide.onTargetInteract, true);
+    activeGuide.targetEl.removeEventListener('input', activeGuide.onTargetInteract, true);
+    activeGuide.targetEl.removeEventListener('focus', activeGuide.onTargetInteract, true);
+  }
+  activeGuide.targetEl?.classList.remove('qv-course-pulse');
+  activeGuide.cursorEl?.remove();
+  activeGuide.rippleEl?.remove();
+  activeGuide.speechEl?.remove();
+  activeGuide = null;
+}
 
 export function closeInteractiveCourseDrawer(): void {
+  clearActiveGuideOverlay();
+  onActiveLessonMarkedDone = null;
+  if (drawerResizeHandler && typeof window !== 'undefined') {
+    window.removeEventListener('resize', drawerResizeHandler);
+    drawerResizeHandler = null;
+  }
   if (activeCourseDrawer) {
     activeCourseDrawer.remove();
     activeCourseDrawer = null;
   }
 }
 
-export function navigateToCourseLesson(actions: AppActions, lesson: CourseLesson): void {
+export function navigateToCourseLesson(
+  actions: AppActions,
+  lesson: CourseLesson,
+  options?: { originEl?: HTMLElement | null },
+): void {
+  clearActiveGuideOverlay();
+
+  // Capture origin rect BEFORE state navigation removes the source button from DOM
+  const fallbackOriginX = typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.5) : 320;
+  const fallbackOriginY = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.45) : 260;
+  const originRect = options?.originEl?.getBoundingClientRect();
+  const originX =
+    originRect && originRect.width > 0
+      ? Math.round(originRect.left + Math.min(originRect.width * 0.65, 96))
+      : fallbackOriginX;
+  const originY =
+    originRect && originRect.height > 0
+      ? Math.round(originRect.top + originRect.height * 0.5)
+      : fallbackOriginY;
+
   if (lesson.minTier === 'advanced' && actions.getState().settings.toolTier !== 'advanced') {
     actions.updateSettings({ toolTier: 'advanced' });
     actions.notify('Switched Workspace Layout to Full Studio for this lesson.');
@@ -1378,65 +3282,365 @@ export function navigateToCourseLesson(actions: AppActions, lesson: CourseLesson
     actions.notify('Switched Workspace Layout to Editorial for this lesson.');
   }
 
+  const nextSubMode =
+    lesson.targetEditorSubMode ??
+    (lesson.targetView === 'editor' && lesson.id.startsWith('m4-')
+      ? lesson.id === 'm4-diff'
+        ? 'diff'
+        : 'proofread'
+      : undefined);
+
   actions.setState(
     {
       activeView: lesson.targetView,
       ...(lesson.targetTypesetTab ? { typesetSubTab: lesson.targetTypesetTab } : {}),
-      ...(lesson.targetView === 'editor' && lesson.id.startsWith('m4-')
-        ? { editorSubMode: lesson.id === 'm4-diff' ? 'diff' : 'proofread' }
-        : {}),
+      ...(nextSubMode ? { editorSubMode: nextSubMode } : {}),
+      ...(lesson.targetSelector === '.bv-binder' ? { showBinder: true } : {}),
+      ...(lesson.targetSelector === '.bv-inspector' ? { showInspector: true } : {}),
     },
     true,
   );
 
-  if (lesson.targetSelector) {
-    requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>(lesson.targetSelector!);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target.classList.add('qv-course-pulse');
-        window.setTimeout(() => target.classList.remove('qv-course-pulse'), 1600);
+  const session: ActiveGuideSession = {
+    lessonId: lesson.id,
+    engaged: false,
+    cursorEl: null,
+    rippleEl: null,
+    speechEl: null,
+    arrivalTimer: null,
+    cursorFadeTimer: null,
+    idleTimer: null,
+    pulseTimer: null,
+    targetEl: null,
+    onTargetInteract: null,
+  };
+  activeGuide = session;
+
+  const dismissOverlay = () => {
+    if (activeGuide !== session) return;
+    session.engaged = true;
+    if (session.idleTimer !== null) {
+      window.clearTimeout(session.idleTimer);
+      session.idleTimer = null;
+    }
+    session.speechEl?.remove();
+    session.speechEl = null;
+    session.cursorEl?.remove();
+    session.cursorEl = null;
+    session.rippleEl?.remove();
+    session.rippleEl = null;
+  };
+
+  const handleFollowedInstruction = () => {
+    if (activeGuide !== session || session.engaged) return;
+    dismissOverlay();
+    if (!readCompletedCourseLessons().has(lesson.id)) {
+      if (onActiveLessonMarkedDone) {
+        onActiveLessonMarkedDone(lesson.id, true);
+      } else {
+        toggleCourseLessonDone(lesson.id, true);
       }
+      actions.notify(`Completed: ${lesson.title}`);
+    }
+  };
+
+  requestAnimationFrame(() => {
+    if (activeGuide !== session) return;
+    const target = lesson.targetSelector
+      ? document.querySelector<HTMLElement>(lesson.targetSelector)
+      : null;
+
+    let targetX = fallbackOriginX;
+    let targetY = fallbackOriginY;
+
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const tr = target.getBoundingClientRect();
+      // Smoothly move Practice Companion drawer away if it overlaps or blocks the target control
+      dodgeDrawerFromRect(tr);
+
+      target.classList.add('qv-course-pulse');
+      session.targetEl = target;
+      session.onTargetInteract = handleFollowedInstruction;
+      target.addEventListener('pointerdown', handleFollowedInstruction, true);
+      target.addEventListener('input', handleFollowedInstruction, true);
+      target.addEventListener('focus', handleFollowedInstruction, true);
+
+      targetX = Math.max(
+        24,
+        Math.min(window.innerWidth - 28, Math.round(tr.left + Math.min(tr.width * 0.42, 160))),
+      );
+      targetY = Math.max(
+        24,
+        Math.min(window.innerHeight - 64, Math.round(tr.top + Math.min(tr.height * 0.35, 96))),
+      );
+
+      session.pulseTimer = window.setTimeout(() => {
+        target.classList.remove('qv-course-pulse');
+      }, 4200);
+    }
+
+    // Spawn animated pointer cursor emerging from origin button toward target element
+    const pointerSvg = svgEl('svg', {
+      class: 'qv-guide-cursor-svg',
+      width: 22,
+      height: 22,
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      'aria-hidden': 'true',
     });
-  }
+    pointerSvg.appendChild(
+      svgEl('path', {
+        d: 'M4 3L19.5 11.5L12.6 13.7L10.2 20.5L4 3Z',
+        fill: '#d9a44b',
+        stroke: '#121318',
+        'stroke-width': '1.8',
+        'stroke-linejoin': 'round',
+      }),
+    );
+
+    const tagEl = el('span', { className: 'qv-guide-cursor-tag', text: `Try here · ${lesson.actionLabel}` });
+    const cursorEl = el(
+      'div',
+      {
+        className: 'qv-guide-cursor',
+        style: {
+          transform: `translate3d(${originX}px, ${originY}px, 0) scale(0.68)`,
+          opacity: '0',
+        },
+        attrs: { 'aria-hidden': 'true' },
+      },
+      pointerSvg,
+      tagEl,
+    );
+    document.body.appendChild(cursorEl);
+    session.cursorEl = cursorEl;
+
+    // Flip cursor tag to left side when near right edge of screen (and vice versa)
+    const cursorW = cursorEl.offsetWidth > 0 ? cursorEl.offsetWidth : 210;
+    const fitsRight = targetX + cursorW + 12 <= window.innerWidth;
+    const fitsLeft = targetX - cursorW >= 12;
+    const flipLeft = !fitsRight && (fitsLeft || targetX > window.innerWidth * 0.5);
+    if (flipLeft) {
+      cursorEl.classList.add('is-flip-left');
+    }
+    const rawDestX = flipLeft ? targetX - (cursorW - 6) : targetX;
+    const destX = Math.max(12, Math.min(window.innerWidth - cursorW - 12, Math.round(rawDestX)));
+
+    requestAnimationFrame(() => {
+      if (activeGuide !== session) return;
+      cursorEl.style.transform = `translate3d(${destX}px, ${targetY}px, 0) scale(1)`;
+      cursorEl.style.opacity = '1';
+    });
+
+    session.arrivalTimer = window.setTimeout(() => {
+      if (activeGuide !== session || session.engaged) return;
+      cursorEl.classList.add('is-tapping');
+      const rippleEl = el('div', {
+        className: 'qv-guide-ripple',
+        style: { left: `${targetX}px`, top: `${targetY}px` },
+        attrs: { 'aria-hidden': 'true' },
+      });
+      document.body.appendChild(rippleEl);
+      session.rippleEl = rippleEl;
+      window.setTimeout(() => {
+        rippleEl.remove();
+        if (session.rippleEl === rippleEl) session.rippleEl = null;
+      }, 900);
+    }, 760);
+
+    session.cursorFadeTimer = window.setTimeout(() => {
+      if (activeGuide !== session) return;
+      cursorEl.style.opacity = '0';
+      window.setTimeout(() => {
+        cursorEl.remove();
+        if (session.cursorEl === cursorEl) session.cursorEl = null;
+      }, 260);
+    }, 5200);
+
+    // 10-second gentle idle help speech dialog if user hasn't interacted or completed the step
+    session.idleTimer = window.setTimeout(() => {
+      if (activeGuide !== session || session.engaged) return;
+      if (readCompletedCourseLessons().has(lesson.id)) return;
+
+      const speech = el(
+        'aside',
+        {
+          className: 'qv-guide-speech',
+          id: 'qv-guide-speech-dialog',
+          attrs: { role: 'dialog', 'aria-live': 'polite', 'aria-label': 'Tutorial Assistance' },
+        },
+        el(
+          'div',
+          { className: 'qv-guide-speech-head' },
+          el('span', { className: 'qv-guide-speech-avatar' }, icon('course', 14)),
+          el('strong', { text: "Hey, it seems you're lost, let me help you." }),
+        ),
+        el('p', {
+          className: 'qv-guide-speech-body',
+          text: lesson.steps[0] || lesson.instruction,
+        }),
+        el(
+          'div',
+          { className: 'qv-guide-speech-actions' },
+          el('button', {
+            className: 'bv-btn bv-btn-primary',
+            text: 'Show Me Again',
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                navigateToCourseLesson(actions, lesson, {
+                  originEl: activeCourseDrawer,
+                });
+              },
+            },
+          }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: 'Dismiss',
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                dismissOverlay();
+              },
+            },
+          }),
+        ),
+        el('span', { className: 'qv-guide-speech-tail', attrs: { 'aria-hidden': 'true' } }),
+      );
+      document.body.appendChild(speech);
+      positionSpeechDialogBesideDrawer(speech);
+      session.speechEl = speech;
+    }, 10_000);
+  });
 }
 
 /**
  * Compact side-by-side interactive practice drawer paired with the full /course Academy page.
+ * Supports free viewport-clamped dragging, collapse/uncollapse, smart auto-dodge, and in-place completion.
  */
 export function openInteractiveCourseDrawer(actions: AppActions, moduleIndex = 0): void {
   closeInteractiveCourseDrawer();
   activeModuleIndex = Math.max(0, Math.min(COURSE_MODULES.length - 1, moduleIndex));
 
   const drawer = el('aside', {
-    className: 'qv-course-drawer',
+    className: `qv-course-drawer${drawerCollapsed ? ' is-collapsed' : ''}`,
     id: 'qv-course-drawer',
     attrs: { role: 'complementary', 'aria-label': 'Interactive Book Writing Course' },
   });
 
+  if (drawerPos) {
+    clampDrawerPosition(drawer, drawerPos.left, drawerPos.top);
+  }
+
+  const wireHeaderDrag = (headEl: HTMLElement) => {
+    headEl.classList.add('qv-course-drag-head');
+    headEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement | null)?.closest('button')) return;
+      e.preventDefault();
+      const startRect = drawer.getBoundingClientRect();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      drawer.classList.add('is-dragging');
+
+      const onMove = (mv: PointerEvent) => {
+        clampDrawerPosition(
+          drawer,
+          startRect.left + (mv.clientX - startX),
+          startRect.top + (mv.clientY - startY),
+        );
+      };
+      const onUp = () => {
+        drawer.classList.remove('is-dragging');
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+  };
+
+  const drawerRuntimePlatform: 'web' | 'desktop' = isTauriRuntime() ? 'desktop' : 'web';
+  const drawerPlatformMatches = (m: CourseModule) => {
+    const p = getModulePlatform(m);
+    return p === 'both' || p === drawerRuntimePlatform;
+  };
+  if (!drawerPlatformMatches(COURSE_MODULES[activeModuleIndex])) {
+    const firstValid = COURSE_MODULES.findIndex(drawerPlatformMatches);
+    if (firstValid >= 0) activeModuleIndex = firstValid;
+  }
+
   const renderDrawer = () => {
     drawer.replaceChildren();
+    drawer.classList.toggle('is-collapsed', drawerCollapsed);
     const mod = COURSE_MODULES[activeModuleIndex];
     const done = readCompletedCourseLessons();
-    const summary = getCourseCompletionSummary();
+    const summary = getCourseCompletionSummary(drawerRuntimePlatform);
 
+    const progressTagEl = el('span', {
+      className: 'bv-mono-tag',
+      text: `${summary.completed}/${summary.total} (${summary.pct}%)`,
+    });
+
+    const modPillBtns = new Map<number, HTMLButtonElement>();
     const modPills = el('div', { className: 'qv-course-mod-pills' });
     COURSE_MODULES.forEach((m, idx) => {
+      if (!drawerPlatformMatches(m)) return;
       const modAllDone = m.lessons.every((l) => done.has(l.id));
-      modPills.appendChild(
-        el('button', {
-          className: `bv-mini-btn${idx === activeModuleIndex ? ' is-active' : ''}`,
-          text: `${m.number}. ${modAllDone ? '✓' : ''}`,
-          attrs: { type: 'button', 'aria-label': `Module ${m.number}: ${m.title}` },
-          on: {
-            click: () => {
-              activeModuleIndex = idx;
-              renderDrawer();
-            },
+      const pillBtn = el('button', {
+        className: `bv-mini-btn${idx === activeModuleIndex ? ' is-active' : ''}${modAllDone ? ' is-mod-done' : ''}`,
+        text: `${m.number}${modAllDone ? ' ✓' : ''}`,
+        attrs: { type: 'button', 'aria-label': `Module ${m.number}: ${m.title}` },
+        on: {
+          click: () => {
+            activeModuleIndex = idx;
+            renderDrawer();
           },
-        }),
-      );
+        },
+      });
+      modPillBtns.set(idx, pillBtn);
+      modPills.appendChild(pillBtn);
     });
+
+    const cardControlByLesson = new Map<
+      string,
+      { card: HTMLElement; chk: HTMLInputElement; markBtn: HTMLButtonElement }
+    >();
+
+    const updateDoneInPlace = (lessonId: string, nextDone: boolean) => {
+      const updatedDone = toggleCourseLessonDone(lessonId, nextDone);
+      const nextSummary = getCourseCompletionSummary(drawerRuntimePlatform);
+      progressTagEl.textContent = `${nextSummary.completed}/${nextSummary.total} (${nextSummary.pct}%)`;
+
+      const ctrl = cardControlByLesson.get(lessonId);
+      if (ctrl) {
+        ctrl.card.classList.toggle('is-done', nextDone);
+        ctrl.chk.checked = nextDone;
+        ctrl.markBtn.classList.toggle('is-done', nextDone);
+        ctrl.markBtn.textContent = nextDone ? 'Completed' : 'Mark Done';
+      }
+
+      const activePill = modPillBtns.get(activeModuleIndex);
+      if (activePill) {
+        const modAllDone = mod.lessons.every((l) => updatedDone.has(l.id));
+        activePill.classList.toggle('is-mod-done', modAllDone);
+        activePill.textContent = `${mod.number}${modAllDone ? ' ✓' : ''}`;
+      }
+
+      if (nextDone && activeGuide?.lessonId === lessonId) {
+        if (activeGuide.idleTimer !== null) {
+          window.clearTimeout(activeGuide.idleTimer);
+          activeGuide.idleTimer = null;
+        }
+        activeGuide.speechEl?.remove();
+        activeGuide.speechEl = null;
+      }
+    };
+
+    onActiveLessonMarkedDone = updateDoneInPlace;
 
     const lessonList = el('div', { className: 'qv-course-lessons' });
     for (const lesson of mod.lessons) {
@@ -1444,89 +3648,128 @@ export function openInteractiveCourseDrawer(actions: AppActions, moduleIndex = 0
       const chk = el('input', {
         attrs: { type: 'checkbox', checked: isDone, 'aria-label': `Complete ${lesson.title}` },
         on: {
-          change: () => {
-            toggleCourseLessonDone(lesson.id, chk.checked);
-            renderDrawer();
+          change: () => updateDoneInPlace(lesson.id, chk.checked),
+        },
+      });
+
+      const actionBtn = el(
+        'button',
+        {
+          className: 'bv-btn bv-btn-primary',
+          style: { height: '26px', fontSize: '11.5px', padding: '0 10px' },
+          attrs: { type: 'button' },
+          on: {
+            click: () => navigateToCourseLesson(actions, lesson, { originEl: actionBtn }),
+          },
+        },
+        lesson.actionLabel,
+      );
+
+      const markBtn = el('button', {
+        className: `bv-mini-btn${isDone ? ' is-done' : ''}`,
+        text: isDone ? 'Completed' : 'Mark Done',
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            const currentlyDone = readCompletedCourseLessons().has(lesson.id);
+            updateDoneInPlace(lesson.id, !currentlyDone);
           },
         },
       });
 
-      lessonList.appendChild(
+      const card = el(
+        'div',
+        { className: `qv-course-lesson-card${isDone ? ' is-done' : ''}` },
         el(
           'div',
-          { className: `qv-course-lesson-card${isDone ? ' is-done' : ''}` },
-          el(
-            'div',
-            { className: 'qv-course-lesson-head' },
-            chk,
-            el('strong', { text: lesson.title, style: { fontSize: '12.5px', flex: '1' } }),
-            el('span', { className: 'bv-mono-tag', text: lesson.minTier.toUpperCase() }),
-          ),
-          el('p', {
-            className: 'bv-label',
-            text: lesson.instruction,
-            style: { margin: '4px 0 8px', color: 'var(--text-secondary)' },
-          }),
-          el(
-            'div',
-            { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
-            el(
-              'button',
-              {
-                className: 'bv-btn bv-btn-primary',
-                style: { height: '26px', fontSize: '11.5px', padding: '0 10px' },
-                attrs: { type: 'button' },
-                on: { click: () => navigateToCourseLesson(actions, lesson) },
-              },
-              lesson.actionLabel,
-            ),
-            el('button', {
-              className: 'bv-mini-btn',
-              text: isDone ? 'Completed ✓' : 'Mark Done',
-              attrs: { type: 'button' },
-              on: {
-                click: () => {
-                  toggleCourseLessonDone(lesson.id, !isDone);
-                  renderDrawer();
-                },
-              },
-            }),
-          ),
+          { className: 'qv-course-lesson-head' },
+          chk,
+          el('strong', { text: lesson.title, style: { fontSize: '12.5px', flex: '1' } }),
+          el('span', { className: 'bv-mono-tag', text: lesson.minTier.toUpperCase() }),
+        ),
+        el('p', {
+          className: 'bv-label',
+          text: lesson.instruction,
+          style: { margin: '4px 0 8px', color: 'var(--text-secondary)' },
+        }),
+        el(
+          'div',
+          { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' } },
+          actionBtn,
+          markBtn,
         ),
       );
+
+      cardControlByLesson.set(lesson.id, { card, chk, markBtn });
+      lessonList.appendChild(card);
     }
 
-    drawer.append(
+    const headEl = el(
+      'div',
+      { className: 'bv-panel-head' },
       el(
         'div',
-        { className: 'bv-panel-head' },
-        el(
-          'div',
-          { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
-          icon('course', 15),
-          el('span', { className: 'bv-panel-title', text: 'Practice Companion' }),
-        ),
-        el('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
-          el('span', { className: 'bv-mono-tag', text: `${summary.completed}/${summary.total} (${summary.pct}%)` }),
-          el('button', {
-            className: 'bv-mini-btn',
-            text: 'Full Course',
-            attrs: { type: 'button' },
-            on: {
-              click: () => {
-                closeInteractiveCourseDrawer();
-                actions.openCoursePage(mod.id);
-              },
-            },
-          }),
-          el('button', {
-            className: 'bv-mini-btn',
-            text: 'Close',
-            attrs: { type: 'button' },
-            on: { click: closeInteractiveCourseDrawer },
-          }),
-        ),
+        { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+        icon('course', 15),
+        el('span', { className: 'bv-panel-title', text: 'Practice Companion' }),
       ),
+      el(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+        progressTagEl,
+        el('button', {
+          className: 'bv-mini-btn',
+          text: drawerCollapsed ? '+' : '−',
+          attrs: {
+            type: 'button',
+            'aria-label': drawerCollapsed ? 'Expand Practice Companion' : 'Collapse Practice Companion',
+            title: drawerCollapsed ? 'Expand Practice Companion' : 'Collapse Practice Companion',
+          },
+          on: {
+            click: () => {
+              drawerCollapsed = !drawerCollapsed;
+              drawer.classList.toggle('is-collapsed', drawerCollapsed);
+              const toggleBtn = drawer.querySelector<HTMLButtonElement>(
+                'button[aria-label$="Practice Companion"]',
+              );
+              if (toggleBtn) {
+                toggleBtn.textContent = drawerCollapsed ? '+' : '−';
+                toggleBtn.setAttribute(
+                  'aria-label',
+                  drawerCollapsed ? 'Expand Practice Companion' : 'Collapse Practice Companion',
+                );
+              }
+              if (drawerPos) {
+                requestAnimationFrame(() => {
+                  if (drawerPos) clampDrawerPosition(drawer, drawerPos.left, drawerPos.top);
+                });
+              }
+            },
+          },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Full Course',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              closeInteractiveCourseDrawer();
+              actions.openCoursePage(mod.id);
+            },
+          },
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: '×',
+          attrs: { type: 'button', 'aria-label': 'Close Practice Companion' },
+          on: { click: closeInteractiveCourseDrawer },
+        }),
+      ),
+    );
+    wireHeaderDrag(headEl);
+
+    drawer.append(
+      headEl,
       el(
         'div',
         { className: 'qv-course-body' },
@@ -1572,4 +3815,19 @@ export function openInteractiveCourseDrawer(actions: AppActions, moduleIndex = 0
   activeCourseDrawer = drawer;
   document.body.appendChild(drawer);
   renderDrawer();
+  if (drawerPos) {
+    requestAnimationFrame(() => {
+      if (drawer.isConnected && drawerPos) {
+        clampDrawerPosition(drawer, drawerPos.left, drawerPos.top);
+      }
+    });
+  }
+  if (typeof window !== 'undefined') {
+    drawerResizeHandler = () => {
+      if (drawer.isConnected && drawerPos) {
+        clampDrawerPosition(drawer, drawerPos.left, drawerPos.top);
+      }
+    };
+    window.addEventListener('resize', drawerResizeHandler);
+  }
 }

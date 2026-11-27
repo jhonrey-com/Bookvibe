@@ -476,10 +476,12 @@ export class TabDragController {
 
       const originalIds = [...this.callbacks.getTabIds()];
 
+      const liveTabTitle = tabEl.dataset.tabTitle?.trim() || tabTitle;
+
       const session: ActiveDragSession = {
         pointerId: downEv.pointerId,
         sourceTabId: tabId,
-        tabTitle,
+        tabTitle: liveTabTitle,
         tabEl,
         tabStrip,
         desktopTabBarEl,

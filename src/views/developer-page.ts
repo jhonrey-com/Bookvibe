@@ -385,10 +385,6 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
             ),
           ),
         ),
-        el('div', {
-          className: 'bv-mono-tag',
-          text: 'Format: QUILLVIBE_EXT_V2 · Companion Extension Studio App: Coming Soon · Developer Relations: quillvibe@jhonrey.com',
-        }),
       ),
       el(
         'section',
@@ -397,7 +393,6 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
           'div',
           { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
           el('h2', { className: 'qv-help-article-title', text: 'Quillvibe Extension Builder App (Coming Soon)' }),
-          el('span', { className: 'bv-mono-tag', text: 'Roadmap · Separate Desktop Tool' }),
         ),
         el('p', {
           className: 'qv-help-article-summary',

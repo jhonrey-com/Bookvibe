@@ -28,11 +28,34 @@ import { isTierAtLeast } from '../core/settings';
 import type { PaperTheme, ProofreadMark, ProofreadMarkKind } from '../core/types';
 import { attachContextMenu, type ContextMenuGroup } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
-import { LiquidGlassControl } from '../ui/liquid-glass';
+import { createVerticalResizer } from '../ui/resizer';
 import { addImageFilesToScene, renderSceneImageComposer } from '../ui/scene-image-composer';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
-let activeEditorGlass: LiquidGlassControl<EditorSubMode> | null = null;
+const EDITOR_SPLIT_WIDTH_KEY = 'quillvibe.editorSplitWidthPx.v1';
+
+function loadEditorSplitWidth(): number {
+  if (typeof window === 'undefined' || !window.localStorage) return 360;
+  try {
+    const raw = Number(window.localStorage.getItem(EDITOR_SPLIT_WIDTH_KEY));
+    if (Number.isFinite(raw) && raw >= 260 && raw <= 640) return Math.round(raw);
+  } catch {
+    // Ignore storage access errors
+  }
+  return 360;
+}
+
+function saveEditorSplitWidth(w: number): void {
+  editorSplitWidthPx = Math.round(Math.max(260, Math.min(640, w)));
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(EDITOR_SPLIT_WIDTH_KEY, String(editorSplitWidthPx));
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+let editorSplitWidthPx = loadEditorSplitWidth();
 let proofreadLedgerFilter: 'open' | 'resolved' | 'all' = 'open';
 let pendingComposer: {
   kind: ProofreadMarkKind;
@@ -126,11 +149,10 @@ function activeReviewerInfo(actions: AppActions) {
 }
 
 export function renderEditorView(container: HTMLElement, actions: AppActions): void {
-  if (activeEditorGlass) {
-    activeEditorGlass.destroy();
-    activeEditorGlass = null;
-  }
   clearNode(container);
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty('--qv-split-w', `${editorSplitWidthPx}px`);
+  }
 
   const state = actions.getState();
   const ctx = findSceneContext(state.project, state.activeSceneId);
@@ -149,8 +171,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const { part, chapter, scene } = ctx;
   const tier = state.settings.toolTier;
   const allowIntermediate = isTierAtLeast(tier, 'intermediate');
-  const allowAdvanced = isTierAtLeast(tier, 'advanced');
   const isProofMode = allowIntermediate && state.editorSubMode === 'proofread';
+  const openProofCount = (scene.proofreadMarks ?? []).filter(
+    (m) => m.status === 'open' || m.status === 'stet',
+  ).length;
 
   const sessionPerms = getActiveSessionPermissions(state.project);
   const lockStatus = isSceneLocked(state.project, scene.id);
@@ -315,13 +339,36 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             onSelect: () => actions.createSnapshot(),
           },
           {
-            label: 'Switch to Proofread Markup',
+            label: 'Toggle Inline Proofread Markup',
             icon: 'proofread',
             onSelect: () => {
               if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
                 actions.updateSettings({ toolTier: 'intermediate' });
               }
-              actions.setState({ editorSubMode: 'proofread' }, true);
+              const cur = actions.getState().editorSubMode;
+              actions.setState({ editorSubMode: cur === 'proofread' ? 'draft' : 'proofread' }, true);
+            },
+          },
+          {
+            label: 'Toggle Split Reference Pane',
+            icon: 'split',
+            onSelect: () => {
+              if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
+                actions.updateSettings({ toolTier: 'intermediate' });
+              }
+              const cur = actions.getState().editorSubMode;
+              actions.setState({ editorSubMode: cur === 'split' ? 'draft' : 'split' }, true);
+            },
+          },
+          {
+            label: 'Toggle Revision Diff Pane',
+            icon: 'diff',
+            onSelect: () => {
+              if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
+                actions.updateSettings({ toolTier: 'intermediate' });
+              }
+              const cur = actions.getState().editorSubMode;
+              actions.setState({ editorSubMode: cur === 'diff' ? 'draft' : 'diff' }, true);
             },
           },
         ],
@@ -368,48 +415,85 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     el('option', { text: 'Ivory', attrs: { value: 'ivory', selected: state.project.paperTheme === 'ivory' } }),
   );
 
-  const subModeOptions: Array<{
-    id: EditorSubMode;
-    label: string;
-    icon: 'draft-sheet' | 'proofread' | 'split' | 'diff';
-    tooltip: typeof TOOLTIP_CATALOG.modeDraft;
-  }> = [
-    { id: 'draft', label: 'Draft', icon: 'draft-sheet', tooltip: TOOLTIP_CATALOG.modeDraft },
-  ];
-  if (allowIntermediate) {
-    subModeOptions.push({
-      id: 'proofread',
-      label: 'Proofread',
-      icon: 'proofread',
-      tooltip: TOOLTIP_CATALOG.modeProofread,
-    });
-  }
-  if (allowAdvanced) {
-    subModeOptions.push(
-      { id: 'split', label: 'Split View', icon: 'split', tooltip: TOOLTIP_CATALOG.modeSplit },
-      { id: 'diff', label: 'Revision Diff', icon: 'diff', tooltip: TOOLTIP_CATALOG.modeDiff },
-    );
-  }
-  const effectiveSubMode: EditorSubMode = subModeOptions.some((o) => o.id === state.editorSubMode)
+  const effectiveSubMode: EditorSubMode = allowIntermediate
     ? state.editorSubMode
     : 'draft';
 
-  let subModeControl: LiquidGlassControl<EditorSubMode> | null = null;
-  if (subModeOptions.length > 1) {
-    subModeControl = new LiquidGlassControl<EditorSubMode>({
-      ariaLabel: 'Editor pane mode',
-      surface: 'clear',
-      compact: true,
-      iconOnly: true,
-      value: effectiveSubMode,
-      options: subModeOptions,
-      onChange: (mode) => {
-        pendingComposer = null;
-        actions.setState({ editorSubMode: mode }, true);
-      },
-    });
-    activeEditorGlass = subModeControl;
-  }
+  const draftToolsStrip = allowIntermediate
+    ? el(
+        'div',
+        { className: 'qv-draft-inline-tools' },
+        el(
+          'button',
+          {
+            className: `bv-mini-btn${effectiveSubMode === 'proofread' ? ' is-active' : ''}`,
+            tooltip: TOOLTIP_CATALOG.modeProofread,
+            attrs: {
+              type: 'button',
+              'aria-pressed': String(effectiveSubMode === 'proofread'),
+              'aria-label': 'Toggle Inline Proofread Markup inside Draft Mode',
+            },
+            on: {
+              click: () => {
+                pendingComposer = null;
+                actions.setState(
+                  { editorSubMode: effectiveSubMode === 'proofread' ? 'draft' : 'proofread' },
+                  true,
+                );
+              },
+            },
+          },
+          icon('proofread', 12),
+          openProofCount > 0 ? `Proofread (${openProofCount})` : 'Proofread',
+        ),
+        el(
+          'button',
+          {
+            className: `bv-mini-btn${effectiveSubMode === 'split' ? ' is-active' : ''}`,
+            tooltip: TOOLTIP_CATALOG.modeSplit,
+            attrs: {
+              type: 'button',
+              'aria-pressed': String(effectiveSubMode === 'split'),
+              'aria-label': 'Toggle Collapsible Split Reference Pane',
+            },
+            on: {
+              click: () => {
+                pendingComposer = null;
+                actions.setState(
+                  { editorSubMode: effectiveSubMode === 'split' ? 'draft' : 'split' },
+                  true,
+                );
+              },
+            },
+          },
+          icon('split', 12),
+          'Split Ref',
+        ),
+        el(
+          'button',
+          {
+            className: `bv-mini-btn${effectiveSubMode === 'diff' ? ' is-active' : ''}`,
+            tooltip: TOOLTIP_CATALOG.modeDiff,
+            attrs: {
+              type: 'button',
+              'aria-pressed': String(effectiveSubMode === 'diff'),
+              'aria-label': 'Toggle Collapsible Revision Diff Pane',
+            },
+            on: {
+              click: () => {
+                pendingComposer = null;
+                actions.setState(
+                  { editorSubMode: effectiveSubMode === 'diff' ? 'draft' : 'diff' },
+                  true,
+                );
+              },
+            },
+          },
+          icon('diff', 12),
+          'Diff',
+        ),
+      )
+    : null;
 
   const ensureDraftEditable = (): boolean => {
     if (lockStatus.locked) {
@@ -641,8 +725,22 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         whiteSpace: 'nowrap',
       },
     }),
-    subModeControl ? el('div', { style: { flexShrink: '0' } }, subModeControl.element) : null,
+    draftToolsStrip,
   );
+
+  const splitResizer = createVerticalResizer({
+    side: 'right',
+    minWidth: 260,
+    maxWidth: 640,
+    cssVarName: '--qv-split-w',
+    ariaLabel: 'Resize Companion Split Reference or Diff Pane',
+    getWidth: () => editorSplitWidthPx,
+    onResizeEnd: (finalWidth) => saveEditorSplitWidth(finalWidth),
+    onDoubleClickReset: () => {
+      saveEditorSplitWidth(360);
+      return 360;
+    },
+  });
 
   const panes = el('div', {
     className: `bv-editor-panes${effectiveSubMode !== 'draft' ? ' has-split' : ''}`,
@@ -655,10 +753,8 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       paperFloatNav,
       sceneHeading,
     );
-    panes.appendChild(sheetWrap);
-    panes.appendChild(renderProofreadLedgerPane(actions, scene, paperScrollEl));
+    panes.append(sheetWrap, splitResizer, renderProofreadLedgerPane(actions, scene, paperScrollEl));
     container.append(subbar, panes);
-    requestAnimationFrame(() => activeEditorGlass?.sampleBackdrop(true));
     return;
   }
 
@@ -750,9 +846,6 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     {
       className: 'bv-paper-scroll',
       dataset: { paper: state.project.paperTheme },
-      on: {
-        scroll: () => activeEditorGlass?.sampleBackdrop(false),
-      },
     },
     paperSheet,
   );
@@ -760,15 +853,14 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   panes.appendChild(paperScroll);
 
   if (effectiveSubMode === 'split') {
-    panes.appendChild(renderSplitReferencePane(actions));
+    panes.append(splitResizer, renderSplitReferencePane(actions));
   } else if (effectiveSubMode === 'diff') {
-    panes.appendChild(renderRevisionDiffPane(actions, scene));
+    panes.append(splitResizer, renderRevisionDiffPane(actions, scene));
   }
 
   container.append(subbar, panes);
   requestAnimationFrame(() => {
     syncTextareaHeight();
-    activeEditorGlass?.sampleBackdrop(true);
   });
 }
 
@@ -1142,7 +1234,6 @@ function renderProofreadWorkspace(
     {
       className: 'bv-paper-scroll',
       dataset: { paper: state.project.paperTheme },
-      on: { scroll: () => activeEditorGlass?.sampleBackdrop(false) },
     },
     paperSheet,
   );
@@ -1263,6 +1354,60 @@ function renderMarkedSegments(
       }
     }
   }
+}
+
+function createCompanionHead(
+  actions: AppActions,
+  activePane: 'proofread' | 'split' | 'diff',
+  controlEl?: HTMLElement | null,
+): HTMLElement {
+  return el(
+    'div',
+    { className: 'bv-split-head' },
+    el(
+      'div',
+      { className: 'qv-split-head-top' },
+      el(
+        'div',
+        { className: 'qv-split-tabs' },
+        ...(
+          [
+            { id: 'split', label: 'Reference' },
+            { id: 'diff', label: 'Diff' },
+            { id: 'proofread', label: 'Marks' },
+          ] as const
+        ).map((tab) =>
+          el('button', {
+            className: `bv-mini-btn${activePane === tab.id ? ' is-active' : ''}`,
+            text: tab.label,
+            attrs: { type: 'button', 'aria-pressed': String(activePane === tab.id) },
+            on: {
+              click: () => {
+                pendingComposer = null;
+                actions.setState(
+                  { editorSubMode: activePane === tab.id ? 'draft' : tab.id },
+                  true,
+                );
+              },
+            },
+          }),
+        ),
+      ),
+      el('button', {
+        className: 'bv-mini-btn',
+        text: '×',
+        tooltip: { title: 'Collapse Companion Pane', short: 'Close side pane and return to full Draft sheet.' },
+        attrs: { type: 'button', 'aria-label': 'Collapse side pane' },
+        on: {
+          click: () => {
+            pendingComposer = null;
+            actions.setState({ editorSubMode: 'draft' }, true);
+          },
+        },
+      }),
+    ),
+    controlEl ?? null,
+  );
 }
 
 function renderProofreadLedgerPane(
@@ -1498,12 +1643,7 @@ function renderProofreadLedgerPane(
   return el(
     'aside',
     { className: 'bv-split-pane' },
-    el(
-      'div',
-      { className: 'bv-split-head' },
-      el('span', { className: 'bv-panel-title', text: 'Proofread Marks' }),
-      filterSelect,
-    ),
+    createCompanionHead(actions, 'proofread', filterSelect),
     el('div', { className: 'bv-split-body' }, quickCard, list),
   );
 }
@@ -1619,12 +1759,7 @@ function renderSplitReferencePane(actions: AppActions): HTMLElement {
   return el(
     'aside',
     { className: 'bv-split-pane' },
-    el(
-      'div',
-      { className: 'bv-split-head' },
-      el('span', { className: 'bv-panel-title', text: 'Reference' }),
-      select,
-    ),
+    createCompanionHead(actions, 'split', select),
     body,
   );
 }
@@ -1635,12 +1770,6 @@ function renderRevisionDiffPane(
 ): HTMLElement {
   const state = actions.getState();
   const snaps = scene.snapshots;
-
-  const head = el(
-    'div',
-    { className: 'bv-split-head' },
-    el('span', { className: 'bv-panel-title', text: 'Revision Diff' }),
-  );
   const body = el('div', { className: 'bv-split-body' });
 
   if (snaps.length === 0) {
@@ -1660,7 +1789,7 @@ function renderRevisionDiffPane(
         'Capture Snapshot Now',
       ),
     );
-    return el('aside', { className: 'bv-split-pane' }, head, body);
+    return el('aside', { className: 'bv-split-pane' }, createCompanionHead(actions, 'diff'), body);
   }
 
   const chosen = snaps.find((s) => s.id === state.diffSnapshotId) ?? snaps[0];
@@ -1678,7 +1807,7 @@ function renderRevisionDiffPane(
       }),
     );
   }
-  head.appendChild(snapSelect);
+  const head = createCompanionHead(actions, 'diff', snapSelect);
 
   const diff = computeWordDiff(chosen.content, scene.content);
 

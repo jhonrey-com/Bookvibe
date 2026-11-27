@@ -27,3 +27,13 @@ Desktop.ini
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Private planning & internal architecture docs (local only)
+docs/*PLAN*.md
+docs/COMMERCIAL-*.md
+docs/DUAL-EDITION-ARCHITECTURE.md
+docs/DESKTOP-ARCHITECTURE.md
+docs/*-AUDIT*.md
+docs/*-ROADMAP*.md
+docs/private/
+*.plan.md

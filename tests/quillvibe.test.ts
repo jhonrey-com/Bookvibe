@@ -81,7 +81,15 @@ import {
 } from '../src/core/identity';
 import { buildTypesetPdfBytes } from '../src/core/pdf-export';
 import { createEmptyBookProject, normalizeProjectDefaults } from '../src/core/library';
-import { countWords, getAllScenes, getProjectWordCount } from '../src/core/manuscript';
+import {
+  countWords,
+  getAllScenes,
+  getProjectWordCount,
+  renameChapterInProject,
+  renamePartInProject,
+  toggleChapterLock,
+  togglePartLock,
+} from '../src/core/manuscript';
 import {
   acceptProofreadMark,
   addProofreadMark,
@@ -364,8 +372,23 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
 
     expect(resolvePathToRoute('/course', false).view).toBe('course');
     expect(routeForState('course')).toBe('/course');
-    expect(COURSE_MODULES).toHaveLength(10);
-    expect(getCourseCompletionSummary().total).toBe(31);
+    expect(COURSE_MODULES).toHaveLength(23);
+    expect(getCourseCompletionSummary().total).toBe(71);
+    expect(getCourseCompletionSummary('web').total).toBe(60);
+    expect(getCourseCompletionSummary('desktop').total).toBe(68);
+
+    const bookForRename = normalizeProjectDefaults(createStarterBookProject());
+    const p0 = bookForRename.parts[0];
+    const ch0 = p0.chapters[0];
+    const renamedPartBook = renamePartInProject(bookForRename, p0.id, 'Part I — Harbor Tides');
+    expect(renamedPartBook.parts[0].title).toBe('Part I — Harbor Tides');
+    const renamedChapBook = renameChapterInProject(renamedPartBook, ch0.id, 'The Tidal Ledger');
+    expect(renamedChapBook.parts[0].chapters[0].title).toBe('The Tidal Ledger');
+    // Locked chapters and parts reject renames cleanly
+    const lockedChapBook = toggleChapterLock(renamedChapBook, ch0.id);
+    expect(renameChapterInProject(lockedChapBook, ch0.id, 'Blocked Rename').parts[0].chapters[0].title).toBe('The Tidal Ledger');
+    const lockedPartBook = togglePartLock(renamedPartBook, p0.id);
+    expect(renamePartInProject(lockedPartBook, p0.id, 'Blocked Part Rename').parts[0].title).toBe('Part I — Harbor Tides');
   });
 
   it('verifies Origin Device ID, Copyright Seal, Verified Multi-Device Co-Author tokens, PDF 1.4 export, and History Stack', async () => {
@@ -432,8 +455,10 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
       expect(applied.summaryMessage.length).toBeGreaterThan(0);
     }
 
-    expect(resolvePathToRoute('/', true).canonicalPath).toBe('/start');
-    expect(resolvePathToRoute('/', false).canonicalPath).toBe('/write');
+    expect(resolvePathToRoute('/', true)).toMatchObject({ view: 'landing', canonicalPath: '/' });
+    expect(resolvePathToRoute('/', false)).toMatchObject({ view: 'landing', canonicalPath: '/' });
+    expect(resolvePathToRoute('/start', true)).toMatchObject({ view: 'editor', showStartSplash: true, canonicalPath: '/start' });
+    expect(resolvePathToRoute('/write', false)).toMatchObject({ view: 'editor', canonicalPath: '/write' });
     expect(resolvePathToRoute('/help', false)).toMatchObject({ view: 'help', canonicalPath: '/help' });
     expect(resolvePathToRoute('/faq', false)).toMatchObject({ view: 'help', canonicalPath: '/faq' });
     expect(resolvePathToRoute('/course', false)).toMatchObject({ view: 'course', canonicalPath: '/course' });

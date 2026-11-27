@@ -57,7 +57,7 @@ export interface AppActions {
   openCollabModal(): void;
   openSettingsModal(initialTab?: 'fonts' | 'editor' | 'publishing' | 'developer'): void;
   openHelpModal(initialTab?: 'controls' | 'tour' | 'icons' | 'guides' | 'course' | 'reference'): void;
-  openCoursePage(moduleId?: string): void;
+  openCoursePage(moduleId?: string, lessonId?: string): void;
   openHelpPage(query?: string): void;
   openDeveloperPage(): void;
   startInteractiveCourse(moduleIdx?: number): void;

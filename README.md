@@ -5,10 +5,10 @@
 **Quillvibe** is a free, open-source book writing app built for authors and writers. You can write chapters, keep character and world notes, mark up drafts while proofreading, design book covers, and export print-ready `.pdf` and `.epub` books—all in one place without creating an account. It opens in **Ivory Light** with three **Workspace Layouts** (**Focused**, **Editorial**, and **Full Studio**), works offline, saves books in Quillvibe's protected `.qv` format, and is published under **`jhonrey.com`**.
 
 > **Try Quillvibe in Your Browser:** <a href="https://quillvibe.jhonrey.com/start" target="_blank" rel="noopener noreferrer"><strong>Open <code>https://quillvibe.jhonrey.com/start</code></strong></a>  
-> **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (10 Modules, 31 Lessons)</strong></a>  
+> **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (23 Modules, 71 Lessons — Website &amp; Desktop Tracks)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
 > **Developer Portal (`.qvext` Add-ons):** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/developer</code></strong></a> *(Companion Extension Builder App Coming Soon)*  
-> **Download Desktop App (`v3.2.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Download Desktop App (`v3.3.0` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
@@ -44,20 +44,40 @@
 Many writers end up juggling several separate programs—one for writing chapters, another for outlines, another for character notes, another for cover design, and another to turn drafts into an eBook or print PDF. Quillvibe keeps all of those steps together in one local book file:
 
 - **No account and no setup**: Open a blank book or sample project right away. Your `.qv` file stays on your own device and can be locked with a password.
-- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and toggleable in Settings), pick **Match Device (System)**, **Ivory Light**, **Parchment**, or **Obsidian Dark** themes—or **link App Theme & Manuscript Paper Theme** so changing one updates both—toggle **Smooth Animations**, lock finalized proofread chapters or parts against accidental edits, use dedicated full pages for `/settings` and `/manual`, and undo/redo with `Ctrl+Z` / `Ctrl+Y`.
+- **Comfortable for quick notes or full series**: Write freely without distracting red underlines (spellcheck is off by default and toggleable in Settings), use **Universal Search (`Ctrl/Cmd + K`)** to jump straight to any scene, tool, FAQ, or Academy lesson, pick **Match Device (System)**, **Ivory Light**, **Parchment**, or **Obsidian Dark** themes—or **link App Theme & Manuscript Paper Theme** so changing one updates both—toggle **Smooth Animations**, lock finalized proofread chapters or parts against accidental edits, use dedicated full pages for `/settings` and `/manual`, and undo/redo with `Ctrl+Z` / `Ctrl+Y`.
 - **Images right inside your book**: Drag and drop or insert photos and illustrations into any scene, wrap text around them (**Wrap Left**, **Wrap Right**, **Top & Bottom**, **Inline**, **Behind Text**), snap to grid or alignment guides, and remove solid backgrounds offline with one click.
-- **Built-in proofreading marks**: Mark up drafts with 15 traditional proofreading symbols right on the page, preview the clean result, and accept changes with automatic backup snapshots.
+- **Unified Draft Mode & built-in proofreading marks**: Toggle **Proofread** (15 copyediting symbols with Clean Preview and automatic snapshots) alongside a resizable **Split Reference** and **Revision Diff** pane directly inside Draft Mode without leaving your writing sheet.
 - **Ready for publishing & easy `.docx` migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and export full **`.docx`** manuscripts (for standard word processors and cloud document editors), `.md`, `.rtf`, or `.json`.
 
-### Live Screenshots (`v3.2.0`)
+### Live Screenshots (`v3.3.0`)
 
+#### Website Edition (`quillvibe.jhonrey.com`)
 <p align="center">
-  <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Manuscript workspace showing Binder, Paper Sheet, centered navigation bar, and Inspector" width="100%" />
+  <img src="public/screenshots/editor-workspace.png" alt="Quillvibe Web Manuscript workspace showing Binder, Paper Sheet, Proofread/Split Ref/Diff controls, and Inspector" width="100%" />
 </p>
 
-| Story Graph | Book Cover Studio |
+| Landing Showcase | Split Reference in Draft Mode |
 | :---: | :---: |
-| <img src="public/screenshots/story-graph.png" alt="Quillvibe Story Graph with exact node connections" width="100%" /> | <img src="public/screenshots/cover-studio.png" alt="Quillvibe Book Cover Studio with layered shapes and properties" width="100%" /> |
+| <img src="public/screenshots/landing-web.png" alt="Quillvibe landing page overview" width="100%" /> | <img src="public/screenshots/editor-split-diff.png" alt="Resizable Split Reference drawer opened beside the active Manuscript sheet" width="100%" /> |
+
+| Story Graph (Live Connector Routing) | Book Cover Studio |
+| :---: | :---: |
+| <img src="public/screenshots/story-graph.png" alt="Quillvibe Story Graph with live orthogonal node connectors and removable group frames" width="100%" /> | <img src="public/screenshots/cover-studio.png" alt="Quillvibe Web Book Cover Studio with layered shapes and properties" width="100%" /> |
+
+<p align="center">
+  <img src="public/screenshots/course-academy.png" alt="Quillvibe Academy two-pane course view with Edition, Track, and Tier filters" width="100%" />
+</p>
+
+#### Desktop Application (Windows, macOS & Linux)
+*Shows native window controls, the stacked Chrome-style Book Tab Bar (`Ctrl+Shift+N`), `F11` Fullscreen Focus, and the Desktop-only Pro Vector Cover Studio (`Draw`, `Drafts` compare, and `Collab` pins).*
+
+<p align="center">
+  <img src="public/screenshots/desktop-editor.png" alt="Quillvibe Desktop Edition with stacked Book Tab Bar, New Window and F11 focus controls, and Manuscript workspace" width="100%" />
+</p>
+
+| Desktop Story Graph | Desktop Pro Vector Cover Studio |
+| :---: | :---: |
+| <img src="public/screenshots/desktop-story-graph.png" alt="Quillvibe Desktop Story Graph under stacked book tabs" width="100%" /> | <img src="public/screenshots/desktop-cover-pro.png" alt="Quillvibe Desktop Pro Cover Studio showing Vector Drawing Brush and Pen, Blend Mode, Drafts, and Collab tools" width="100%" /> |
 
 ---
 
@@ -69,7 +89,7 @@ Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener nor
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
 ### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.2.0</code>)</strong></a> (published under **`jhonrey.com`**):
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.3.0</code>)</strong></a> (published under **`jhonrey.com`**):
 - **Windows:** `.msi` or branded `-setup.exe` (with custom app icon & **Check for Updates** inside `/settings`)
 - **Mac (Apple Silicon & Intel):** Universal `.dmg`
 - **Linux:** `.AppImage`, `.deb`, or `.rpm`
@@ -112,8 +132,6 @@ npm run build:desktop
 npm run tauri:dev
 npm run tauri:build
 ```
-
-Desktop vs web separation, window-state persistence, rolling backups, and crash diagnostics are documented in [docs/DESKTOP-ARCHITECTURE.md](docs/DESKTOP-ARCHITECTURE.md).
 
 ---
 

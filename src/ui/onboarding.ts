@@ -37,6 +37,7 @@ interface TourStep {
 }
 
 const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
+  landing: [],
   editor: [
     {
       selector: '.bv-paper-float-nav',
@@ -93,7 +94,7 @@ const SECTION_TOURS: Record<StudioViewId, TourStep[]> = {
     {
       selector: '.bv-main-stage',
       title: 'Quillvibe Academy Course',
-      body: 'Work through 10 guided modules, 28 hands-on lessons, and quick knowledge checks at your own pace.',
+      body: 'Work through 23 guided modules, 71 hands-on lessons across Website and Desktop editions, visual studio guides, and live tutorials.',
     },
   ],
   help: [],
@@ -529,36 +530,13 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       el('strong', { text: 'Take Complete Book Course', style: { fontSize: '14px' } }),
       el('span', {
         className: 'bv-label',
-        text: '10 modules · 28 lessons covering drafting, file locks, permanent Author Keys, covers, and publishing.',
+        text: '23 modules · 71 lessons across Manuscript, Story Graph, Cover Studio, Website & Desktop editions.',
       }),
     ),
     el('span', { className: 'qv-welcome-course-arrow', text: '→' }),
   );
 
-  const desktopInfoCard = !isTauriRuntime()
-    ? el(
-        'div',
-        {
-          style: {
-            padding: '10px 12px',
-            borderRadius: '7px',
-            border: '1px solid var(--border-hairline)',
-            background: 'var(--bg-bar)',
-            fontSize: '12px',
-            color: 'var(--text-secondary)',
-            lineHeight: '1.45',
-          },
-        },
-        'Desktop App Extras: Offline Fullscreen HUD (F11), Multi-Window editing, Same-Wi-Fi LAN Sync, Bluetooth transfer, and OS file registration live inside the downloadable desktop build. Read how each works in the Complete Book Course.',
-      )
-    : null;
-
-  const subtitle =
-    env === 'desktop-app'
-      ? 'Offline Desktop Studio · Disk Auto-Save · Protected QVBX Files'
-      : env === 'mobile-web'
-        ? 'Mobile Web Edition · Local Browser Auto-Save · Zero Login'
-        : 'Web Studio (quillvibe.jhonrey.com) · Instant Local Workspace · Zero Login';
+  const subtitle = 'Book writing, worldbuilding, and typesetting studio.';
 
   const desktopTitlebar = isTauriRuntime()
     ? el(
@@ -580,7 +558,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
           'div',
           { className: 'qv-splash-win-meta' },
           quillvibeLogo(14),
-          el('span', { text: 'Quillvibe Desktop · jhonrey.com' }),
+          el('span', { text: 'Quillvibe' }),
         ),
         el(
           'div',
@@ -673,7 +651,6 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
               ),
             ]
           : []),
-        ...(desktopInfoCard ? [desktopInfoCard] : []),
       ),
     ),
     el(

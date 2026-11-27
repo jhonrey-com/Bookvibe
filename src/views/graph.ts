@@ -738,6 +738,15 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         (n) => selectedNodeIds.has(n.id) || n.id === state.activeGraphNodeId,
       );
       if (targetNodes.length > 0) fitCanvas(targetNodes);
+    } else if (e.key === 'Escape') {
+      if (state.activeGraphNodeId || selectedEdgeId || selectedGroupId || selectedNodeIds.size > 0 || connectMode) {
+        selectedEdgeId = '';
+        selectedGroupId = '';
+        selectedNodeIds.clear();
+        connectMode = false;
+        connectSourceId = '';
+        actions.setState({ activeGraphNodeId: '' }, true);
+      }
     }
   };
   window.addEventListener('keydown', activeGraphKeyHandler);
@@ -925,6 +934,7 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
     };
 
     let forcePanning = false;
+    let forcePanMoved = false;
     let fPanX = 0;
     let fPanY = 0;
     let fOrigPanX = panX;
@@ -939,6 +949,7 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         hit.pinned = true;
       } else {
         forcePanning = true;
+        forcePanMoved = false;
         fPanX = e.clientX;
         fPanY = e.clientY;
         fOrigPanX = panX;
@@ -960,6 +971,9 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         return;
       }
       if (forcePanning) {
+        if (Math.hypot(e.clientX - fPanX, e.clientY - fPanY) > 4) {
+          forcePanMoved = true;
+        }
         panX = fOrigPanX + (e.clientX - fPanX);
         panY = fOrigPanY + (e.clientY - fPanY);
         return;
@@ -978,10 +992,24 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
           withGraph(actions, (g) => updateGraphNode(g, id, { x: Math.round(b.x), y: Math.round(b.y), pinned: true }));
         } else {
           selectedEdgeId = '';
+          selectedGroupId = '';
           actions.setState({ activeGraphNodeId: id }, true);
+        }
+      } else if (forcePanning && !forcePanMoved) {
+        const hadSelection =
+          Boolean(state.activeGraphNodeId) ||
+          Boolean(selectedEdgeId) ||
+          Boolean(selectedGroupId) ||
+          selectedNodeIds.size > 0;
+        selectedEdgeId = '';
+        selectedGroupId = '';
+        selectedNodeIds.clear();
+        if (hadSelection) {
+          actions.setState({ activeGraphNodeId: '' }, true);
         }
       }
       forcePanning = false;
+      forcePanMoved = false;
     });
 
     const drawFrame = () => {
@@ -1105,17 +1133,36 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
             style: { color: grp.color || '#c7a97b' },
           },
           el('span', { text: grp.label }),
-          el('button', {
-            className: 'bv-mini-btn',
-            text: grp.collapsed ? 'Expand' : 'Hide',
-            attrs: { type: 'button' },
-            on: {
-              click: (ev) => {
-                ev.stopPropagation();
-                withGraph(actions, (g) => updateGraphGroup(g, grp.id, { collapsed: !grp.collapsed }));
+          el(
+            'div',
+            { style: { display: 'inline-flex', alignItems: 'center', gap: '4px' } },
+            el('button', {
+              className: 'bv-mini-btn',
+              text: grp.collapsed ? 'Expand' : 'Hide',
+              attrs: { type: 'button' },
+              on: {
+                pointerdown: (ev) => ev.stopPropagation(),
+                click: (ev) => {
+                  ev.stopPropagation();
+                  withGraph(actions, (g) => updateGraphGroup(g, grp.id, { collapsed: !grp.collapsed }));
+                },
               },
-            },
-          }),
+            }),
+            el('button', {
+              className: 'bv-mini-btn',
+              text: '×',
+              tooltip: { title: 'Remove Group Frame', short: 'Removes this Act/section frame while keeping all cards.' },
+              attrs: { type: 'button', 'aria-label': `Remove ${grp.label} group frame` },
+              on: {
+                pointerdown: (ev) => ev.stopPropagation(),
+                click: (ev) => {
+                  ev.stopPropagation();
+                  if (selectedGroupId === grp.id) selectedGroupId = '';
+                  withGraph(actions, (g) => deleteGraphGroup(g, grp.id));
+                },
+              },
+            }),
+          ),
         ),
         !grp.collapsed ? el('div', { className: 'qv-graph-group-resize' }) : null,
       );
@@ -1126,15 +1173,21 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         if ((e.target as HTMLElement).closest('button')) return;
         e.stopPropagation();
         selectedGroupId = grp.id;
+        selectedEdgeId = '';
+        selectedNodeIds.clear();
         const sx = e.clientX;
         const sy = e.clientY;
         const origGx = grp.x;
         const origGy = grp.y;
         const childNodes = graph.nodes.filter((n) => isPointInGroup(n.x + 80, n.y + 36, grp));
         const childOrigins = new Map(childNodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+        let movedGroup = false;
         const onMove = (mv: PointerEvent) => {
           const dx = Math.round((mv.clientX - sx) / zoomScale);
           const dy = Math.round((mv.clientY - sy) / zoomScale);
+          if (Math.abs(mv.clientX - sx) > 3 || Math.abs(mv.clientY - sy) > 3) {
+            movedGroup = true;
+          }
           grp.x = origGx + dx;
           grp.y = origGy + dy;
           grpEl.style.left = `${grp.x}px`;
@@ -1154,13 +1207,17 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         const onUp = () => {
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
-          withGraph(actions, (g) => {
-            let next = updateGraphGroup(g, grp.id, { x: grp.x, y: grp.y });
-            for (const cn of childNodes) {
-              next = updateGraphNode(next, cn.id, { x: cn.x, y: cn.y });
-            }
-            return next;
-          });
+          if (movedGroup) {
+            withGraph(actions, (g) => {
+              let next = updateGraphGroup(g, grp.id, { x: grp.x, y: grp.y });
+              for (const cn of childNodes) {
+                next = updateGraphNode(next, cn.id, { x: cn.x, y: cn.y });
+              }
+              return next;
+            });
+          } else {
+            actions.setState({ activeGraphNodeId: '' }, true);
+          }
         };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
@@ -1178,6 +1235,7 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
           grp.height = Math.max(140, oh + Math.round((mv.clientY - sy) / zoomScale));
           grpEl.style.width = `${grp.width}px`;
           grpEl.style.height = `${grp.height}px`;
+          updateConnectedEdgesLive('');
         };
         const onUp = () => {
           window.removeEventListener('pointermove', onMove);
@@ -1450,6 +1508,7 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
     let portDragSide: 'left' | 'right' | 'top' | 'bottom' = 'right';
 
     let panning = false;
+    let panMoved = false;
     let panStartClientX = 0;
     let panStartClientY = 0;
     let panOriginX = 0;
@@ -1532,8 +1591,9 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
             nRef.x = nx;
             nRef.y = ny;
           }
-          updateConnectedEdgesLive(nid);
         }
+        // Re-route every connector on the board in real time so moving cards & obstacle paths stay live
+        updateConnectedEdgesLive('');
       } else if (marqueeBox) {
         const left = Math.min(marqueeStartX, e.clientX);
         const top = Math.min(marqueeStartY, e.clientY);
@@ -1544,6 +1604,9 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         marqueeBox.style.width = `${width}px`;
         marqueeBox.style.height = `${height}px`;
       } else if (panning) {
+        if (Math.hypot(e.clientX - panStartClientX, e.clientY - panStartClientY) > 4) {
+          panMoved = true;
+        }
         panX = Math.round(panOriginX + (e.clientX - panStartClientX));
         panY = Math.round(panOriginY + (e.clientY - panStartClientY));
         viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
@@ -1612,7 +1675,27 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
           });
         } else {
           selectedEdgeId = '';
+          selectedGroupId = '';
           actions.setState({ activeGraphNodeId: id }, true);
+        }
+      } else if (panning && !panMoved) {
+        const hadSelection =
+          Boolean(state.activeGraphNodeId) ||
+          Boolean(selectedEdgeId) ||
+          Boolean(selectedGroupId) ||
+          selectedNodeIds.size > 0 ||
+          connectMode;
+        selectedEdgeId = '';
+        selectedGroupId = '';
+        selectedNodeIds.clear();
+        connectMode = false;
+        connectSourceId = '';
+        if (hadSelection) {
+          if (state.activeGraphNodeId) {
+            actions.setState({ activeGraphNodeId: '' }, true);
+          } else {
+            renderGraphView(container, actions);
+          }
         }
       }
 
@@ -1841,6 +1924,7 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
       }
       if (e.button !== 0 && e.button !== 1) return;
       panning = true;
+      panMoved = false;
       panStartClientX = e.clientX;
       panStartClientY = e.clientY;
       panOriginX = panX;
@@ -1909,12 +1993,15 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
   });
   const selectedNode = graph.nodes.find((n) => n.id === state.activeGraphNodeId);
   const selectedEdge = graph.edges.find((e) => e.id === selectedEdgeId);
+  const selectedGroup = (graph.groups ?? []).find((g) => g.id === selectedGroupId);
 
   const panelTitleText = selectedNode
     ? 'Node & Wikilink Notes'
     : selectedEdge
       ? 'Connector Styling'
-      : 'Board Controls & Rules';
+      : selectedGroup
+        ? 'Group Frame'
+        : 'Board Controls & Rules';
 
   const makePropsHeader = () => {
     const hdr = el(
@@ -2131,6 +2218,61 @@ export function renderGraphView(container: HTMLElement, rawActions: AppActions):
         },
         icon('trash', 12),
         'Delete Connection',
+      ),
+    );
+  } else if (selectedGroup) {
+    const grpTitleIn = el('input', {
+      className: 'bv-input',
+      attrs: { type: 'text', value: selectedGroup.label },
+      on: {
+        change: () =>
+          withGraph(actions, (g) => updateGraphGroup(g, selectedGroup.id, { label: grpTitleIn.value || 'Group' })),
+      },
+    });
+    const grpColorIn = el('input', {
+      attrs: { type: 'color', value: selectedGroup.color || '#c7a97b', 'aria-label': 'Group Frame Color' },
+      on: {
+        change: () => withGraph(actions, (g) => updateGraphGroup(g, selectedGroup.id, { color: grpColorIn.value })),
+      },
+    });
+    propsPanel.append(
+      makePropsHeader(),
+      el('p', {
+        className: 'bv-label',
+        text: 'Group frames (like Act 1) visually band cards together and let you drag enclosed nodes as one unit.',
+      }),
+      el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', text: 'Group Title' }), grpTitleIn),
+      el(
+        'div',
+        { className: 'bv-field', style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        el('label', { className: 'bv-label', text: 'Frame Accent Color' }),
+        grpColorIn,
+      ),
+      el('button', {
+        className: 'bv-btn',
+        text: selectedGroup.collapsed ? 'Expand Group Frame' : 'Collapse Group Frame',
+        attrs: { type: 'button' },
+        on: {
+          click: () =>
+            withGraph(actions, (g) =>
+              updateGraphGroup(g, selectedGroup.id, { collapsed: !selectedGroup.collapsed }),
+            ),
+        },
+      }),
+      el(
+        'button',
+        {
+          className: 'bv-mini-btn',
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              withGraph(actions, (g) => deleteGraphGroup(g, selectedGroup.id));
+              selectedGroupId = '';
+            },
+          },
+        },
+        icon('trash', 12),
+        'Remove Group Frame (Keep Cards)',
       ),
     );
   } else {

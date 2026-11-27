@@ -15,18 +15,28 @@ const THEME_META_COLOR: Record<LandingThemeMode, string> = {
 const PREVIEWS: Record<string, { src: string; alt: string; caption: string }> = {
   editor: {
     src: '/screenshots/editor-workspace.png',
-    alt: 'Quillvibe Manuscript workspace showing Binder, Paper Sheet, and Inspector',
-    caption: 'Binder navigation, comfortable paper sheet, and Scene Inspector',
+    alt: 'Quillvibe Manuscript workspace showing Binder, Paper Sheet, Proofread toggle, and Inspector',
+    caption: 'Unified Draft workspace with Binder navigation, inline Proofread marks, and Scene Inspector',
+  },
+  split: {
+    src: '/screenshots/editor-split-diff.png',
+    alt: 'Quillvibe Manuscript Split Reference resizable drawer beside active prose',
+    caption: 'Resizable Split Reference & Revision Diff drawer docked inside Manuscript Draft Mode',
   },
   graph: {
     src: '/screenshots/story-graph.png',
-    alt: 'Quillvibe Story Graph with linked narrative nodes',
-    caption: 'Dual-mode Storyboard and Force Graph synced with your Story Bible',
+    alt: 'Quillvibe Story Graph with linked narrative nodes and real-time wire routing',
+    caption: 'Dual-mode Storyboard and Force Graph synced live with your Story Bible',
   },
   cover: {
     src: '/screenshots/cover-studio.png',
     alt: 'Quillvibe Book Cover Studio with layers and alignment properties',
     caption: 'Front, spine, back, and dust-jacket flap layout with alignment guides',
+  },
+  academy: {
+    src: '/screenshots/course-academy.png',
+    alt: 'Quillvibe Academy full-page two-pane course workspace',
+    caption: '23 guided modules and 71 hands-on lessons built right into Quillvibe',
   },
 };
 

@@ -10,11 +10,64 @@ import {
   countWords,
   moveScene,
   newId,
+  renameChapterInProject,
+  renamePartInProject,
   toggleChapterLock,
   togglePartLock,
 } from '../core/manuscript';
 import { attachContextMenu } from '../ui/context-menu';
 import { clearNode, el, icon } from '../ui/dom';
+
+function startInlineBinderRename(
+  labelEl: HTMLElement,
+  currentTitle: string,
+  onCommit: (nextTitle: string) => void,
+): void {
+  if (!labelEl.isConnected) return;
+  const input = el('input', {
+    className: 'bv-binder-rename-input',
+    attrs: {
+      type: 'text',
+      value: currentTitle,
+      'aria-label': 'Rename Binder item',
+    },
+    on: {
+      click: (e) => e.stopPropagation(),
+      dblclick: (e) => e.stopPropagation(),
+    },
+  });
+
+  let finished = false;
+  const cleanup = (commit: boolean) => {
+    if (finished) return;
+    finished = true;
+    const trimmed = input.value.trim();
+    if (commit && trimmed && trimmed !== currentTitle) {
+      onCommit(trimmed);
+      return;
+    }
+    if (input.isConnected) {
+      input.replaceWith(labelEl);
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      cleanup(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cleanup(false);
+    }
+  });
+  input.addEventListener('blur', () => cleanup(true));
+
+  labelEl.replaceWith(input);
+  input.focus();
+  input.select();
+}
 
 export function renderBinder(container: HTMLElement, actions: AppActions): void {
   clearNode(container);
@@ -82,6 +135,35 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
       partBodyInner,
     );
 
+    const partLabelEl = el('span', {
+      className: 'bv-tree-label bv-tree-part-label',
+      text: part.title,
+      on: {
+        dblclick: (e) => {
+          e.stopPropagation();
+          if (part.locked) {
+            actions.notify(`Unlock Part “${part.title}” before renaming.`);
+            return;
+          }
+          startInlineBinderRename(partLabelEl, part.title, (nextTitle) => {
+            actions.mutateProject((prev) => renamePartInProject(prev, part.id, nextTitle));
+            actions.notify(`Renamed Part to “${nextTitle}”`);
+          });
+        },
+      },
+    });
+
+    const triggerPartRename = () => {
+      if (part.locked) {
+        actions.notify(`Unlock Part “${part.title}” before renaming.`);
+        return;
+      }
+      startInlineBinderRename(partLabelEl, part.title, (nextTitle) => {
+        actions.mutateProject((prev) => renamePartInProject(prev, part.id, nextTitle));
+        actions.notify(`Renamed Part to “${nextTitle}”`);
+      });
+    };
+
     const partRow = el(
       'div',
       { className: 'bv-tree-row' },
@@ -103,7 +185,7 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           },
         },
         icon(part.collapsed ? 'chevron-right' : 'chevron-down', 13),
-        el('span', { className: 'bv-tree-label bv-tree-part-label', text: part.title }),
+        partLabelEl,
         part.locked
           ? el('span', { className: 'qv-binder-lock-badge', attrs: { title: 'Part locked (finalized)' } }, icon('lock', 11))
           : null,
@@ -111,6 +193,21 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
       el(
         'div',
         { className: 'bv-row-hover-tools' },
+        el(
+          'button',
+          {
+            className: 'bv-icon-tiny',
+            tooltip: { title: 'Rename Part', short: 'Edit the name of this Part division.' },
+            attrs: { type: 'button', 'aria-label': 'Rename Part' },
+            on: {
+              click: (e) => {
+                e.stopPropagation();
+                triggerPartRename();
+              },
+            },
+          },
+          icon('quill', 12),
+        ),
         el(
           'button',
           {
@@ -157,6 +254,12 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         heading: part.title,
         items: [
           {
+            label: 'Rename Part',
+            icon: 'quill',
+            disabled: Boolean(part.locked),
+            onSelect: triggerPartRename,
+          },
+          {
             label: part.locked ? 'Unlock Part for Editing' : 'Lock Part (Final / Proofread)',
             icon: part.locked ? 'unlock' : 'lock',
             onSelect: () => {
@@ -188,6 +291,28 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
         { className: `qv-accordion-wrap${chapter.collapsed ? ' is-collapsed' : ''}` },
         chapBodyInner,
       );
+
+      const triggerChapterRename = () => {
+        if (part.locked || chapter.locked) {
+          actions.notify(`Unlock “${chapter.title}” before renaming.`);
+          return;
+        }
+        startInlineBinderRename(chapLabelEl, chapter.title, (nextTitle) => {
+          actions.mutateProject((prev) => renameChapterInProject(prev, chapter.id, nextTitle));
+          actions.notify(`Renamed Chapter to “${nextTitle}”`);
+        });
+      };
+
+      const chapLabelEl = el('span', {
+        className: 'bv-tree-label bv-tree-chapter-label',
+        text: chapter.title,
+        on: {
+          dblclick: (e) => {
+            e.stopPropagation();
+            triggerChapterRename();
+          },
+        },
+      });
 
       const chapRow = el(
           'div',
@@ -230,7 +355,7 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
               },
             },
             icon(chapter.collapsed ? 'chevron-right' : 'chevron-down', 12),
-            el('span', { className: 'bv-tree-label bv-tree-chapter-label', text: chapter.title }),
+            chapLabelEl,
             chapter.locked
               ? el('span', { className: 'qv-binder-lock-badge', attrs: { title: 'Chapter locked (finalized)' } }, icon('lock', 11))
               : null,
@@ -246,6 +371,21 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           el(
             'div',
             { className: 'bv-row-hover-tools' },
+            el(
+              'button',
+              {
+                className: 'bv-icon-tiny',
+                tooltip: { title: 'Rename Chapter', short: 'Edit the name of this Chapter.' },
+                attrs: { type: 'button', 'aria-label': 'Rename Chapter' },
+                on: {
+                  click: (e) => {
+                    e.stopPropagation();
+                    triggerChapterRename();
+                  },
+                },
+              },
+              icon('quill', 12),
+            ),
             el(
               'button',
               {
@@ -324,6 +464,12 @@ export function renderBinder(container: HTMLElement, actions: AppActions): void 
           {
             heading: chapter.title,
             items: [
+              {
+                label: 'Rename Chapter',
+                icon: 'quill',
+                disabled: Boolean(part.locked || chapter.locked),
+                onSelect: triggerChapterRename,
+              },
               {
                 label: chapter.locked ? 'Unlock Chapter for Editing' : 'Lock Chapter (Final / Proofread)',
                 icon: chapter.locked ? 'unlock' : 'lock',

@@ -15,6 +15,7 @@ export type FontFamilyId = 'garamond' | 'baskerville' | 'palatino' | 'inter';
 export type ChapterNumeralStyle = 'roman' | 'word' | 'numeric';
 
 export type StudioViewId =
+  | 'landing'
   | 'editor'
   | 'corkboard'
   | 'outline'

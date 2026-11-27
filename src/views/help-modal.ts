@@ -622,7 +622,6 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
                   attrs: { type: 'button' },
                   on: {
                     click: () => {
-                      closeModal();
                       actions.openCoursePage();
                     },
                   },
@@ -637,7 +636,6 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
                   attrs: { type: 'button' },
                   on: {
                     click: () => {
-                      closeModal();
                       actions.openHelpPage();
                     },
                   },

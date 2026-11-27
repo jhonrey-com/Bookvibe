@@ -79,7 +79,8 @@ export type IconName =
   | 'fullscreen-exit'
   | 'alarm'
   | 'bell'
-  | 'server';
+  | 'server'
+  | 'search';
 
 type ChildInput = Node | string | number | null | undefined | false;
 
@@ -565,6 +566,10 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M7 17h.01',
     'M11 7h6',
     'M11 17h6',
+  ],
+  search: [
+    'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
+    'M21 21l-4.35-4.35',
   ],
 };
 

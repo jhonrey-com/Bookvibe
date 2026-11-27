@@ -1,6 +1,6 @@
 # Quillvibe Controls, FAQ & Error Code Reference (`v3.1.2`)
 
-Plain guide to every workspace control, question, and `QV-xxx` error code in Quillvibe (see also [DESKTOP-ARCHITECTURE.md](DESKTOP-ARCHITECTURE.md)).
+Plain guide to every workspace control, question, and `QV-xxx` error code in Quillvibe.
 
 > Live searchable version with screenshots: <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong>https://quillvibe.jhonrey.com/help</strong></a> (or <a href="https://quillvibe.jhonrey.com/faq" target="_blank" rel="noopener noreferrer"><strong>/faq</strong></a>)
 

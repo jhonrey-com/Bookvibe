@@ -114,7 +114,6 @@ export function showCollabModal(actions: AppActions): void {
         'div',
         { className: 'bv-desktop-banner-head' },
         el('span', { className: 'bv-panel-title', text: titleText }),
-        el('span', { className: 'bv-runtime-pill', text: 'Desktop Executable Only' }),
       ),
       el('p', { className: 'bv-label', text: bodyText }),
       el('a', {
