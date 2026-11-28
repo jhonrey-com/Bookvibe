@@ -8,7 +8,7 @@
 > **Free Book Writing Course:** <a href="https://quillvibe.jhonrey.com/course" target="_blank" rel="noopener noreferrer"><strong>Quillvibe Academy (23 Modules, 71 Lessons — Website &amp; Desktop Tracks)</strong></a>  
 > **Help Center, FAQ & Error Codes:** <a href="https://quillvibe.jhonrey.com/help" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/help</code></strong></a>  
 > **Developer Portal (`.qvext` Add-ons):** <a href="https://quillvibe.jhonrey.com/developer" target="_blank" rel="noopener noreferrer"><strong><code>https://quillvibe.jhonrey.com/developer</code></strong></a> *(Companion Extension Builder App Coming Soon)*  
-> **Download Desktop App (`v3.3.1` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
+> **Download Desktop App (`v3.3.2` — Windows, Mac & Linux):** <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases</strong></a>  
 > **Contact, Feedback & Support:** Email <a href="mailto:quillvibe@jhonrey.com" target="_blank" rel="noopener noreferrer"><strong>quillvibe@jhonrey.com</strong></a>
 
 > [!NOTE]
@@ -49,7 +49,7 @@ Many writers end up juggling several separate programs—one for writing chapter
 - **Unified Draft Mode & built-in proofreading marks**: Toggle **Proofread** (15 copyediting symbols with Clean Preview and automatic snapshots) alongside a resizable **Split Reference** and **Revision Diff** pane directly inside Draft Mode without leaving your writing sheet.
 - **Ready for publishing & easy `.docx` migration**: Add your publisher name, ISBN, custom fonts (`.ttf`, `.otf`, `.woff`, `.woff2`), front/spine/back book covers, Origin Author Keys, Work Copyright Seals, verified co-author access, type-to-confirm safe book deletion, and export full **`.docx`** manuscripts (for standard word processors and cloud document editors), `.md`, `.rtf`, or `.json`.
 
-### Live Screenshots (`v3.3.1`)
+### Live Screenshots (`v3.3.2`)
 
 #### Website Edition (`quillvibe.jhonrey.com`)
 <p align="center">
@@ -88,11 +88,13 @@ Visit <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener nor
 - This is the easiest way to try Quillvibe without installing anything or dealing with desktop security prompts.
 - The browser version has fewer features than the installed desktop app. Remember to click **Save** to download a `.qv` backup file to your computer when you finish writing.
 
-### Option B: Install the Desktop App (Windows, Mac & Linux)
-Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.3.1</code>)</strong></a> (published under **`jhonrey.com`**):
-- **Windows:** `.msi` or branded `-setup.exe` (with custom app icon & **Check for Updates** inside `/settings`)
-- **Mac (Apple Silicon & Intel):** Universal `.dmg`
-- **Linux:** `.AppImage`, `.deb`, or `.rpm`
+### Option B: Install on Windows, macOS, Linux, Chromebook & Other OS
+Download the latest installer from <a href="https://github.com/jhonrey-com/Quillvibe/releases/latest" target="_blank" rel="noopener noreferrer"><strong>GitHub Releases (<code>v3.3.2</code>)</strong></a> (published under **`jhonrey.com`**):
+- **Windows:** `.msi` or branded `-setup.exe` (x64, with custom app icon & **Check for Updates** inside `/settings`)
+- **Mac (Apple Silicon & Intel):** Universal `.dmg` (`arm64` + `x86_64`)
+- **Linux (x64 & ARM64):** `.AppImage`, `.deb`, or `.rpm`
+- **Chromebook (ChromeOS):** Open <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener noreferrer"><strong>quillvibe.jhonrey.com</strong></a> in Chrome and click **Install app** in the address bar for full offline desktop-like use (or install the `.deb` x64/ARM64 package inside Chromebook Linux / Crostini)
+- **Other OS (Android, iPadOS, iOS, BSD & Any Modern Browser):** Install directly as an offline Web App (`Add to Home Screen` / `Install app`) from <a href="https://quillvibe.jhonrey.com/" target="_blank" rel="noopener noreferrer"><strong>quillvibe.jhonrey.com</strong></a> with local `.qv` storage and full export support
 
 Because Quillvibe is a new open-source app still being actively updated and improved, Windows, Mac, or Linux may show a warning before opening the installer. If you prefer to avoid that prompt, you can use the website version above instead.
 

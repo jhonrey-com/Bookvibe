@@ -456,9 +456,9 @@ export function renderLandingPageView(
       el(
         'div',
         { className: 'qv-landing-section-head' },
-        el('h2', { text: 'Write in your browser or install on Windows, macOS & Linux' }),
+        el('h2', { text: 'Write in your browser, install on Chromebook, Windows, macOS & Linux' }),
         el('p', {
-          text: 'Use the instant website edition here without downloading anything, or install the desktop application for direct disk auto-save, stacked draggable book tabs, multi-window editing, F11 Immersive HUD, Pro Vector Cover tools, and offline Wi-Fi/Bluetooth sharing.',
+          text: 'Install Quillvibe as an offline Web App on Chromebook (ChromeOS), Android, and iPadOS, or download native installers for Windows, macOS Universal, and Linux (x64 & ARM64) with direct disk auto-save, stacked book tabs, F11 focus mode, Pro Vector Cover tools, and local Wi-Fi/Bluetooth sharing.',
         }),
       ),
       el(
@@ -467,9 +467,9 @@ export function renderLandingPageView(
         el(
           'article',
           { className: 'qv-landing-card' },
-          el('h3', { text: 'Browser Studio (No Install)' }),
+          el('h3', { text: 'Browser & Chromebook App (Offline PWA)' }),
           el('p', {
-            text: 'Run Quillvibe straight in Chrome, Firefox, Edge, or Safari on desktop and mobile. Remember to click Save to download a local .qv copy of your book when you finish a browser session.',
+            text: 'Run or install Quillvibe in Chrome, Edge, Firefox, or Safari on Chromebook (ChromeOS), Android, iPadOS, and any other desktop or tablet OS. Click Save to download a local .qv backup when finishing a session.',
           }),
           el(
             'div',
@@ -491,7 +491,7 @@ export function renderLandingPageView(
         el(
           'article',
           { className: 'qv-landing-card' },
-          el('h3', { text: `Desktop App for Windows, macOS & Linux (v${APP_VERSION})` }),
+          el('h3', { text: `Desktop App for Windows, macOS & Linux x64/ARM64 (v${APP_VERSION})` }),
           el('p', {
             text: 'Adds automatic local saving, stacked book tabs, F11 fullscreen clock and sprint bar, OS file-association double-click launch, Pro Vector Cover tools, and in-app updates.',
           }),

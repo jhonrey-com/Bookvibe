@@ -4396,6 +4396,12 @@ async function bootstrap(): Promise<void> {
 
 export async function bootQuillvibeApp(): Promise<AppActions> {
   await bootstrap();
+  if (!isTauriRuntime() && typeof navigator !== 'undefined' && 'serviceWorker' in navigator && window.location.protocol === 'https:') {
+    window.addEventListener('load', () => {
+      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
+    });
+  }
+
   return actions;
 }
 

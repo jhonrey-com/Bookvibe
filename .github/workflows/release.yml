@@ -34,6 +34,8 @@ jobs:
             args: '--target universal-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
+          - platform: ubuntu-24.04-arm
+            args: ''
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +51,7 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install Linux desktop dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -66,7 +68,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Quillvibe v__VERSION__'
-          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), and Linux (.AppImage / .deb / .rpm) with official Quillvibe QVBX file extensions (.qv, .qvbible, .qvscene, .qvstyle, .qvdesign). Also available directly in the browser at https://quillvibe.jhonrey.com/.'
+          releaseBody: 'Standalone native installers and executables for Windows (.msi / .exe), macOS Universal (.dmg), Linux x64 and ARM64 (.AppImage / .deb / .rpm), and offline PWA for Chromebook (ChromeOS), Android, iPadOS, and all browsers at https://quillvibe.jhonrey.com/.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
