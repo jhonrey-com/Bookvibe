@@ -39,7 +39,7 @@ import type {
   ToolTier,
   WindowTitleMode,
 } from '../core/types';
-import { clearNode, el, icon, quillvibeLogo } from '../ui/dom';
+import { clearNode, el, icon, quillvibeLogo, type IconName } from '../ui/dom';
 import { createAppThemeButton } from '../ui/theme-button';
 
 export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
@@ -50,11 +50,11 @@ export function setSettingsPageTab(tab: SettingsTab): void {
   currentSettingsTab = tab;
 }
 
-const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; desc: string }> = [
-  { id: 'editor', label: 'Themes, Layout & Behavior', desc: 'Application theme, theme linking, layout presets, animations, and updates' },
-  { id: 'fonts', label: 'Typefaces & Fonts', desc: 'Install custom fonts for your writing sheet and book interior' },
-  { id: 'publishing', label: 'Publishing, .docx & Backups', desc: 'ISBN metadata, .docx migration, and portable book archives' },
-  { id: 'developer', label: 'Developer & Diagnostics', desc: 'Diagnostics snapshot, provenance check, and extension tools' },
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; iconName: IconName }> = [
+  { id: 'editor', label: 'Appearance', iconName: 'appearance' },
+  { id: 'fonts', label: 'Fonts', iconName: 'font-family' },
+  { id: 'publishing', label: 'Publishing', iconName: 'publish-book' },
+  { id: 'developer', label: 'Developer', iconName: 'terminal' },
 ];
 
 const EDITORIAL_STAGES: Array<{ id: EditorialStage; label: string }> = [
@@ -385,20 +385,22 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
     tabBar.textContent = '';
     for (const tab of SETTINGS_TABS) {
       tabBar.appendChild(
-        el('button', {
-          className: `qv-settings-nav-item${activeTab === tab.id ? ' is-active' : ''}`,
-          attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
-          on: {
-            click: () => {
-              activeTab = tab.id;
-              currentSettingsTab = tab.id;
-              renderTabs();
-              renderBody();
+        el(
+          'button',
+          {
+            className: `qv-settings-nav-item${activeTab === tab.id ? ' is-active' : ''}`,
+            attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
+            on: {
+              click: () => {
+                activeTab = tab.id;
+                currentSettingsTab = tab.id;
+                renderTabs();
+                renderBody();
+              },
             },
           },
-          },
-          el('span', { text: tab.label, style: { fontWeight: '600', fontSize: '13px' } }),
-          el('span', { className: 'bv-label', text: tab.desc }),
+          icon(tab.iconName, 15),
+          el('span', { text: tab.label }),
         ),
       );
     }
@@ -818,6 +820,18 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
         },
       });
 
+      const blockBrowserExtChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-block-browser-ext',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.disableBrowserWritingExtensions },
+        on: {
+          change: () => {
+            actions.updateSettings({ disableBrowserWritingExtensions: blockBrowserExtChk.checked });
+            actions.setState({}, true);
+          },
+        },
+      });
+
       const tourChk = el('input', {
         className: 'bv-lever',
         id: 'bv-set-tours',
@@ -926,6 +940,11 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
         attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowClock },
         on: { change: () => actions.updateSettings({ immersiveShowClock: immClockChk.checked }) },
       });
+      const immDateChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowDate },
+        on: { change: () => actions.updateSettings({ immersiveShowDate: immDateChk.checked }) },
+      });
       const immTimerChk = el('input', {
         className: 'bv-lever',
         attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowTimer },
@@ -936,10 +955,35 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
         attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowWords },
         on: { change: () => actions.updateSettings({ immersiveShowWords: immWordsChk.checked }) },
       });
+      const immTargetChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowTarget },
+        on: { change: () => actions.updateSettings({ immersiveShowTarget: immTargetChk.checked }) },
+      });
+      const immBatteryChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowBattery },
+        on: { change: () => actions.updateSettings({ immersiveShowBattery: immBatteryChk.checked }) },
+      });
+      const immMediaChk = el('input', {
+        className: 'bv-lever',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowMedia },
+        on: { change: () => actions.updateSettings({ immersiveShowMedia: immMediaChk.checked }) },
+      });
       const immAlarmChk = el('input', {
         className: 'bv-lever',
         attrs: { type: 'checkbox', role: 'switch', checked: settings.immersiveShowAlarm },
         on: { change: () => actions.updateSettings({ immersiveShowAlarm: immAlarmChk.checked }) },
+      });
+      const detailedTooltipsChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-detailed-tooltips',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.detailedTooltips },
+        on: {
+          change: () => {
+            actions.updateSettings({ detailedTooltips: detailedTooltipsChk.checked });
+          },
+        },
       });
 
       const ringtoneSel = el(
@@ -1024,6 +1068,12 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
               el('span', { text: 'Ask for confirmation before unlocking locked chapters or parts' }),
             ),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-spellcheck' } }, spellcheckChk, el('span', { text: 'Enable strict word spellcheck underlines while drafting' })),
+            el(
+              'label',
+              { className: 'bv-check-row', attrs: { for: 'qv-set-block-browser-ext' } },
+              blockBrowserExtChk,
+              el('span', { text: 'Disable browser writing & grammar extensions (Grammarly, LanguageTool, etc.) while writing' }),
+            ),
             el('label', { className: 'bv-check-row', attrs: { for: 'qv-set-smooth-anim' } }, smoothAnimChk, el('span', { text: 'Enable smooth animations & transitions for Binder, Inspector, and menus' })),
             ...(isTauriRuntime()
               ? [
@@ -1036,6 +1086,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
                 ]
               : []),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-tours' } }, tourChk, el('span', { text: 'Show interactive hints & course tips' })),
+            el('label', { className: 'bv-check-row', attrs: { for: 'qv-set-detailed-tooltips' } }, detailedTooltipsChk, el('span', { text: 'Show detailed descriptions in hover tooltips' })),
             el(
               'button',
               {
@@ -1079,8 +1130,12 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
             ...(isTauriRuntime()
               ? [
                   el('label', { className: 'bv-check-row' }, immClockChk, el('span', { text: 'Show live wall clock in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immDateChk, el('span', { text: 'Show current date in Immersive Mode' })),
                   el('label', { className: 'bv-check-row' }, immTimerChk, el('span', { text: 'Show writing sprint timer in Immersive Mode' })),
                   el('label', { className: 'bv-check-row' }, immWordsChk, el('span', { text: 'Show word count progress in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immTargetChk, el('span', { text: 'Show word target percentage in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immBatteryChk, el('span', { text: 'Show device battery status in Immersive Mode' })),
+                  el('label', { className: 'bv-check-row' }, immMediaChk, el('span', { text: 'Show background media & audio volume in Immersive Mode' })),
                   el('label', { className: 'bv-check-row' }, immAlarmChk, el('span', { text: 'Show alarm clock pill in Immersive Mode' })),
                 ]
               : []),
@@ -1090,14 +1145,13 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
               el('label', { className: 'bv-label', attrs: { for: 'qv-set-ringtone' }, text: 'Alarm Clock Ringtone' }),
               el(
                 'div',
-                { style: { display: 'flex', gap: '6px' } },
+                { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
                 ringtoneSel,
                 el(
                   'button',
                   {
-                    className: 'bv-mini-btn',
-                    text: 'Preview',
-                    attrs: { type: 'button' },
+                    className: 'bv-btn qv-ringtone-preview-btn',
+                    attrs: { type: 'button', 'aria-label': 'Preview selected alarm ringtone' },
                     on: {
                       click: () => {
                         const s = actions.getState().settings;
@@ -1105,6 +1159,8 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
                       },
                     },
                   },
+                  icon('volume', 14),
+                  el('span', { text: 'Preview' }),
                 ),
               ),
             ),
@@ -1623,7 +1679,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
         icon('draft-sheet', 14),
         'Back to Writing',
       ),
-      el('h1', { text: 'Settings, Layouts & Themes', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+      el('h1', { text: 'Settings', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
     ),
     el(
       'div',
@@ -1644,11 +1700,12 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          text: 'Help & Manual',
-          attrs: { type: 'button' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Help & Manual', short: 'Open the Quillvibe manual, shortcuts, and reference.' },
+          attrs: { type: 'button', 'aria-label': 'Help & Manual' },
           on: { click: () => actions.openHelpModal('course') },
         },
+        icon('help', 15),
       ),
       createAppThemeButton(actions),
     ),

@@ -285,6 +285,7 @@ export class LiquidGlassControl<T extends string = string> {
   private readonly options: LiquidGlassOption<T>[];
   private readonly records: ButtonRecord<T>[] = [];
   private readonly surface: 'solid' | 'clear';
+  private readonly compact: boolean;
   private readonly onChange: (value: T) => void;
 
   private currentValue: T;
@@ -320,6 +321,7 @@ export class LiquidGlassControl<T extends string = string> {
     this.currentValue = config.value;
     this.previewValue = config.value;
     this.surface = config.surface ?? 'clear';
+    this.compact = Boolean(config.compact);
     this.onChange = config.onChange;
     this.filterId = `lg-refract-${++filterCounter}`;
 
@@ -839,7 +841,8 @@ export class LiquidGlassControl<T extends string = string> {
     const scaledRight = scaledLeft + scaledW;
     const scaledBottom = scaledTop + scaledH;
 
-    const radius = Math.min(BASE_PILL_RADIUS * scale, scaledW / 2, scaledH / 2);
+    const pillRadius = this.compact ? 11 : BASE_PILL_RADIUS;
+    const radius = Math.min(pillRadius * scale, scaledW / 2, scaledH / 2);
 
     this.pill.style.left = `${this.xOde.value.toFixed(2)}px`;
     this.pill.style.top = `${baseTop.toFixed(2)}px`;

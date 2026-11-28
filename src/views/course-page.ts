@@ -622,21 +622,21 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          attrs: { type: 'button' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Help & FAQ', short: 'Open the Help Center & Error FAQ.' },
+          attrs: { type: 'button', 'aria-label': 'Help & FAQ' },
           on: { click: () => actions.openHelpPage() },
         },
-        icon('help', 12),
-        'Help & FAQ',
+        icon('help', 15),
       ),
       el(
         'button',
         {
-          className: 'bv-mini-btn',
+          className: 'bv-btn',
           attrs: { type: 'button' },
           on: { click: () => actions.returnToWriting() },
         },
-        icon('quill', 12),
+        icon('quill', 13),
         'Back to Book',
       ),
       createAppThemeButton(actions),

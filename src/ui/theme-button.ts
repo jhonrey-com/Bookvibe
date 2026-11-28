@@ -10,7 +10,7 @@ const THEME_ORDER: AppThemeId[] = ['system', 'ivory', 'parchment', 'obsidian'];
 export function createAppThemeButton(actions: AppActions, size = 16): HTMLButtonElement {
   const current = actions.getState().settings.appTheme;
   const btn = el('button', {
-    className: 'bv-topbar-btn qv-global-theme-btn',
+    className: 'bv-btn bv-btn-icon qv-global-theme-btn',
     tooltip: {
       title: 'Application Theme',
       short: 'Cycle studio theme: System, Ivory Light, Warm Parchment, or Obsidian Dark.',

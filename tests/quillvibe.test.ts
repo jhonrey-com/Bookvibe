@@ -107,7 +107,7 @@ import {
   createWelcomeIntroBookProject,
   isLocalDevMockEnabled,
 } from '../src/core/sample-book';
-import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../src/core/settings';
+import { DEFAULT_SETTINGS, formatAppWindowTitle, sanitizeSettings } from '../src/core/settings';
 import { COURSE_MODULES, getCourseCompletionSummary } from '../src/ui/course';
 import { buildSearchCorpus } from '../src/ui/universal-search';
 import type { AppActions, AppState } from '../src/core/app-context';
@@ -676,6 +676,14 @@ describe('Cover Studio Math, Smart Snap, Storyboard Router & Force Graph', () =>
   it('round-trips rich prose Markdown blocks cleanly and filters Universal Search by workspace and platform', () => {
     expect(DEFAULT_SETTINGS.enableRichFormatting).toBe(true);
     expect(DEFAULT_SETTINGS.confirmBeforeUnlock).toBe(false);
+    expect(DEFAULT_SETTINGS.disableBrowserWritingExtensions).toBe(false);
+    expect(DEFAULT_SETTINGS.detailedTooltips).toBe(false);
+    expect(DEFAULT_SETTINGS.immersiveShowBattery).toBe(true);
+    expect(DEFAULT_SETTINGS.immersiveShowMedia).toBe(true);
+    expect(DEFAULT_SETTINGS.immersiveShowDate).toBe(false);
+    expect(DEFAULT_SETTINGS.immersiveShowTarget).toBe(true);
+    expect(sanitizeSettings({ disableBrowserWritingExtensions: true }).disableBrowserWritingExtensions).toBe(true);
+    expect(sanitizeSettings({ detailedTooltips: true }).detailedTooltips).toBe(true);
 
     const sampleMd = [
       '# Act I Opening',

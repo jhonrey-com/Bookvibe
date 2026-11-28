@@ -499,7 +499,7 @@ const tabDragController = new TabDragController({
   getWindowLabel: () => currentWindowLabel,
   getTabIds: () => tabManager.getTabIds(),
   getActiveTabId: () => tabManager.getActiveTabId(),
-  immediateMergeOnTargetHover: true,
+  immediateMergeOnTargetHover: false,
   getTargetWindowStripMetrics: (targetWindowLabel) => {
     const rec = windowSync?.getWindowPresenceByLabel(targetWindowLabel);
     if (!rec) return null;
@@ -598,9 +598,14 @@ const tabDragController = new TabDragController({
         ...state.library,
         books: state.library.books.map(stripPrivateAuthorSecrets),
       };
-      void persistProject(serializedBook);
-      void persistLibrary(JSON.stringify(libForDisk));
-      void closeDesktopWindowByLabel(currentWindowLabel);
+      void Promise.all([
+        persistProject(serializedBook),
+        persistLibrary(JSON.stringify(libForDisk)),
+      ]).finally(() => {
+        window.setTimeout(() => {
+          void closeDesktopWindowByLabel(currentWindowLabel);
+        }, 45);
+      });
     }
   },
 });
@@ -2081,22 +2086,24 @@ const actions: AppActions = {
     const validIds = new Set(state.library.books.map((b) => b.id));
     tabManager.prune((id) => validIds.has(id), state.project.id);
     const wasActive = tabManager.getActiveTabId() === tabId;
+    const wasDisplayedProject = state.project.id === tabId;
     const res = tabManager.closeTab(tabId);
     if (!res.closed) return;
     syncTabsFromManager(true);
     pendingFocusTabIdAfterRender = res.nextActiveId;
-    if (wasActive && res.nextActiveId) {
-      if (isNonBookTabId(res.nextActiveId)) {
+    const targetId = res.nextActiveId || tabManager.getActiveTabId();
+    if ((wasActive || wasDisplayedProject) && targetId) {
+      if (isNonBookTabId(targetId)) {
         state.activeView =
-          res.nextActiveId === COURSE_TAB_ID
+          targetId === COURSE_TAB_ID
             ? 'course'
-            : res.nextActiveId === HELP_TAB_ID
+            : targetId === HELP_TAB_ID
               ? 'help'
-              : res.nextActiveId === SETTINGS_TAB_ID
+              : targetId === SETTINGS_TAB_ID
                 ? 'settings'
-                : res.nextActiveId === MANUAL_TAB_ID
+                : targetId === MANUAL_TAB_ID
                   ? 'manual'
-                  : res.nextActiveId === EXTENSIONS_TAB_ID
+                  : targetId === EXTENSIONS_TAB_ID
                     ? 'extensions'
                     : 'editor';
         windowSync?.publishPresence();
@@ -2105,11 +2112,12 @@ const actions: AppActions = {
         return;
       }
       state.activeView = 'editor';
-      actions.switchBook(res.nextActiveId);
+      actions.switchBook(targetId);
       return;
     }
     windowSync?.publishPresence();
     renderDesktopTabBar();
+    renderActiveView();
   },
 
   mergeAllWindowsHere() {
@@ -3145,6 +3153,9 @@ function renderDesktopTabBar(): void {
     }
 
     tabEl.classList.toggle('is-active', isActive);
+    tabEl.style.visibility = '';
+    tabEl.style.opacity = '';
+    tabEl.style.transform = '';
     tabEl.dataset.tabTitle = tabTitle;
     tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
     tabEl.setAttribute('aria-label', tabTitle);
@@ -3507,10 +3518,31 @@ function buildShell(root: HTMLElement): void {
     },
   });
 
+  const MIN_MAIN_STAGE_WIDTH_PX = 460;
+
+  const getMaxBinderWidthPx = (): number => {
+    const winW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const inspectorUsed =
+      state.showInspector && winW > COMPACT_SIDEBAR_BREAKPOINT
+        ? state.settings.inspectorWidthPx + 5
+        : 0;
+    return Math.max(190, Math.min(440, winW - MIN_MAIN_STAGE_WIDTH_PX - inspectorUsed - 5));
+  };
+
+  const getMaxInspectorWidthPx = (): number => {
+    const winW = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const binderUsed =
+      state.showBinder && winW > 960
+        ? state.settings.binderWidthPx + 5
+        : 0;
+    return Math.max(210, Math.min(480, winW - MIN_MAIN_STAGE_WIDTH_PX - binderUsed - 5));
+  };
+
   const binderResizer = createVerticalResizer({
     side: 'left',
     minWidth: 190,
     maxWidth: 440,
+    getDynamicMaxWidth: getMaxBinderWidthPx,
     cssVarName: '--qv-binder-w',
     ariaLabel: 'Resize Manuscript Binder',
     getWidth: () => state.settings.binderWidthPx,
@@ -3522,6 +3554,7 @@ function buildShell(root: HTMLElement): void {
     side: 'right',
     minWidth: 210,
     maxWidth: 480,
+    getDynamicMaxWidth: getMaxInspectorWidthPx,
     cssVarName: '--qv-inspector-w',
     ariaLabel: 'Resize Scene Inspector',
     getWidth: () => state.settings.inspectorWidthPx,
@@ -3794,6 +3827,10 @@ function buildShell(root: HTMLElement): void {
     if (window.innerWidth <= COMPACT_SIDEBAR_BREAKPOINT && state.showBinder && state.showInspector) {
       state.showInspector = false;
     }
+    const clampedBinder = Math.min(state.settings.binderWidthPx, getMaxBinderWidthPx());
+    const clampedInspector = Math.min(state.settings.inspectorWidthPx, getMaxInspectorWidthPx());
+    document.documentElement.style.setProperty('--qv-binder-w', `${clampedBinder}px`);
+    document.documentElement.style.setProperty('--qv-inspector-w', `${clampedInspector}px`);
     const effTier = getEffectiveTier();
     if (lastRenderedTier !== effTier) {
       rebuildHeaderNavControl();

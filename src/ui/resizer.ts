@@ -4,6 +4,7 @@ export interface VerticalResizerOptions {
   side: 'left' | 'right';
   minWidth: number;
   maxWidth: number;
+  getDynamicMaxWidth?: () => number;
   cssVarName: string;
   ariaLabel: string;
   getWidth: () => number;
@@ -48,8 +49,12 @@ export function createVerticalResizer(options: VerticalResizerOptions): HTMLElem
         },
         pointermove: (e) => {
           if (!dragging) return;
+          const effMax = Math.max(
+            options.minWidth,
+            Math.min(options.maxWidth, options.getDynamicMaxWidth?.() ?? options.maxWidth),
+          );
           const delta = options.side === 'left' ? e.clientX - startX : startX - e.clientX;
-          liveW = Math.round(Math.max(options.minWidth, Math.min(options.maxWidth, startW + delta)));
+          liveW = Math.round(Math.max(options.minWidth, Math.min(effMax, startW + delta)));
           document.documentElement.style.setProperty(options.cssVarName, `${liveW}px`);
         },
         pointerup: (e) => {
@@ -84,8 +89,12 @@ export function createVerticalResizer(options: VerticalResizerOptions): HTMLElem
           const step = e.shiftKey ? 24 : 10;
           const dir = e.key === 'ArrowRight' ? 1 : -1;
           const signedDelta = options.side === 'left' ? dir * step : -dir * step;
+          const effMax = Math.max(
+            options.minWidth,
+            Math.min(options.maxWidth, options.getDynamicMaxWidth?.() ?? options.maxWidth),
+          );
           const next = Math.round(
-            Math.max(options.minWidth, Math.min(options.maxWidth, options.getWidth() + signedDelta)),
+            Math.max(options.minWidth, Math.min(effMax, options.getWidth() + signedDelta)),
           );
           document.documentElement.style.setProperty(options.cssVarName, `${next}px`);
           options.onResizeEnd(next);

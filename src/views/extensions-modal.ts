@@ -23,7 +23,7 @@ import type {
   InstalledExtension,
   QuillvibePluginManifest,
 } from '../core/types';
-import { clearNode, el, icon } from '../ui/dom';
+import { clearNode, el, icon, type IconName } from '../ui/dom';
 import { createAppThemeButton } from '../ui/theme-button';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
@@ -37,10 +37,10 @@ interface MountExtensionsNavBridge {
   onRender?: (activeTab: ExtensionsModalTab, setTab: (tab: ExtensionsModalTab) => void) => void;
 }
 
-const EXTENSIONS_PAGE_TABS: ReadonlyArray<{ id: ExtensionsModalTab; label: string; desc: string }> = [
-  { id: 'integrated', label: 'Integrated Extensions', desc: 'Built-in export, typography, and studio modules' },
-  { id: 'external', label: 'External Sandbox', desc: 'Signed .qvext plugins and permission controls' },
-  { id: 'formats', label: 'Official File Formats', desc: 'Protected .qv* archives and OS shell registration' },
+const EXTENSIONS_PAGE_TABS: ReadonlyArray<{ id: ExtensionsModalTab; label: string; iconName: IconName }> = [
+  { id: 'integrated', label: 'Integrated', iconName: 'extensions' },
+  { id: 'external', label: 'Sandbox', iconName: 'sandbox' },
+  { id: 'formats', label: 'Formats', iconName: 'archive-format' },
 ];
 
 let activeExtensionsPageGlass: LiquidGlassControl<ExtensionsModalTab> | null = null;
@@ -860,8 +860,8 @@ export function renderExtensionsPageView(container: HTMLElement, actions: AppAct
             attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
             on: { click: () => setTab(tab.id) },
           },
-          el('span', { text: tab.label, style: { fontWeight: '600', fontSize: '13px' } }),
-          el('span', { className: 'bv-label', text: tab.desc }),
+          icon(tab.iconName, 15),
+          el('span', { text: tab.label }),
         ),
       );
     }
@@ -883,7 +883,7 @@ export function renderExtensionsPageView(container: HTMLElement, actions: AppAct
         icon('draft-sheet', 14),
         'Back to Writing',
       ),
-      el('h1', { text: 'Extensions, Permissions & Official File Formats', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+      el('h1', { text: 'Extensions', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
     ),
     el(
       'div',
@@ -891,11 +891,22 @@ export function renderExtensionsPageView(container: HTMLElement, actions: AppAct
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          attrs: { type: 'button' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Settings', short: 'Open Settings.' },
+          attrs: { type: 'button', 'aria-label': 'Settings' },
           on: { click: () => actions.openSettingsModal('developer') },
         },
-        'Settings',
+        icon('settings', 15),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Help & Manual', short: 'Open the Quillvibe Help Center.' },
+          attrs: { type: 'button', 'aria-label': 'Help & Manual' },
+          on: { click: () => actions.openHelpPage() },
+        },
+        icon('help', 15),
       ),
       createAppThemeButton(actions),
     ),

@@ -1,4 +1,5 @@
-import type { AppActions, EditorSubMode } from '../core/app-context';
+import type { AppActions, AppState, EditorSubMode } from '../core/app-context';
+import { isTauriRuntime } from '../core/bridge';
 import { getActiveSessionPermissions } from '../core/collab';
 import { getAllAvailableFontChoices } from '../core/fonts';
 import {
@@ -267,10 +268,29 @@ function applyRichParagraphAlign(
   }
 }
 
-function insertRichSceneBreak(richEl: HTMLElement, onSync: () => void): void {
+function toggleRichSectionBreak(richEl: HTMLElement, onSync: () => void): 'added' | 'removed' {
   richEl.focus();
   const range = getSelectionRangeInRich(richEl);
   const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
+
+  if (block && block.tagName.toUpperCase() === 'HR') {
+    const next = block.nextElementSibling;
+    block.remove();
+    if (next) setCaretAtEndOfNode(next);
+    onSync();
+    return 'removed';
+  }
+  if (block?.previousElementSibling?.tagName.toUpperCase() === 'HR') {
+    block.previousElementSibling.remove();
+    onSync();
+    return 'removed';
+  }
+  if (block?.nextElementSibling?.tagName.toUpperCase() === 'HR') {
+    block.nextElementSibling.remove();
+    onSync();
+    return 'removed';
+  }
+
   const hr = document.createElement('hr');
   hr.className = 'bv-scene-break';
   const nextPara = document.createElement('p');
@@ -283,6 +303,7 @@ function insertRichSceneBreak(richEl: HTMLElement, onSync: () => void): void {
   }
   setCaretAtEndOfNode(nextPara);
   onSync();
+  return 'added';
 }
 
 function insertPlainTextAtRichCaret(richEl: HTMLElement, text: string, onSync: () => void): void {
@@ -495,13 +516,27 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     return true;
   };
 
+  const blockExt = state.settings.disableBrowserWritingExtensions;
+  const spellcheckAttr = !blockExt && state.settings.enableSpellcheck ? 'true' : 'false';
+  const autocorrectAttr = !blockExt && state.settings.enableSpellcheck ? 'on' : 'off';
+  const extBlockAttrs = blockExt
+    ? {
+        'data-gramm': 'false',
+        'data-gramm_editor': 'false',
+        'data-enable-grammarly': 'false',
+        'data-lt-active': 'false',
+        'data-ms-editor': 'false',
+      }
+    : {};
+
   const proseTextarea = el('textarea', {
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
     attrs: {
       placeholder: 'Begin writing this scene…',
-      spellcheck: state.settings.enableSpellcheck ? 'true' : 'false',
-      autocorrect: state.settings.enableSpellcheck ? 'on' : 'off',
+      spellcheck: spellcheckAttr,
+      autocorrect: autocorrectAttr,
       'aria-label': 'Scene prose editor',
+      ...extBlockAttrs,
       ...(canEditThisScene ? {} : { readonly: '' }),
     },
   });
@@ -522,9 +557,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       'aria-label': 'Scene rich prose editor',
       'data-placeholder': 'Begin writing this scene…',
       contenteditable: canEditThisScene ? 'true' : 'false',
-      spellcheck: state.settings.enableSpellcheck ? 'true' : 'false',
-      autocorrect: state.settings.enableSpellcheck ? 'on' : 'off',
+      spellcheck: spellcheckAttr,
+      autocorrect: autocorrectAttr,
       tabindex: '0',
+      ...extBlockAttrs,
     },
   });
 
@@ -685,10 +721,28 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const applySceneBreakInsert = () => {
     if (!ensureDraftEditable()) return;
     if (useRichFormatting) {
-      insertRichSceneBreak(proseRich, syncRichToState);
+      const outcome = toggleRichSectionBreak(proseRich, syncRichToState);
+      actions.notify(outcome === 'removed' ? 'Removed middle section line' : 'Added middle section line');
     } else {
       const pos = proseTextarea.selectionStart;
       const cur = proseTextarea.value;
+      const lineStart = cur.lastIndexOf('\n', Math.max(0, pos - 1)) + 1;
+      const lineEndIdx = cur.indexOf('\n', lineStart);
+      const lineEnd = lineEndIdx === -1 ? cur.length : lineEndIdx;
+      const curLine = cur.slice(lineStart, lineEnd).trim();
+      if (/^(?:\*\s*\*\s*\*|-\s*-\s*-)$/.test(curLine)) {
+        const before = cur.slice(0, lineStart).replace(/\n+$/, '');
+        const after = cur.slice(lineEnd).replace(/^\n+/, '');
+        const nextVal = [before, after].filter(Boolean).join('\n\n');
+        proseTextarea.value = nextVal;
+        proseTextarea.focus();
+        const nextCaret = before.length;
+        proseTextarea.setSelectionRange(nextCaret, nextCaret);
+        syncTextareaHeight();
+        actions.updateActiveSceneTextQuietly('content', nextVal);
+        actions.notify('Removed middle section line');
+        return;
+      }
       const insertion = '\n\n* * *\n\n';
       const nextVal = cur.slice(0, pos) + insertion + cur.slice(pos);
       proseTextarea.value = nextVal;
@@ -696,8 +750,19 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       proseTextarea.setSelectionRange(pos + insertion.length, pos + insertion.length);
       syncTextareaHeight();
       actions.updateActiveSceneTextQuietly('content', nextVal);
+      actions.notify('Added middle section line');
     }
   };
+
+  proseRich.addEventListener('click', (e) => {
+    if (!canEditThisScene) return;
+    const hrEl = (e.target as HTMLElement | null)?.closest('hr.bv-scene-break');
+    if (hrEl && proseRich.contains(hrEl)) {
+      hrEl.remove();
+      syncRichToState();
+      actions.notify('Removed middle section line');
+    }
+  });
 
   const getActiveCursorOffset = (): number => {
     if (useRichFormatting) {
@@ -855,7 +920,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             onSelect: () => applyListFormat('ordered'),
           },
           {
-            label: 'Insert Scene Break (* * *)',
+            label: 'Add / Remove Section Line (* * *)',
             onSelect: applySceneBreakInsert,
           },
         ],
@@ -896,8 +961,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
                 actions.updateSettings({ toolTier: 'intermediate' });
               }
-              const cur = actions.getState().editorSubMode;
-              actions.setState({ editorSubMode: cur === 'proofread' ? 'draft' : 'proofread' }, true);
+              const nextMode = actions.getState().editorSubMode === 'proofread' ? 'draft' : 'proofread';
+              const patch: Partial<AppState> = { editorSubMode: nextMode };
+              if (isTauriRuntime() && nextMode !== 'draft') patch.showInspector = false;
+              actions.setState(patch, true);
             },
           },
           {
@@ -907,8 +974,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
                 actions.updateSettings({ toolTier: 'intermediate' });
               }
-              const cur = actions.getState().editorSubMode;
-              actions.setState({ editorSubMode: cur === 'split' ? 'draft' : 'split' }, true);
+              const nextMode = actions.getState().editorSubMode === 'split' ? 'draft' : 'split';
+              const patch: Partial<AppState> = { editorSubMode: nextMode };
+              if (isTauriRuntime() && nextMode !== 'draft') patch.showInspector = false;
+              actions.setState(patch, true);
             },
           },
           {
@@ -918,8 +987,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               if (!isTierAtLeast(actions.getState().settings.toolTier, 'intermediate')) {
                 actions.updateSettings({ toolTier: 'intermediate' });
               }
-              const cur = actions.getState().editorSubMode;
-              actions.setState({ editorSubMode: cur === 'diff' ? 'draft' : 'diff' }, true);
+              const nextMode = actions.getState().editorSubMode === 'diff' ? 'draft' : 'diff';
+              const patch: Partial<AppState> = { editorSubMode: nextMode };
+              if (isTauriRuntime() && nextMode !== 'draft') patch.showInspector = false;
+              actions.setState(patch, true);
             },
           },
         ],
@@ -935,6 +1006,13 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       value: scene.title,
       placeholder: 'Scene Title',
       'aria-label': 'Scene title',
+      ...(blockExt
+        ? {
+            spellcheck: 'false',
+            autocorrect: 'off',
+            ...extBlockAttrs,
+          }
+        : {}),
       ...(canEditThisScene ? {} : { readonly: '' }),
     },
     on: {
@@ -970,6 +1048,15 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     ? state.editorSubMode
     : 'draft';
 
+  const setSubModeWithDesktopInspectorCollapse = (targetMode: EditorSubMode) => {
+    pendingComposer = null;
+    const patch: Partial<AppState> = { editorSubMode: targetMode };
+    if (isTauriRuntime() && targetMode !== 'draft') {
+      patch.showInspector = false;
+    }
+    actions.setState(patch, true);
+  };
+
   const draftToolsStrip = allowIntermediate
     ? el(
         'div',
@@ -985,13 +1072,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               'aria-label': 'Toggle Inline Proofread Markup inside Draft Mode',
             },
             on: {
-              click: () => {
-                pendingComposer = null;
-                actions.setState(
-                  { editorSubMode: effectiveSubMode === 'proofread' ? 'draft' : 'proofread' },
-                  true,
-                );
-              },
+              click: () =>
+                setSubModeWithDesktopInspectorCollapse(
+                  effectiveSubMode === 'proofread' ? 'draft' : 'proofread',
+                ),
             },
           },
           icon('proofread', 12),
@@ -1008,13 +1092,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               'aria-label': 'Toggle Collapsible Split Reference Pane',
             },
             on: {
-              click: () => {
-                pendingComposer = null;
-                actions.setState(
-                  { editorSubMode: effectiveSubMode === 'split' ? 'draft' : 'split' },
-                  true,
-                );
-              },
+              click: () =>
+                setSubModeWithDesktopInspectorCollapse(
+                  effectiveSubMode === 'split' ? 'draft' : 'split',
+                ),
             },
           },
           icon('split', 12),
@@ -1031,13 +1112,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
               'aria-label': 'Toggle Collapsible Revision Diff Pane',
             },
             on: {
-              click: () => {
-                pendingComposer = null;
-                actions.setState(
-                  { editorSubMode: effectiveSubMode === 'diff' ? 'draft' : 'diff' },
-                  true,
-                );
-              },
+              click: () =>
+                setSubModeWithDesktopInspectorCollapse(
+                  effectiveSubMode === 'diff' ? 'draft' : 'diff',
+                ),
             },
           },
           icon('diff', 12),
@@ -1238,56 +1316,77 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         style: { textDecoration: 'line-through' },
         on: { click: applyStrikeFormat },
       }),
-      el('button', {
-        className: 'bv-fmt-btn',
-        text: 'Tx',
-        tooltip: { title: 'Clear Formatting', short: 'Strip inline emphasis from selected text.' },
-        attrs: { type: 'button', 'aria-label': 'Clear formatting' },
-        on: { click: applyClearFormat },
-      }),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: { title: 'Clear Formatting', short: 'Strip inline emphasis from selected text.' },
+          attrs: { type: 'button', 'aria-label': 'Clear formatting' },
+          on: { click: applyClearFormat },
+        },
+        icon('clear-format', 14),
+      ),
       el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
-      el('button', {
-        className: 'bv-fmt-btn',
-        text: '• List',
-        tooltip: { title: 'Bulleted List', short: 'Start or toggle a bulleted list item.' },
-        attrs: { type: 'button', 'aria-label': 'Bulleted list' },
-        on: { click: () => applyListFormat('bullet') },
-      }),
-      el('button', {
-        className: 'bv-fmt-btn',
-        text: '1. List',
-        tooltip: { title: 'Numbered List', short: 'Start or toggle a numbered list item.' },
-        attrs: { type: 'button', 'aria-label': 'Numbered list' },
-        on: { click: () => applyListFormat('ordered') },
-      }),
-      el('button', {
-        className: 'bv-fmt-btn',
-        text: '❝',
-        tooltip: TOOLTIP_CATALOG.quote,
-        attrs: { type: 'button', 'aria-label': 'Epigraph Blockquote' },
-        on: { click: applyQuoteFormat },
-      }),
-      el('button', {
-        className: 'bv-fmt-btn',
-        text: '* * *',
-        tooltip: TOOLTIP_CATALOG.sceneBreak,
-        attrs: { type: 'button', 'aria-label': 'Insert Scene Break' },
-        on: { click: applySceneBreakInsert },
-      }),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: { title: 'Bulleted List', short: 'Start or toggle a bulleted list item.' },
+          attrs: { type: 'button', 'aria-label': 'Bulleted list' },
+          on: { click: () => applyListFormat('bullet') },
+        },
+        icon('list-bullet', 14),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: { title: 'Numbered List', short: 'Start or toggle a numbered list item.' },
+          attrs: { type: 'button', 'aria-label': 'Numbered list' },
+          on: { click: () => applyListFormat('ordered') },
+        },
+        icon('list-ordered', 14),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: TOOLTIP_CATALOG.quote,
+          attrs: { type: 'button', 'aria-label': 'Epigraph Blockquote' },
+          on: { click: applyQuoteFormat },
+        },
+        icon('quote', 14),
+      ),
+      el(
+        'button',
+        {
+          className: 'bv-fmt-btn bv-btn-compact-icon',
+          tooltip: {
+            title: 'Middle Section Line',
+            short: 'Add or remove a centered middle section divider (* * *) at the cursor.',
+          },
+          attrs: { type: 'button', 'aria-label': 'Add or remove middle section divider' },
+          on: { click: applySceneBreakInsert },
+        },
+        icon('section-divider', 14),
+      ),
       el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
       ...([
-        { id: 'left', label: 'Left', short: 'Align Left' },
-        { id: 'center', label: 'Center', short: 'Align Center' },
-        { id: 'right', label: 'Right', short: 'Align Right' },
-        { id: 'justify', label: 'Justify', short: 'Justify Paragraph' },
+        { id: 'left', iconName: 'align-left', short: 'Align Left' },
+        { id: 'center', iconName: 'align-center', short: 'Align Center' },
+        { id: 'right', iconName: 'align-right', short: 'Align Right' },
+        { id: 'justify', iconName: 'align-justify', short: 'Justify Paragraph' },
       ] as const).map((al) =>
-        el('button', {
-          className: 'bv-fmt-btn qv-align-btn',
-          text: al.label,
-          tooltip: { title: al.short, short: `${al.short} in the active paragraph.` },
-          attrs: { type: 'button', 'aria-label': al.short },
-          on: { click: () => applyParagraphAlignment(al.id) },
-        }),
+        el(
+          'button',
+          {
+            className: 'bv-fmt-btn bv-btn-compact-icon',
+            tooltip: { title: al.short, short: `${al.short} in the active paragraph.` },
+            attrs: { type: 'button', 'aria-label': al.short },
+            on: { click: () => applyParagraphAlignment(al.id) },
+          },
+          icon(al.iconName, 14),
+        ),
       ),
       lineSpacingSelect,
       el(
@@ -1399,6 +1498,10 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     side: 'right',
     minWidth: 260,
     maxWidth: 640,
+    getDynamicMaxWidth: () => {
+      const stageW = panes.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1000);
+      return Math.max(260, Math.min(640, stageW - 400 - 5));
+    },
     cssVarName: '--qv-split-w',
     ariaLabel: 'Resize Companion Split Reference or Diff Pane',
     getWidth: () => editorSplitWidthPx,

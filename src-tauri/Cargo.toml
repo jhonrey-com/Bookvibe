@@ -1,6 +1,6 @@
 [package]
 name = "quillvibe"
-version = "3.3.4"
+version = "3.3.5"
 description = "Open-source desktop book writing, worldbuilding, cover studio, and EPUB/PDF typesetting app"
 authors = ["jhonrey.com"]
 license = "MIT"

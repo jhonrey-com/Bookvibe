@@ -72,6 +72,27 @@ function formatWallClock(): string {
   });
 }
 
+interface BatteryLike {
+  level: number;
+  charging: boolean;
+  addEventListener?(type: string, listener: () => void): void;
+  removeEventListener?(type: string, listener: () => void): void;
+}
+
+function formatWallDate(): string {
+  return new Date().toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function resolveBackgroundMediaTitle(): string {
+  if (typeof navigator === 'undefined') return '';
+  const meta = (navigator as Navigator & { mediaSession?: { metadata?: { title?: string; artist?: string } | null } })
+    .mediaSession?.metadata;
+  if (!meta?.title) return '';
+  const cleanTitle = meta.title.trim();
+  if (!cleanTitle) return '';
+  return cleanTitle.length > 22 ? `${cleanTitle.slice(0, 21)}…` : cleanTitle;
+}
+
 export function mountImmersiveHud(
   actions: AppActions,
   alarm: AlarmController,
@@ -82,6 +103,39 @@ export function mountImmersiveHud(
     attrs: { role: 'region', 'aria-label': 'Immersive Focus Controls' },
   });
   document.body.appendChild(hudEl);
+
+  let batteryState: { pct: number; charging: boolean } | null = null;
+  let batteryHandle: BatteryLike | null = null;
+  const syncBattery = () => {
+    if (!batteryHandle) return;
+    batteryState = {
+      pct: Math.max(0, Math.min(100, Math.round(batteryHandle.level * 100))),
+      charging: Boolean(batteryHandle.charging),
+    };
+  };
+  if (typeof navigator !== 'undefined') {
+    const getBat = (navigator as Navigator & { getBattery?: () => Promise<BatteryLike> }).getBattery;
+    if (typeof getBat === 'function') {
+      void getBat
+        .call(navigator)
+        .then((bat) => {
+          batteryHandle = bat;
+          syncBattery();
+          bat.addEventListener?.('levelchange', () => {
+            syncBattery();
+            if (actions.getState().immersiveMode) syncHudContents();
+          });
+          bat.addEventListener?.('chargingchange', () => {
+            syncBattery();
+            if (actions.getState().immersiveMode) syncHudContents();
+          });
+          if (actions.getState().immersiveMode) syncHudContents();
+        })
+        .catch(() => {
+          batteryState = null;
+        });
+    }
+  }
 
   // Top-edge mouse hover dropdown bar (Windows Virtual Desktop style)
   let topDropPinned = false;
@@ -180,6 +234,10 @@ export function mountImmersiveHud(
   });
 
   const wallClockEl = el('span', { className: 'qv-imm-clock', text: formatWallClock() });
+  const wallDateEl = el('span', { className: 'qv-imm-metric', text: formatWallDate() });
+  const targetPctEl = el('span', { className: 'qv-imm-metric', text: '' });
+  const batteryTextEl = el('span', { className: 'qv-imm-metric', text: '' });
+  const mediaTextEl = el('span', { className: 'qv-imm-metric', text: '' });
   const sprintTextEl = el('span', { className: 'qv-imm-metric', text: '' });
   const sprintBtnEl = el('button', {
     className: 'qv-imm-icon-btn',
@@ -353,6 +411,18 @@ export function mountImmersiveHud(
       );
     }
 
+    if (settings.immersiveShowDate) {
+      wallDateEl.textContent = formatWallDate();
+      metricGroups.push(
+        el(
+          'div',
+          { className: 'qv-imm-group', attrs: { title: 'Today' } },
+          icon('calendar', 12),
+          wallDateEl,
+        ),
+      );
+    }
+
     if (settings.immersiveShowTimer) {
       const total = getProjectWordCount(project);
       const delta = total - state.sprintStartWords;
@@ -381,18 +451,79 @@ export function mountImmersiveHud(
       );
     }
 
-    if (settings.immersiveShowWords) {
+    if (settings.immersiveShowWords || settings.immersiveShowTarget) {
       const total = getProjectWordCount(project);
-      wordsEl.textContent = `${total.toLocaleString()} / ${project.wordTarget.toLocaleString()}`;
+      const pct = project.wordTarget > 0 ? Math.min(999, Math.round((total / project.wordTarget) * 100)) : 0;
+      if (settings.immersiveShowWords) {
+        wordsEl.textContent = `${total.toLocaleString()} / ${project.wordTarget.toLocaleString()}`;
+        metricGroups.push(
+          el(
+            'div',
+            {
+              className: 'qv-imm-group',
+              attrs: { title: `${total.toLocaleString()} of ${project.wordTarget.toLocaleString()} words` },
+            },
+            icon('quill', 12),
+            wordsEl,
+          ),
+        );
+      }
+      if (settings.immersiveShowTarget) {
+        targetPctEl.textContent = `${pct}%`;
+        metricGroups.push(
+          el(
+            'div',
+            {
+              className: 'qv-imm-group',
+              attrs: { title: `Word target progress: ${pct}%` },
+            },
+            icon('target', 12),
+            targetPctEl,
+          ),
+        );
+      }
+    }
+
+    if (settings.immersiveShowBattery && batteryState) {
+      batteryTextEl.textContent = batteryState.charging ? `${batteryState.pct}%⚡` : `${batteryState.pct}%`;
       metricGroups.push(
         el(
           'div',
           {
             className: 'qv-imm-group',
-            attrs: { title: `${total.toLocaleString()} of ${project.wordTarget.toLocaleString()} words` },
+            attrs: { title: batteryState.charging ? `Battery ${batteryState.pct}% (Charging)` : `Battery ${batteryState.pct}%` },
           },
-          icon('quill', 12),
-          wordsEl,
+          icon('battery', 12),
+          batteryTextEl,
+        ),
+      );
+    }
+
+    if (settings.immersiveShowMedia) {
+      const trackTitle = resolveBackgroundMediaTitle();
+      const volPct = Math.round(settings.alarmVolume * 100);
+      mediaTextEl.textContent = trackTitle ? `${trackTitle} · ${volPct}%` : `${volPct}%`;
+      metricGroups.push(
+        el(
+          'button',
+          {
+            className: 'qv-imm-group qv-imm-media-btn',
+            attrs: {
+              type: 'button',
+              title: trackTitle ? `Playing: ${trackTitle} (Click to adjust audio volume)` : `Audio volume ${volPct}% (Click to cycle)`,
+            },
+            on: {
+              click: () => {
+                const steps = [0.25, 0.5, 0.75, 1.0];
+                const cur = actions.getState().settings.alarmVolume;
+                const next = steps.find((v) => v > cur + 0.05) ?? steps[0];
+                actions.updateSettings({ alarmVolume: next });
+                syncHudContents();
+              },
+            },
+          },
+          icon(trackTitle ? 'music' : 'volume', 12),
+          mediaTextEl,
         ),
       );
     }
@@ -422,13 +553,64 @@ export function mountImmersiveHud(
       actionsWrap.appendChild(alarmBtn);
     }
 
+    const openHudCustomizePopover = () => {
+      const existingPop = document.getElementById('qv-imm-customize-pop');
+      if (existingPop) {
+        existingPop.remove();
+        return;
+      }
+      const st = actions.getState().settings;
+      const toggles: Array<{ key: keyof typeof st; label: string }> = [
+        { key: 'immersiveShowClock', label: 'Clock' },
+        { key: 'immersiveShowDate', label: 'Date' },
+        { key: 'immersiveShowTimer', label: 'Sprint Timer' },
+        { key: 'immersiveShowWords', label: 'Word Count' },
+        { key: 'immersiveShowTarget', label: 'Target %' },
+        { key: 'immersiveShowBattery', label: 'Device Battery' },
+        { key: 'immersiveShowMedia', label: 'Media & Volume' },
+        { key: 'immersiveShowAlarm', label: 'Alarm' },
+      ];
+      const pop = el(
+        'div',
+        { className: 'qv-imm-customize-pop', id: 'qv-imm-customize-pop', attrs: { role: 'dialog', 'aria-label': 'Customize Immersive Bar' } },
+        el(
+          'div',
+          { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' } },
+          el('strong', { text: 'Customize Bar', style: { fontSize: '12px' } }),
+          el('button', {
+            className: 'bv-mini-btn',
+            text: 'Done',
+            attrs: { type: 'button' },
+            on: { click: () => pop.remove() },
+          }),
+        ),
+        ...toggles.map((t) => {
+          const chk = el('input', {
+            className: 'bv-lever',
+            attrs: { type: 'checkbox', role: 'switch', checked: Boolean(actions.getState().settings[t.key]) },
+            on: {
+              change: () => {
+                actions.updateSettings({ [t.key]: chk.checked });
+                syncHudContents();
+              },
+            },
+          });
+          return el('label', { className: 'bv-check-row', style: { fontSize: '12px' } }, chk, el('span', { text: t.label }));
+        }),
+      );
+      const r = hudEl.getBoundingClientRect();
+      pop.style.left = `${Math.round(Math.max(12, Math.min(window.innerWidth - 240, r.right - 224)))}px`;
+      pop.style.top = `${Math.round(Math.min(window.innerHeight - 280, r.bottom + 8))}px`;
+      document.body.appendChild(pop);
+    };
+
     actionsWrap.append(
       el(
         'button',
         {
           className: 'qv-imm-icon-btn',
-          attrs: { type: 'button', 'aria-label': 'Configure immersive widgets', title: 'Immersive bar settings' },
-          on: { click: () => actions.openSettingsModal('editor') },
+          attrs: { type: 'button', 'aria-label': 'Customize immersive widgets', title: 'Customize Immersive Bar' },
+          on: { click: openHudCustomizePopover },
         },
         icon('settings', 13),
       ),

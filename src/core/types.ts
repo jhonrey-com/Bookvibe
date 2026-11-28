@@ -240,12 +240,18 @@ export interface QuillvibeSettings {
   windowTitleMode: WindowTitleMode;
   windowTitleCustom: string;
   immersiveShowClock: boolean;
+  immersiveShowDate: boolean;
   immersiveShowTimer: boolean;
   immersiveShowWords: boolean;
+  immersiveShowTarget: boolean;
+  immersiveShowBattery: boolean;
+  immersiveShowMedia: boolean;
   immersiveShowAlarm: boolean;
   alarmRingtone: AlarmRingtoneId;
   alarmVolume: number;
+  detailedTooltips: boolean;
   enableSpellcheck: boolean;
+  disableBrowserWritingExtensions: boolean;
   enableRichFormatting: boolean;
   confirmBeforeUnlock: boolean;
   enableDesktopBookTabs: boolean;

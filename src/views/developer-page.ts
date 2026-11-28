@@ -345,15 +345,15 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
           el(
             'div',
             {},
-            el('h1', { className: 'qv-help-title', text: 'Quillvibe Developer Portal (.qvext Add-ons)' }),
+            el('h1', { className: 'qv-help-title', text: 'Developer' }),
             el('p', {
               className: 'qv-help-subtitle',
-              text: 'Build, validate, hash, and test sandboxed .qvext extension packages for Quillvibe across Windows, macOS, Linux, and Web.',
+              text: 'Build, validate, hash, and test .qvext extension packages.',
             }),
           ),
           el(
             'div',
-            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
             el(
               'button',
               {
@@ -362,17 +362,17 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
                 on: { click: () => actions.openExtensionsModal('external') },
               },
               icon('extensions', 14),
-              'Open Extensions Sandbox',
+              'Sandbox',
             ),
             el(
               'button',
               {
-                className: 'bv-btn',
-                attrs: { type: 'button' },
+                className: 'bv-btn bv-btn-icon',
+                tooltip: { title: 'Help & FAQ', short: 'Open the Help Center & Error FAQ.' },
+                attrs: { type: 'button', 'aria-label': 'Help & FAQ' },
                 on: { click: () => actions.openHelpPage() },
               },
-              icon('help', 14),
-              'Help & FAQ',
+              icon('help', 15),
             ),
             el(
               'button',

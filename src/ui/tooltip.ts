@@ -109,14 +109,26 @@ function ensureTooltipBox(): HTMLDivElement {
   return tooltipBox;
 }
 
+function isDetailedTooltipMode(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.documentElement.dataset.detailedTooltips === 'true';
+}
+
 function renderTooltipContents(): void {
   if (!activeState) return;
   const box = ensureTooltipBox();
   const { spec, expanded } = activeState;
-  const hasDepth = Boolean(spec.details || (spec.tips && spec.tips.length > 0));
+  const detailed = isDetailedTooltipMode();
+  const hasDepth = detailed && Boolean(spec.details || (spec.tips && spec.tips.length > 0));
 
   box.replaceChildren();
-  box.classList.toggle('is-expanded', expanded);
+  box.classList.toggle('is-compact', !detailed);
+  box.classList.toggle('is-expanded', detailed && expanded);
+
+  const arrow = document.createElement('span');
+  arrow.className = 'bv-tooltip-arrow';
+  arrow.setAttribute('aria-hidden', 'true');
+  box.appendChild(arrow);
 
   const head = document.createElement('div');
   head.className = 'bv-tooltip-head';
@@ -143,7 +155,7 @@ function renderTooltipContents(): void {
     metaGroup.appendChild(toggleCue);
   }
 
-  if (expanded) {
+  if (detailed && expanded) {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'bv-tooltip-close';
@@ -152,34 +164,38 @@ function renderTooltipContents(): void {
     metaGroup.appendChild(closeBtn);
   }
 
-  head.appendChild(metaGroup);
+  if (metaGroup.childElementCount > 0) {
+    head.appendChild(metaGroup);
+  }
   box.appendChild(head);
 
-  const shortEl = document.createElement('div');
-  shortEl.className = 'bv-tooltip-short';
-  shortEl.textContent = spec.short;
-  box.appendChild(shortEl);
+  if (detailed) {
+    const shortEl = document.createElement('div');
+    shortEl.className = 'bv-tooltip-short';
+    shortEl.textContent = spec.short;
+    box.appendChild(shortEl);
 
-  if (expanded && hasDepth) {
-    const detailWrap = document.createElement('div');
-    detailWrap.className = 'bv-tooltip-body';
-    if (spec.details) {
-      const p = document.createElement('p');
-      p.className = 'bv-tooltip-details';
-      p.textContent = spec.details;
-      detailWrap.appendChild(p);
-    }
-    if (spec.tips && spec.tips.length > 0) {
-      const ul = document.createElement('ul');
-      ul.className = 'bv-tooltip-tips';
-      for (const tip of spec.tips) {
-        const li = document.createElement('li');
-        li.textContent = tip;
-        ul.appendChild(li);
+    if (expanded && hasDepth) {
+      const detailWrap = document.createElement('div');
+      detailWrap.className = 'bv-tooltip-body';
+      if (spec.details) {
+        const p = document.createElement('p');
+        p.className = 'bv-tooltip-details';
+        p.textContent = spec.details;
+        detailWrap.appendChild(p);
       }
-      detailWrap.appendChild(ul);
+      if (spec.tips && spec.tips.length > 0) {
+        const ul = document.createElement('ul');
+        ul.className = 'bv-tooltip-tips';
+        for (const tip of spec.tips) {
+          const li = document.createElement('li');
+          li.textContent = tip;
+          ul.appendChild(li);
+        }
+        detailWrap.appendChild(ul);
+      }
+      box.appendChild(detailWrap);
     }
-    box.appendChild(detailWrap);
   }
 }
 
@@ -198,21 +214,27 @@ function positionTooltip(): void {
 
   const boxRect = tooltipBox.getBoundingClientRect();
   const pad = 10;
-  const gap = 8;
+  const gap = 9;
 
-  let left = targetRect.left + targetRect.width / 2 - boxRect.width / 2;
+  const targetCenterX = targetRect.left + targetRect.width / 2;
+  let left = targetCenterX - boxRect.width / 2;
   left = Math.max(pad, Math.min(window.innerWidth - boxRect.width - pad, left));
 
+  let placement: 'bottom' | 'top' = 'bottom';
   let top = targetRect.bottom + gap;
   if (top + boxRect.height + pad > window.innerHeight) {
     const aboveTop = targetRect.top - boxRect.height - gap;
     if (aboveTop >= pad) {
       top = aboveTop;
+      placement = 'top';
     } else {
       top = Math.max(pad, window.innerHeight - boxRect.height - pad);
     }
   }
 
+  const arrowOffset = Math.max(12, Math.min(boxRect.width - 12, targetCenterX - left));
+  tooltipBox.dataset.placement = placement;
+  tooltipBox.style.setProperty('--qv-tip-arrow-x', `${Math.round(arrowOffset)}px`);
   tooltipBox.style.left = `${Math.round(left)}px`;
   tooltipBox.style.top = `${Math.round(top)}px`;
 }

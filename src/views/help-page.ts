@@ -2,7 +2,7 @@ import type { AppActions } from '../core/app-context';
 import { isTauriRuntime } from '../core/bridge';
 import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import { CONTROL_REFERENCE_ITEMS } from '../ui/controls-catalog';
-import { clearNode, el, icon } from '../ui/dom';
+import { clearNode, el, icon, type IconName } from '../ui/dom';
 import { createAppThemeButton } from '../ui/theme-button';
 import { QUILLVIBE_ERROR_CATALOG } from '../ui/error-dialog';
 
@@ -290,6 +290,31 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
     },
   ];
 
+  const helpCategoryIcon = (id: HelpCategoryId): IconName => {
+    switch (id) {
+      case 'Getting Started':
+        return 'quill';
+      case 'Workspaces & Studios':
+        return 'layers';
+      case 'Images & Covers':
+        return 'image';
+      case 'File Formats & Migration':
+        return 'folder';
+      case 'Desktop Tabs & Windows':
+        return 'window-new';
+      case 'Website vs Desktop':
+        return 'server';
+      case 'Common Errors & Codes':
+        return 'shield';
+      case 'Controls & Shortcuts':
+        return 'settings';
+      case 'Official Formats':
+        return 'archive-format';
+      default:
+        return 'help';
+    }
+  };
+
   // Category Rail
   const categoryRail = el(
     'aside',
@@ -297,7 +322,7 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
     el(
       'div',
       { className: 'qv-help-rail-head' },
-      el('strong', { text: 'Help & FAQ', style: { fontSize: '14.5px' } }),
+      el('strong', { text: 'Help', style: { fontSize: '14.5px' } }),
     ),
     el(
       'div',
@@ -336,7 +361,12 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
               },
             },
           },
-          el('span', { className: 'qv-help-cat-label', text: item.label }),
+          el(
+            'span',
+            { className: 'qv-help-cat-left' },
+            icon(helpCategoryIcon(item.id), 14),
+            el('span', { className: 'qv-help-cat-label', text: item.label }),
+          ),
           el('span', { className: 'bv-mono-tag', text: String(item.count) }),
         ),
       ),
@@ -376,10 +406,10 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
       el(
         'div',
         {},
-        el('h1', { className: 'qv-help-title', text: 'Quillvibe Help Center & FAQ' }),
+        el('h1', { className: 'qv-help-title', text: 'Help' }),
         el('p', {
           className: 'qv-help-subtitle',
-          text: 'Expand any topic below for full walkthroughs, error diagnostics, and desktop/browser guidance.',
+          text: 'Guides, error diagnostics, shortcuts, and file formats.',
         }),
       ),
       el(

@@ -11,7 +11,7 @@ import {
   openInteractiveCourseDrawer,
   readCompletedCourseLessons,
 } from '../ui/course';
-import { clearNode, el, icon } from '../ui/dom';
+import { clearNode, el, icon, type IconName } from '../ui/dom';
 import { createAppThemeButton } from '../ui/theme-button';
 import { ICON_DIRECTORY, type IconDirectoryEntry } from '../ui/icon-directory';
 
@@ -24,12 +24,12 @@ export function setManualPageTab(tab: HelpTab): void {
 }
 
 const HELP_TABS: Array<{ id: HelpTab; label: string }> = [
-  { id: 'course', label: 'Book Writing Course' },
-  { id: 'controls', label: 'Controls & Sliders' },
-  { id: 'icons', label: 'Icon Legend' },
-  { id: 'guides', label: 'Basic to Pro Guides' },
-  { id: 'tour', label: 'Guided Walkthrough' },
-  { id: 'reference', label: 'Formats & Shortcuts' },
+  { id: 'course', label: 'Course' },
+  { id: 'controls', label: 'Controls' },
+  { id: 'icons', label: 'Icons' },
+  { id: 'guides', label: 'Guides' },
+  { id: 'tour', label: 'Walkthrough' },
+  { id: 'reference', label: 'Formats' },
 ];
 
 const SHORTCUT_LIST: Array<{ keys: string; action: string }> = [
@@ -101,25 +101,38 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
     actions.returnToWriting();
   };
 
-  const renderTabs = () => {
+const MANUAL_TAB_ICONS: Record<HelpTab, IconName> = {
+  course: 'course',
+  controls: 'settings',
+  icons: 'palette',
+  guides: 'book',
+  tour: 'target',
+  reference: 'archive-format',
+};
+
+const renderTabs = () => {
     tabBar.textContent = '';
     for (const tab of HELP_TABS) {
       tabBar.appendChild(
-        el('button', {
-          className: `bv-fmt-btn${activeTab === tab.id ? ' is-active' : ''}`,
-          text: tab.label,
-          attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
-          on: {
-            click: () => {
-              activeTab = tab.id;
-              currentManualTab = tab.id;
-              globalSearchQuery = '';
-              globalSearchIn.value = '';
-              renderTabs();
-              renderBody();
+        el(
+          'button',
+          {
+            className: `bv-fmt-btn${activeTab === tab.id ? ' is-active' : ''}`,
+            attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === tab.id) },
+            on: {
+              click: () => {
+                activeTab = tab.id;
+                currentManualTab = tab.id;
+                globalSearchQuery = '';
+                globalSearchIn.value = '';
+                renderTabs();
+                renderBody();
+              },
             },
           },
-        }),
+          icon(MANUAL_TAB_ICONS[tab.id], 13),
+          el('span', { text: tab.label }),
+        ),
       );
     }
   };
@@ -761,7 +774,7 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
         icon('draft-sheet', 14),
         'Back to Writing',
       ),
-      el('h1', { text: 'Help, Course & Reference Manual', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
+      el('h1', { text: 'Manual', style: { margin: '0', fontSize: '20px', fontWeight: '600' } }),
     ),
     el(
       'div',
@@ -769,29 +782,32 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          text: 'Interactive Course Page',
+          className: 'bv-btn',
           attrs: { type: 'button' },
           on: { click: () => actions.openCoursePage() },
         },
+        icon('course', 14),
+        el('span', { text: 'Course' }),
       ),
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          text: 'Help & Error FAQ',
-          attrs: { type: 'button' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Help & FAQ', short: 'Open the Help Center & Error FAQ.' },
+          attrs: { type: 'button', 'aria-label': 'Help & FAQ' },
           on: { click: () => actions.openHelpPage() },
         },
+        icon('help', 15),
       ),
       el(
         'button',
         {
-          className: 'bv-mini-btn',
-          text: 'Settings & Themes',
-          attrs: { type: 'button' },
+          className: 'bv-btn bv-btn-icon',
+          tooltip: { title: 'Settings', short: 'Open Settings.' },
+          attrs: { type: 'button', 'aria-label': 'Settings' },
           on: { click: () => actions.openSettingsModal('editor') },
         },
+        icon('settings', 15),
       ),
       createAppThemeButton(actions),
     ),

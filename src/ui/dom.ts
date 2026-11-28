@@ -57,6 +57,12 @@ export type IconName =
   | 'align-left'
   | 'align-center'
   | 'align-right'
+  | 'align-justify'
+  | 'list-bullet'
+  | 'list-ordered'
+  | 'quote'
+  | 'section-divider'
+  | 'clear-format'
   | 'bring-front'
   | 'send-back'
   | 'lock'
@@ -80,7 +86,18 @@ export type IconName =
   | 'alarm'
   | 'bell'
   | 'server'
-  | 'search';
+  | 'search'
+  | 'appearance'
+  | 'font-family'
+  | 'publish-book'
+  | 'terminal'
+  | 'sandbox'
+  | 'archive-format'
+  | 'volume'
+  | 'battery'
+  | 'calendar'
+  | 'target'
+  | 'music';
 
 type ChildInput = Node | string | number | null | undefined | false;
 
@@ -385,11 +402,12 @@ const ICON_PATHS: Record<IconName, string[]> = {
     'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
   ],
   wifi: [
-    'M5 12.55a11 11 0 0 1 14.08 0',
-    'M8.53 16.11a6 6 0 0 1 6.95 0',
+    'M2.5 9.2a14 14 0 0 1 19 0',
+    'M6 12.8a9 9 0 0 1 12 0',
+    'M9.5 16.4a4.5 4.5 0 0 1 5 0',
     'M12 20h.01',
   ],
-  bluetooth: ['M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11'],
+  bluetooth: ['M7 7l10 10-5 4V3l5 4L7 17'],
   file: [
     'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
     'M14 2v6h6',
@@ -570,6 +588,104 @@ const ICON_PATHS: Record<IconName, string[]> = {
   search: [
     'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z',
     'M21 21l-4.35-4.35',
+  ],
+  'align-justify': [
+    'M3 6h18',
+    'M3 10h18',
+    'M3 14h18',
+    'M3 18h18',
+  ],
+  'list-bullet': [
+    'M9 6h12',
+    'M9 12h12',
+    'M9 18h12',
+    'M4 6h.01',
+    'M4 12h.01',
+    'M4 18h.01',
+  ],
+  'list-ordered': [
+    'M10 6h11',
+    'M10 12h11',
+    'M10 18h11',
+    'M4 6h1v4',
+    'M4 10h2',
+    'M4 14h2l-2 3h2',
+  ],
+  quote: [
+    'M10 11H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4v6zm0 0v3a3 3 0 0 1-3 3',
+    'M20 11h-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4v6zm0 0v3a3 3 0 0 1-3 3',
+  ],
+  'section-divider': [
+    'M4 12h16',
+    'M12 7.5a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z',
+    'M8.5 16.5l3.5-2.5 3.5 2.5',
+  ],
+  'clear-format': [
+    'M4 7V5h12v2',
+    'M10 5l-3 14',
+    'M15 14l5 5',
+    'M20 14l-5 5',
+  ],
+  appearance: [
+    'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5z',
+    'M8 21h8',
+    'M12 17v4',
+    'M9 9.5a3 3 0 1 0 6 0 3 3 0 1 0-6 0',
+  ],
+  'font-family': [
+    'M5 19L10.5 5h3L19 19',
+    'M7.2 14h9.6',
+    'M4 19h3',
+    'M17 19h3',
+  ],
+  'publish-book': [
+    'M4 19.5A2.5 2.5 0 0 1 6.5 17H20',
+    'M6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z',
+    'M9 8h7',
+    'M9 12h5',
+  ],
+  terminal: [
+    'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5z',
+    'M8 9l3 3-3 3',
+    'M13 15h4',
+  ],
+  sandbox: [
+    'M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z',
+    'M12 12l8-4.5',
+    'M12 12v9',
+    'M12 12L4 7.5',
+  ],
+  'archive-format': [
+    'M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3H3V6z',
+    'M5 9h14v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9z',
+    'M10 14h4',
+  ],
+  volume: [
+    'M11 5L6 9H3v6h3l5 4V5z',
+    'M15.5 8.5a5 5 0 0 1 0 7',
+    'M18.5 6a8.5 8.5 0 0 1 0 12',
+  ],
+  battery: [
+    'M3 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z',
+    'M21 10.5v3',
+    'M7 10v4',
+    'M11 10v4',
+  ],
+  calendar: [
+    'M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5z',
+    'M8 2v3',
+    'M16 2v3',
+    'M4 9h16',
+  ],
+  target: [
+    'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0 -16 0',
+    'M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0',
+    'M12 12h.01',
+  ],
+  music: [
+    'M9 18V6l10-2v12',
+    'M7 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+    'M17 16a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   ],
 };
 

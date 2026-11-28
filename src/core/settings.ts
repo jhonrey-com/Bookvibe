@@ -35,12 +35,18 @@ export const DEFAULT_SETTINGS: QuillvibeSettings = {
   windowTitleMode: 'book',
   windowTitleCustom: '',
   immersiveShowClock: true,
+  immersiveShowDate: false,
   immersiveShowTimer: true,
   immersiveShowWords: true,
+  immersiveShowTarget: true,
+  immersiveShowBattery: true,
+  immersiveShowMedia: true,
   immersiveShowAlarm: true,
   alarmRingtone: 'warm-chime',
   alarmVolume: 0.65,
+  detailedTooltips: false,
   enableSpellcheck: false,
+  disableBrowserWritingExtensions: false,
   enableRichFormatting: true,
   confirmBeforeUnlock: false,
   enableDesktopBookTabs: true,
@@ -127,12 +133,21 @@ export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSett
     windowTitleMode: normalizeWindowTitleMode(raw.windowTitleMode),
     windowTitleCustom: typeof raw.windowTitleCustom === 'string' ? raw.windowTitleCustom.slice(0, 120) : '',
     immersiveShowClock: raw.immersiveShowClock !== undefined ? Boolean(raw.immersiveShowClock) : true,
+    immersiveShowDate: raw.immersiveShowDate !== undefined ? Boolean(raw.immersiveShowDate) : false,
     immersiveShowTimer: raw.immersiveShowTimer !== undefined ? Boolean(raw.immersiveShowTimer) : true,
     immersiveShowWords: raw.immersiveShowWords !== undefined ? Boolean(raw.immersiveShowWords) : true,
+    immersiveShowTarget: raw.immersiveShowTarget !== undefined ? Boolean(raw.immersiveShowTarget) : true,
+    immersiveShowBattery: raw.immersiveShowBattery !== undefined ? Boolean(raw.immersiveShowBattery) : true,
+    immersiveShowMedia: raw.immersiveShowMedia !== undefined ? Boolean(raw.immersiveShowMedia) : true,
     immersiveShowAlarm: raw.immersiveShowAlarm !== undefined ? Boolean(raw.immersiveShowAlarm) : true,
     alarmRingtone: normalizeAlarmRingtone(raw.alarmRingtone),
     alarmVolume: cleanVol,
+    detailedTooltips: raw.detailedTooltips !== undefined ? Boolean(raw.detailedTooltips) : false,
     enableSpellcheck: raw.enableSpellcheck !== undefined ? Boolean(raw.enableSpellcheck) : false,
+    disableBrowserWritingExtensions:
+      raw.disableBrowserWritingExtensions !== undefined
+        ? Boolean(raw.disableBrowserWritingExtensions)
+        : false,
     enableRichFormatting:
       raw.enableRichFormatting !== undefined ? Boolean(raw.enableRichFormatting) : true,
     confirmBeforeUnlock:
@@ -281,6 +296,8 @@ export function applySettingsToDocument(settings: QuillvibeSettings): void {
   root.dataset.devMode = settings.developerMode ? 'true' : 'false';
   root.dataset.motion = settings.reducedMotionOverride;
   root.dataset.smoothAnimations = settings.enableSmoothAnimations ? 'true' : 'false';
+  root.dataset.blockBrowserExt = settings.disableBrowserWritingExtensions ? 'true' : 'false';
+  root.dataset.detailedTooltips = settings.detailedTooltips ? 'true' : 'false';
 
   if (settings.editorFontFamily.trim()) {
     root.style.setProperty('--bv-editor-font', settings.editorFontFamily.trim());

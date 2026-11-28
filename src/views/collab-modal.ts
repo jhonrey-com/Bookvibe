@@ -1059,10 +1059,10 @@ export function showCollabModal(actions: AppActions): void {
   const tabOptions: Array<{
     id: CollabTab;
     label: string;
-    icon: 'badge-id' | 'wifi' | 'bluetooth' | 'server';
+    icon: 'collab' | 'wifi' | 'bluetooth' | 'server';
     tooltip: (typeof TOOLTIP_CATALOG)['collabCredits'];
   }> = [
-    { id: 'credits', label: 'Co-Authors & Permissions', icon: 'badge-id', tooltip: TOOLTIP_CATALOG.collabCredits },
+    { id: 'credits', label: 'Co-Authors & Permissions', icon: 'collab', tooltip: TOOLTIP_CATALOG.collabCredits },
     ...(isTauriRuntime()
       ? [
           { id: 'wifi' as const, label: 'Same-Wi-Fi LAN Sync', icon: 'wifi' as const, tooltip: TOOLTIP_CATALOG.collabWifi },
@@ -1092,9 +1092,7 @@ export function showCollabModal(actions: AppActions): void {
     backdrop.remove();
   };
 
-  const modalTitle = isTauriRuntime()
-    ? 'Collaboration · Co-Authors, LAN, Bluetooth & Website Sync'
-    : 'Collaboration · Co-Authors, Permissions & Website Sync';
+  const modalTitle = 'Collaboration';
 
   const modal = el(
     'div',
@@ -1116,7 +1114,7 @@ export function showCollabModal(actions: AppActions): void {
     el(
       'div',
       { className: 'bv-modal-body' },
-      tabSwitcher.element,
+      el('div', { className: 'qv-collab-tabbar' }, tabSwitcher.element),
       contentArea,
     ),
   );
