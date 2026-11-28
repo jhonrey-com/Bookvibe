@@ -586,6 +586,8 @@ async fn open_book_in_new_window(
 
     let should_maximize = maximized.unwrap_or(true);
     let should_focus = focused.unwrap_or(true);
+    let has_explicit_pos =
+        !should_maximize && matches!((pos_x, pos_y), (Some(px), Some(py)) if px.is_finite() && py.is_finite());
     let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
@@ -597,7 +599,7 @@ async fn open_book_in_new_window(
     .maximized(should_maximize)
     .resizable(true)
     .decorations(false)
-    .visible(true)
+    .visible(!has_explicit_pos)
     .focused(should_focus)
     .background_color(tauri::window::Color(246, 244, 239, 255))
     .initialization_script(&init_script);
@@ -615,24 +617,23 @@ async fn open_book_in_new_window(
             .maximized(should_maximize)
             .resizable(true)
             .decorations(false)
-            .visible(true)
+            .visible(!has_explicit_pos)
             .focused(should_focus)
             .background_color(tauri::window::Color(246, 244, 239, 255))
             .initialization_script(&init_script)
         });
     }
 
-    if !should_maximize {
-        if let (Some(px), Some(py)) = (pos_x, pos_y) {
-            if px.is_finite() && py.is_finite() {
-                builder = builder.position(px, py);
-            }
-        }
+    if let (true, Some(px), Some(py)) = (has_explicit_pos, pos_x, pos_y) {
+        builder = builder.position(px, py);
     }
 
     let win = builder
         .build()
         .map_err(|e| format!("Could not open new desktop window: {e}"))?;
+    if let (true, Some(px), Some(py)) = (has_explicit_pos, pos_x, pos_y) {
+        let _ = win.set_position(tauri::LogicalPosition::new(px, py));
+    }
     let _ = win.show();
     if should_focus {
         let _ = win.set_focus();

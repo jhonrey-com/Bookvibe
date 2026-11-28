@@ -169,6 +169,7 @@ const DEFAULT_CONFIG: TabDragConfig = {
 const TARGET_STRIP_HEIGHT_PX = 52;
 const APPROX_TAB_WIDTH_PX = 160;
 const APPROX_STRIP_LEFT_OFFSET_PX = 44;
+const DETACHED_FIRST_TAB_LEFT_PX = 44;
 const SLOT_SWITCH_HYSTERESIS_PX = 4;
 
 function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -939,8 +940,8 @@ export class TabDragController {
     }
     session.liveDetachCancelled = false;
     session.liveDetachSpawning = true;
-    const x = screenX - session.tabLeftInWindow - session.grabOffsetX;
-    const y = screenY - session.grabOffsetY;
+    const x = Math.round(screenX - DETACHED_FIRST_TAB_LEFT_PX - session.grabOffsetX);
+    const y = Math.round(screenY - session.grabOffsetY);
     const spawnPromise = this.callbacks
       .onLiveDetachSpawn(session.sourceTabId, session.tabTitle, x, y)
       .then((label) => {
@@ -952,8 +953,8 @@ export class TabDragController {
         }
         session.liveDetachedWindowLabel = label;
         void moveDesktopWindow(
-          session.lastScreenX - session.tabLeftInWindow - session.grabOffsetX,
-          session.lastScreenY - session.grabOffsetY,
+          Math.round(session.lastScreenX - DETACHED_FIRST_TAB_LEFT_PX - session.grabOffsetX),
+          Math.round(session.lastScreenY - session.grabOffsetY),
           label,
         );
         return label;
@@ -970,11 +971,13 @@ export class TabDragController {
     screenX: number,
     screenY: number,
     session: ActiveDragSession,
+    useDetachedTabOffset = false,
   ): void {
+    const leftOffset = useDetachedTabOffset ? DETACHED_FIRST_TAB_LEFT_PX : session.tabLeftInWindow;
     this.pendingMovePos = {
       label: targetLabel,
-      x: screenX - session.tabLeftInWindow - session.grabOffsetX,
-      y: screenY - session.grabOffsetY,
+      x: Math.round(screenX - leftOffset - session.grabOffsetX),
+      y: Math.round(screenY - session.grabOffsetY),
     };
     if (this.moveRafId !== null) return;
     this.moveRafId = window.requestAnimationFrame(() => {
@@ -1089,9 +1092,9 @@ export class TabDragController {
       }
 
       if (isSoleTab) {
-        this.scheduleWindowMove(this.callbacks.getWindowLabel(), ev.screenX, ev.screenY, session);
+        this.scheduleWindowMove(this.callbacks.getWindowLabel(), ev.screenX, ev.screenY, session, false);
       } else if (session.liveDetachedWindowLabel) {
-        this.scheduleWindowMove(session.liveDetachedWindowLabel, ev.screenX, ev.screenY, session);
+        this.scheduleWindowMove(session.liveDetachedWindowLabel, ev.screenX, ev.screenY, session, true);
       }
 
       const usingLiveWindow =
@@ -1202,8 +1205,8 @@ export class TabDragController {
               this.callbacks.onDetachToNewWindow(
                 sourceTabId,
                 tabTitle,
-                ev.screenX - grabOffsetX,
-                ev.screenY - grabOffsetY,
+                Math.round(ev.screenX - DETACHED_FIRST_TAB_LEFT_PX - grabOffsetX),
+                Math.round(ev.screenY - grabOffsetY),
               );
             }
           });
@@ -1212,8 +1215,8 @@ export class TabDragController {
         this.callbacks.onDetachToNewWindow(
           sourceTabId,
           tabTitle,
-          ev.screenX - grabOffsetX,
-          ev.screenY - grabOffsetY,
+          Math.round(ev.screenX - DETACHED_FIRST_TAB_LEFT_PX - grabOffsetX),
+          Math.round(ev.screenY - grabOffsetY),
         );
         return;
       }

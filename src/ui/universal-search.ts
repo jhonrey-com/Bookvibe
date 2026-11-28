@@ -11,10 +11,103 @@ import { clearNode, el, icon, type IconName } from './dom';
 import { QUILLVIBE_ERROR_CATALOG } from './error-dialog';
 
 type SearchScope = 'all' | 'tools' | 'course' | 'help' | 'book';
+export type SearchRuntimePlatform = 'desktop-app' | 'desktop-web' | 'mobile-web';
 
-interface SearchResultItem {
+export interface SearchEnvironment {
+  platform: SearchRuntimePlatform;
+  tier: ToolTier;
+}
+
+export function detectSearchEnvironment(state: AppState): SearchEnvironment {
+  const desktopApp = isTauriRuntime();
+  const mobileWeb = !desktopApp && typeof window !== 'undefined' && window.innerWidth <= 768;
+  const platform: SearchRuntimePlatform = desktopApp
+    ? 'desktop-app'
+    : mobileWeb
+      ? 'mobile-web'
+      : 'desktop-web';
+  const tier: ToolTier = platform === 'mobile-web' ? 'basic' : state.settings.toolTier;
+  return { platform, tier };
+}
+
+function matchesPlatformList(
+  allowed: 'both' | 'web' | 'desktop' | readonly SearchRuntimePlatform[],
+  platform: SearchRuntimePlatform,
+): boolean {
+  if (Array.isArray(allowed)) {
+    return allowed.includes(platform);
+  }
+  if (allowed === 'both') return true;
+  if (allowed === 'desktop') return platform === 'desktop-app';
+  return platform !== 'desktop-app';
+}
+
+const MODULE_PLATFORM_RULES: Partial<Record<string, 'both' | 'web' | 'desktop'>> = {
+  'mod-desktop': 'desktop',
+  'mod-cs-deep-2': 'desktop',
+  'mod-web-browser': 'web',
+  'mod-desktop-tabs': 'desktop',
+  'mod-desktop-os': 'desktop',
+};
+
+const HELP_ARTICLE_MIN_TIER: Record<string, ToolTier> = {
+  'start-welcome': 'basic',
+  'manuscript-proofread': 'intermediate',
+  'manuscript-images': 'basic',
+  'corkboard-outline-bible-graph': 'intermediate',
+  'typeset-cover-studio': 'intermediate',
+  'cover-studio-pro-faq': 'advanced',
+  'locks-linked-themes-outline': 'basic',
+  'formats-keys-migrate': 'basic',
+  'desktop-tabs-windows': 'basic',
+  'web-vs-desktop': 'basic',
+};
+
+const ERROR_CODE_MIN_TIER: Record<string, ToolTier> = {
+  'QV-401': 'advanced',
+};
+
+const CONTROL_RULES: Record<
+  string,
+  { minTier: ToolTier; platform: 'both' | 'web' | 'desktop' | readonly SearchRuntimePlatform[] }
+> = {
+  'ctrl-logo': { minTier: 'basic', platform: 'both' },
+  'ctrl-binder-toggle': { minTier: 'basic', platform: 'both' },
+  'ctrl-title-input': { minTier: 'basic', platform: 'both' },
+  'ctrl-workspace-switcher': { minTier: 'intermediate', platform: ['desktop-app', 'desktop-web'] },
+  'ctrl-library-btn': { minTier: 'basic', platform: 'both' },
+  'ctrl-collab-btn': { minTier: 'advanced', platform: 'both' },
+  'ctrl-open-btn': { minTier: 'basic', platform: 'both' },
+  'ctrl-save-split': { minTier: 'basic', platform: 'both' },
+  'ctrl-extensions-btn': { minTier: 'advanced', platform: 'both' },
+  'ctrl-settings-btn': { minTier: 'basic', platform: 'both' },
+  'ctrl-help-btn': { minTier: 'basic', platform: 'both' },
+  'ctrl-inspector-toggle': { minTier: 'basic', platform: 'both' },
+  'ctrl-window-chrome': { minTier: 'basic', platform: 'desktop' },
+  'ctrl-word-ledger': { minTier: 'basic', platform: 'both' },
+  'ctrl-sprint-duration': { minTier: 'basic', platform: 'both' },
+  'ctrl-sprint-start': { minTier: 'basic', platform: 'both' },
+  'ctrl-sprint-reset': { minTier: 'basic', platform: 'both' },
+  'ctrl-editor-modes': { minTier: 'intermediate', platform: 'both' },
+  'ctrl-format-buttons': { minTier: 'basic', platform: 'both' },
+  'ctrl-paper-theme': { minTier: 'basic', platform: 'both' },
+  'ctrl-typewriter-zen-snap': { minTier: 'intermediate', platform: 'both' },
+  'ctrl-proofread-marks': { minTier: 'intermediate', platform: 'both' },
+  'ctrl-corkboard-outline': { minTier: 'intermediate', platform: 'both' },
+  'ctrl-bible-tools': { minTier: 'advanced', platform: 'both' },
+  'ctrl-graph-toolbar': { minTier: 'advanced', platform: 'both' },
+  'ctrl-graph-canvas': { minTier: 'advanced', platform: 'both' },
+  'ctrl-typeset-controls': { minTier: 'intermediate', platform: 'both' },
+  'ctrl-cover-studio': { minTier: 'advanced', platform: 'both' },
+  'ctrl-settings-fonts': { minTier: 'basic', platform: 'both' },
+  'ctrl-settings-sliders-levers': { minTier: 'basic', platform: 'both' },
+  'ctrl-settings-migration': { minTier: 'basic', platform: 'both' },
+  'ctrl-settings-dev': { minTier: 'basic', platform: 'both' },
+};
+
+export interface SearchResultItem {
   id: string;
-  group: 'Tools & Workspaces' | 'Book Writing Course' | 'Help, FAQ & Errors' | 'Manuscript & Story Bible';
+  group: 'Tools & Workspaces' | 'Book Writing Course' | 'Help, FAQ & Errors' | 'Manuscript & Story Bible' | 'Manuscript';
   scope: Exclude<SearchScope, 'all'>;
   iconName: IconName;
   title: string;
@@ -41,11 +134,17 @@ function openHelpTarget(actions: AppActions, options: { articleId?: string; quer
   actions.setState({ activeView: 'help' }, true);
 }
 
-function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultItem[] {
+export function buildSearchCorpus(
+  actions: AppActions,
+  state: AppState,
+  envOverride?: SearchEnvironment,
+): SearchResultItem[] {
   const items: SearchResultItem[] = [];
-  const activeTier = state.settings.toolTier;
+  const { platform, tier: activeTier } = envOverride ?? detectSearchEnvironment(state);
+  const bookGroupLabel: SearchResultItem['group'] =
+    isTierAtLeast(activeTier, 'advanced') ? 'Manuscript & Story Bible' : 'Manuscript';
 
-  // 1. Studio Tools, Views & Quick Actions filtered by active workspace layout
+  // 1. Studio Tools, Views & Quick Actions filtered strictly by workspace layout & runtime platform
   const toolEntries: Array<{
     id: string;
     iconName: IconName;
@@ -54,6 +153,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     badge: string;
     keywords: string;
     minTier: ToolTier;
+    platforms?: 'both' | 'web' | 'desktop' | readonly SearchRuntimePlatform[];
     boost?: number;
     run: () => void;
   }> = [
@@ -61,10 +161,15 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       id: 'tool-editor',
       iconName: 'quill',
       title: 'Manuscript Writing Sheet',
-      subtitle: 'Draft chapters, toggle Proofread marks, Split View, and Revision Diff.',
+      subtitle: isTierAtLeast(activeTier, 'intermediate')
+        ? 'Draft chapters, toggle Proofread marks, Split View, and Revision Diff.'
+        : 'Draft chapters with rich formatting, fonts, alignment, and scene breaks.',
       badge: 'Workspace',
-      keywords: 'write draft manuscript scene proofread split diff',
+      keywords: isTierAtLeast(activeTier, 'intermediate')
+        ? 'write draft manuscript scene proofread split diff'
+        : 'write draft manuscript scene format bold italic font',
       minTier: 'basic',
+      platforms: 'both',
       boost: 15,
       run: () => actions.setState({ activeView: 'editor' }, true),
     },
@@ -76,6 +181,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Editorial',
       keywords: 'corkboard cards synopsis index arrange reorder',
       minTier: 'intermediate',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'corkboard' }, true),
     },
@@ -87,6 +193,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Editorial',
       keywords: 'outline ledger table csv pacing status pov timeline',
       minTier: 'intermediate',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'outline' }, true),
     },
@@ -98,6 +205,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Full Studio',
       keywords: 'story bible characters locations lore worldbuilding wiki',
       minTier: 'advanced',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'bible' }, true),
     },
@@ -109,6 +217,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Full Studio',
       keywords: 'story graph nodes canvas storyboard force mindmap',
       minTier: 'advanced',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'graph' }, true),
     },
@@ -120,6 +229,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Editorial',
       keywords: 'typeset print pdf epub trim font margin drop cap interior',
       minTier: 'intermediate',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'interior' }, true),
     },
@@ -131,6 +241,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Full Studio',
       keywords: 'book cover studio spine jacket wrap vector svg png qvdesign',
       minTier: 'advanced',
+      platforms: 'both',
       boost: 13,
       run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'cover' }, true),
     },
@@ -142,6 +253,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Publishing',
       keywords: 'publish export docx pdf epub qv isbn seal copyright key',
       minTier: 'intermediate',
+      platforms: 'both',
       boost: 11,
       run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'publish' }, true),
     },
@@ -153,6 +265,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Modal',
       keywords: 'library switch book create new author key pen name signature',
       minTier: 'basic',
+      platforms: 'both',
       boost: 11,
       run: () => actions.openLibraryModal(),
     },
@@ -160,10 +273,14 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       id: 'tool-collab',
       iconName: 'collab',
       title: 'Collaborate Offline & Co-Authors',
-      subtitle: 'Manage co-author roles, proofreader permissions, and LAN / HTTPS sync.',
+      subtitle:
+        platform === 'desktop-app'
+          ? 'Manage co-author roles, proofreader permissions, and LAN / Bluetooth sync.'
+          : 'Manage co-author roles, proofreader permissions, and signed collaborator packages.',
       badge: 'Full Studio',
       keywords: 'collaborate wifi bluetooth pin co-author proofreader permissions sync',
       minTier: 'advanced',
+      platforms: 'both',
       boost: 10,
       run: () => actions.openCollabModal(),
     },
@@ -171,10 +288,11 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       id: 'tool-course',
       iconName: 'course',
       title: 'Quillvibe Academy (Book Writing Course)',
-      subtitle: `${COURSE_MODULES.length} structured modules covering craft, worldbuilding, cover & publishing.`,
+      subtitle: 'Guided modules for craft, drafting, and publishing.',
       badge: 'Academy',
       keywords: 'course academy lessons learn writing dialogue pacing tutorial',
       minTier: 'basic',
+      platforms: 'both',
       boost: 12,
       run: () => openCourseTarget(actions),
     },
@@ -182,21 +300,32 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       id: 'tool-help',
       iconName: 'help',
       title: 'Help Center, FAQ & Error Codes',
-      subtitle: 'Browse guides, QV error diagnostics, file formats, and web/desktop help.',
+      subtitle: 'Browse guides, QV error diagnostics, and file format help.',
       badge: 'Help',
       keywords: 'help faq support error code qv manual troubleshooting',
       minTier: 'basic',
+      platforms: 'both',
       boost: 12,
       run: () => actions.setState({ activeView: 'help' }, true),
     },
     {
       id: 'tool-settings',
       iconName: 'settings',
-      title: 'Settings, Layouts, Fonts & Updates',
-      subtitle: 'Change theme, Workspace Layout, custom fonts (.ttf/.otf/.woff2), or backup archives.',
+      title:
+        platform === 'desktop-app'
+          ? 'Settings, Layouts, Fonts & Updates'
+          : 'Settings, Layouts & Fonts',
+      subtitle:
+        platform === 'desktop-app'
+          ? 'Change theme, Workspace Layout, custom fonts (.ttf/.otf/.woff2), or check updates.'
+          : 'Change theme, Workspace Layout, custom fonts (.ttf/.otf/.woff2), or backup archives.',
       badge: 'Settings',
-      keywords: 'settings preferences theme dark light parchment ivory fonts updates layout',
+      keywords:
+        platform === 'desktop-app'
+          ? 'settings preferences theme dark light parchment ivory fonts updates layout'
+          : 'settings preferences theme dark light parchment ivory fonts layout backup',
       minTier: 'basic',
+      platforms: 'both',
       boost: 11,
       run: () => actions.setState({ activeView: 'settings' }, true),
     },
@@ -208,6 +337,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Formats',
       keywords: 'extensions qvext formats qv qvbible qvscene qvstyle qvdesign',
       minTier: 'advanced',
+      platforms: 'both',
       boost: 9,
       run: () => actions.setState({ activeView: 'extensions' }, true),
     },
@@ -219,6 +349,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Action',
       keywords: 'theme dark mode light mode ivory parchment obsidian switch cycle',
       minTier: 'basic',
+      platforms: 'both',
       boost: 10,
       run: () => {
         const order: AppThemeId[] = ['system', 'ivory', 'parchment', 'obsidian'];
@@ -232,17 +363,15 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       id: 'tool-open-file',
       iconName: 'folder',
       title: 'Open .qv / .qvscene / .qvext File',
-      subtitle: 'Load a saved Quillvibe file from your computer (Ctrl+O).',
+      subtitle: 'Load a saved Quillvibe file from your device (Ctrl+O).',
       badge: 'Ctrl+O',
       keywords: 'open file load import qv qvbible qvscene',
       minTier: 'basic',
+      platforms: 'both',
       boost: 8,
       run: () => void actions.openAnyQuillvibeFile(),
     },
-  ];
-
-  if (!isTauriRuntime()) {
-    toolEntries.push({
+    {
       id: 'tool-landing',
       iconName: 'book',
       title: 'Overview & Landing Page',
@@ -250,13 +379,27 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       badge: 'Home',
       keywords: 'landing home overview download windows mac linux readme open source',
       minTier: 'basic',
+      platforms: 'web',
       boost: 8,
       run: () => actions.setState({ activeView: 'landing' }, true),
-    });
-  }
+    },
+    {
+      id: 'tool-new-window',
+      iconName: 'window-new',
+      title: 'Open Book Tab in New Desktop Window',
+      subtitle: 'Open a fresh desktop window to edit series books side by side.',
+      badge: 'Desktop',
+      keywords: 'new window tab detach combine merge windows desktop',
+      minTier: 'basic',
+      platforms: 'desktop',
+      boost: 8,
+      run: () => void actions.openNewWindow(),
+    },
+  ];
 
   for (const t of toolEntries) {
     if (!isTierAtLeast(activeTier, t.minTier)) continue;
+    if (!matchesPlatformList(t.platforms ?? 'both', platform)) continue;
     items.push({
       id: t.id,
       group: 'Tools & Workspaces',
@@ -271,8 +414,10 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     });
   }
 
-  // 2. Book Writing Course Modules & Lessons filtered by active workspace layout
+  // 2. Book Writing Course Modules & Lessons filtered strictly by workspace layout & platform
   for (const mod of COURSE_MODULES) {
+    const modPlat = mod.platform ?? MODULE_PLATFORM_RULES[mod.id] ?? 'both';
+    if (!matchesPlatformList(modPlat, platform)) continue;
     for (const lesson of mod.lessons) {
       if (!isTierAtLeast(activeTier, lesson.minTier)) continue;
       items.push({
@@ -290,8 +435,11 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     }
   }
 
-  // 3. Help Articles, Error Codes & Controls
+  // 3. Help Articles, Error Codes & Controls filtered by active workspace layout & platform
   for (const art of HELP_FAQ_ARTICLES) {
+    const reqTier = HELP_ARTICLE_MIN_TIER[art.id] ?? 'basic';
+    if (!isTierAtLeast(activeTier, reqTier)) continue;
+    if (!matchesPlatformList(art.platform, platform)) continue;
     items.push({
       id: `help-${art.id}`,
       group: 'Help, FAQ & Errors',
@@ -307,6 +455,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
   }
 
   for (const err of QUILLVIBE_ERROR_CATALOG) {
+    const reqTier = ERROR_CODE_MIN_TIER[err.code] ?? 'basic';
+    if (!isTierAtLeast(activeTier, reqTier)) continue;
+    if (!matchesPlatformList(err.platform, platform)) continue;
     items.push({
       id: `err-${err.code}`,
       group: 'Help, FAQ & Errors',
@@ -322,6 +473,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
   }
 
   for (const ctrl of CONTROL_REFERENCE_ITEMS) {
+    const rule = CONTROL_RULES[ctrl.id] ?? { minTier: 'basic' as ToolTier, platform: 'both' as const };
+    if (!isTierAtLeast(activeTier, rule.minTier)) continue;
+    if (!matchesPlatformList(rule.platform, platform)) continue;
     items.push({
       id: `ctrl-${ctrl.id}`,
       group: 'Help, FAQ & Errors',
@@ -342,7 +496,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     const snippet = ref.scene.synopsis?.trim() || ref.scene.content.slice(0, 110).replace(/\s+/g, ' ').trim();
     items.push({
       id: `scene-${ref.scene.id}`,
-      group: 'Manuscript & Story Bible',
+      group: bookGroupLabel,
       scope: 'book',
       iconName: 'draft-sheet',
       title: ref.scene.title || 'Untitled Scene',
@@ -358,7 +512,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     for (const ch of state.project.bible.characters) {
       items.push({
         id: `bible-char-${ch.id}`,
-        group: 'Manuscript & Story Bible',
+        group: bookGroupLabel,
         scope: 'book',
         iconName: 'bible',
         title: ch.name,
@@ -373,7 +527,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     for (const loc of state.project.bible.locations) {
       items.push({
         id: `bible-loc-${loc.id}`,
-        group: 'Manuscript & Story Bible',
+        group: bookGroupLabel,
         scope: 'book',
         iconName: 'bible',
         title: loc.name,
@@ -388,7 +542,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     for (const lore of state.project.bible.lore) {
       items.push({
         id: `bible-lore-${lore.id}`,
-        group: 'Manuscript & Story Bible',
+        group: bookGroupLabel,
         scope: 'book',
         iconName: 'bible',
         title: lore.name,
@@ -403,7 +557,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     for (const custom of state.project.bible.customEntries ?? []) {
       items.push({
         id: `bible-custom-${custom.id}`,
-        group: 'Manuscript & Story Bible',
+        group: bookGroupLabel,
         scope: 'book',
         iconName: 'bible',
         title: custom.name,
@@ -445,7 +599,9 @@ export function openUniversalSearch(actions: AppActions, getState: () => AppStat
     return;
   }
 
-  const corpus = buildSearchCorpus(actions, getState());
+  const curState = getState();
+  const env = detectSearchEnvironment(curState);
+  const corpus = buildSearchCorpus(actions, curState, env);
   let activeScope: SearchScope = 'all';
   let query = '';
   let activeIndex = 0;
@@ -467,12 +623,23 @@ export function openUniversalSearch(actions: AppActions, getState: () => AppStat
   });
   backdrop.addEventListener('bv-close-modal', closeModal);
 
+  const searchPlaceholder =
+    env.tier === 'advanced'
+      ? 'Search tools, courses, FAQs, error codes, scenes, or Story Bible…'
+      : env.tier === 'intermediate'
+        ? 'Search Editorial tools, courses, FAQs, error codes, or scenes…'
+        : 'Search Focused tools, courses, FAQs, error codes, or scenes…';
+
   const searchInput = el('input', {
     className: 'qv-usearch-input',
     attrs: {
       type: 'search',
-      placeholder: 'Search courses, FAQs, error codes, scenes, characters, or tools…',
-      'aria-label': 'Search across Quillvibe',
+      autocomplete: 'off',
+      autocorrect: 'off',
+      autocapitalize: 'off',
+      spellcheck: 'false',
+      placeholder: searchPlaceholder,
+      'aria-label': 'Search within active Quillvibe workspace',
     },
   });
 
@@ -537,7 +704,12 @@ export function openUniversalSearch(actions: AppActions, getState: () => AppStat
           el('strong', { text: `No matches for “${trimmed}”` }),
           el('p', {
             className: 'bv-label',
-            text: 'Try another keyword like Cover Studio, Dialogue, QV-102, .qvdesign, or a character name.',
+            text:
+              env.tier === 'advanced'
+                ? 'Try a scene title, Cover Studio, QV-102, .qvdesign, or Story Bible name.'
+                : env.tier === 'intermediate'
+                  ? 'Try a scene title, Corkboard, Typeset, QV-102, or Settings.'
+                  : 'Try a scene title, Font, QV-102, Settings, or Course lesson.',
           }),
         ),
       );

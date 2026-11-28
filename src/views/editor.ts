@@ -1,5 +1,6 @@
 import type { AppActions, EditorSubMode } from '../core/app-context';
 import { getActiveSessionPermissions } from '../core/collab';
+import { getAllAvailableFontChoices } from '../core/fonts';
 import {
   countWords,
   findSceneContext,
@@ -127,8 +128,8 @@ function findDirectRichBlock(richEl: HTMLElement, node: Node | null): HTMLElemen
 
 function applyRichInlineCommand(
   richEl: HTMLElement,
-  command: 'bold' | 'italic',
-  fallbackTag: 'strong' | 'em',
+  command: 'bold' | 'italic' | 'underline' | 'strikeThrough' | 'removeFormat',
+  fallbackTag: 'strong' | 'em' | 'u' | 's' | 'span',
   onSync: () => void,
 ): void {
   richEl.focus();
@@ -142,6 +143,10 @@ function applyRichInlineCommand(
     }
   } catch {
     // Fallback below if execCommand is unavailable
+  }
+  if (command === 'removeFormat') {
+    onSync();
+    return;
   }
   const range = getSelectionRangeInRich(richEl);
   if (!range) return;
@@ -157,9 +162,10 @@ function applyRichInlineCommand(
   onSync();
 }
 
-function toggleRichBlockElement(
+function setRichBlockElement(
   richEl: HTMLElement,
-  tag: 'H2' | 'BLOCKQUOTE',
+  tag: 'P' | 'H1' | 'H2' | 'H3' | 'BLOCKQUOTE',
+  toggleIfSame: boolean,
   onSync: () => void,
 ): void {
   richEl.focus();
@@ -170,7 +176,21 @@ function toggleRichBlockElement(
   }
   const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
   const currentTag = block?.tagName.toUpperCase();
-  const nextTag = currentTag === tag ? 'p' : tag.toLowerCase();
+  const nextTag = toggleIfSame && currentTag === tag ? 'p' : tag.toLowerCase();
+
+  if (block && (block.tagName.toUpperCase() === 'UL' || block.tagName.toUpperCase() === 'OL')) {
+    const replacement = document.createElement(nextTag);
+    const items = Array.from(block.children);
+    items.forEach((li, idx) => {
+      if (idx > 0) replacement.appendChild(document.createElement('br'));
+      while (li.firstChild) replacement.appendChild(li.firstChild);
+    });
+    if (!replacement.hasChildNodes()) replacement.appendChild(document.createElement('br'));
+    block.replaceWith(replacement);
+    setCaretAtEndOfNode(replacement);
+    onSync();
+    return;
+  }
 
   if (block) {
     const replacement = document.createElement(nextTag);
@@ -189,6 +209,62 @@ function toggleRichBlockElement(
     setCaretAtEndOfNode(replacement);
   }
   onSync();
+}
+
+function toggleRichListElement(
+  richEl: HTMLElement,
+  listTag: 'UL' | 'OL',
+  onSync: () => void,
+): void {
+  richEl.focus();
+  let range = getSelectionRangeInRich(richEl);
+  if (!range) {
+    setCaretAtEndOfNode(richEl);
+    range = getSelectionRangeInRich(richEl);
+  }
+  const cmd = listTag === 'OL' ? 'insertOrderedList' : 'insertUnorderedList';
+  try {
+    if (typeof document.execCommand === 'function' && document.execCommand(cmd, false)) {
+      onSync();
+      return;
+    }
+  } catch {
+    // Fallback below
+  }
+  const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
+  const currentTag = block?.tagName.toUpperCase();
+  if (block && currentTag === listTag) {
+    setRichBlockElement(richEl, 'P', false, onSync);
+    return;
+  }
+  const list = document.createElement(listTag.toLowerCase());
+  const li = document.createElement('li');
+  if (block) {
+    while (block.firstChild) li.appendChild(block.firstChild);
+    if (!li.hasChildNodes()) li.appendChild(document.createElement('br'));
+    list.appendChild(li);
+    block.replaceWith(list);
+  } else {
+    li.appendChild(document.createElement('br'));
+    list.appendChild(li);
+    richEl.appendChild(list);
+  }
+  setCaretAtEndOfNode(li);
+  onSync();
+}
+
+function applyRichParagraphAlign(
+  richEl: HTMLElement,
+  align: 'left' | 'center' | 'right' | 'justify',
+): void {
+  richEl.focus();
+  const range = getSelectionRangeInRich(richEl);
+  const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
+  if (block) {
+    block.style.textAlign = align === 'left' ? '' : align;
+  } else {
+    richEl.style.textAlign = align === 'left' ? '' : align;
+  }
 }
 
 function insertRichSceneBreak(richEl: HTMLElement, onSync: () => void): void {
@@ -490,10 +566,88 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     }
   };
 
+  const applyUnderlineFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      applyRichInlineCommand(proseRich, 'underline', 'u', syncRichToState);
+    } else {
+      wrapSelection(proseTextarea, '<u>', '</u>', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyStrikeFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      applyRichInlineCommand(proseRich, 'strikeThrough', 's', syncRichToState);
+    } else {
+      wrapSelection(proseTextarea, '~~', '~~', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyClearFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      applyRichInlineCommand(proseRich, 'removeFormat', 'span', syncRichToState);
+    } else {
+      const s = proseTextarea.selectionStart;
+      const e = proseTextarea.selectionEnd;
+      if (e <= s) return;
+      const cleaned = proseTextarea.value
+        .slice(s, e)
+        .replace(/(\*\*\*|\*\*|\*|~~|<\/?u>)/g, '');
+      const next = proseTextarea.value.slice(0, s) + cleaned + proseTextarea.value.slice(e);
+      proseTextarea.value = next;
+      proseTextarea.setSelectionRange(s, s + cleaned.length);
+      syncTextareaHeight();
+      actions.updateActiveSceneTextQuietly('content', next);
+    }
+  };
+
+  const applyParagraphStyle = (styleId: 'p' | 'h1' | 'h2' | 'h3' | 'blockquote') => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      const map: Record<typeof styleId, 'P' | 'H1' | 'H2' | 'H3' | 'BLOCKQUOTE'> = {
+        p: 'P',
+        h1: 'H1',
+        h2: 'H2',
+        h3: 'H3',
+        blockquote: 'BLOCKQUOTE',
+      };
+      setRichBlockElement(proseRich, map[styleId], false, syncRichToState);
+    } else {
+      const start = proseTextarea.selectionStart;
+      const current = proseTextarea.value;
+      const lineStart = current.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const lineEndIdx = current.indexOf('\n', lineStart);
+      const lineEnd = lineEndIdx === -1 ? current.length : lineEndIdx;
+      const rawLine = current.slice(lineStart, lineEnd);
+      const stripped = rawLine.replace(/^(#{1,3}\s+|>\s?|[-*]\s+|\d+\.\s+)/, '');
+      const prefix =
+        styleId === 'h1'
+          ? '# '
+          : styleId === 'h2'
+            ? '## '
+            : styleId === 'h3'
+              ? '### '
+              : styleId === 'blockquote'
+                ? '> '
+                : '';
+      const nextValue = current.slice(0, lineStart) + prefix + stripped + current.slice(lineEnd);
+      proseTextarea.value = nextValue;
+      proseTextarea.focus();
+      const caret = lineStart + prefix.length + stripped.length;
+      proseTextarea.setSelectionRange(caret, caret);
+      syncTextareaHeight();
+      actions.updateActiveSceneTextQuietly('content', nextValue);
+    }
+  };
+
   const applyHeadingFormat = () => {
     if (!ensureDraftEditable()) return;
     if (useRichFormatting) {
-      toggleRichBlockElement(proseRich, 'H2', syncRichToState);
+      setRichBlockElement(proseRich, 'H2', true, syncRichToState);
     } else {
       insertAtLineStart(proseTextarea, '## ', actions);
       syncTextareaHeight();
@@ -503,10 +657,28 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const applyQuoteFormat = () => {
     if (!ensureDraftEditable()) return;
     if (useRichFormatting) {
-      toggleRichBlockElement(proseRich, 'BLOCKQUOTE', syncRichToState);
+      setRichBlockElement(proseRich, 'BLOCKQUOTE', true, syncRichToState);
     } else {
       insertAtLineStart(proseTextarea, '> ', actions);
       syncTextareaHeight();
+    }
+  };
+
+  const applyListFormat = (kind: 'bullet' | 'ordered') => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      toggleRichListElement(proseRich, kind === 'ordered' ? 'OL' : 'UL', syncRichToState);
+    } else {
+      insertAtLineStart(proseTextarea, kind === 'ordered' ? '1. ' : '- ', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyParagraphAlignment = (align: 'left' | 'center' | 'right' | 'justify') => {
+    if (useRichFormatting) {
+      applyRichParagraphAlign(proseRich, align);
+    } else {
+      proseTextarea.style.textAlign = align === 'left' ? '' : align;
     }
   };
 
@@ -541,12 +713,16 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
 
   proseTextarea.addEventListener('keydown', (e) => {
     if (!canEditThisScene) return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === 'b') {
       e.preventDefault();
       applyBoldFormat();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+    } else if ((e.ctrlKey || e.metaKey) && key === 'i') {
       e.preventDefault();
       applyItalicFormat();
+    } else if ((e.ctrlKey || e.metaKey) && key === 'u') {
+      e.preventDefault();
+      applyUnderlineFormat();
     }
   });
 
@@ -564,12 +740,16 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
 
   proseRich.addEventListener('keydown', (e) => {
     if (!canEditThisScene) return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === 'b') {
       e.preventDefault();
       applyBoldFormat();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+    } else if ((e.ctrlKey || e.metaKey) && key === 'i') {
       e.preventDefault();
       applyItalicFormat();
+    } else if ((e.ctrlKey || e.metaKey) && key === 'u') {
+      e.preventDefault();
+      applyUnderlineFormat();
     }
   });
 
@@ -650,12 +830,29 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             onSelect: applyItalicFormat,
           },
           {
+            label: useRichFormatting ? 'Underline' : 'Underline (<u>text</u>)',
+            shortcut: 'Ctrl+U',
+            onSelect: applyUnderlineFormat,
+          },
+          {
+            label: useRichFormatting ? 'Strikethrough' : 'Strikethrough (~~text~~)',
+            onSelect: applyStrikeFormat,
+          },
+          {
             label: 'Heading (H2)',
             onSelect: applyHeadingFormat,
           },
           {
             label: 'Epigraph / Blockquote',
             onSelect: applyQuoteFormat,
+          },
+          {
+            label: 'Bulleted List',
+            onSelect: () => applyListFormat('bullet'),
+          },
+          {
+            label: 'Numbered List',
+            onSelect: () => applyListFormat('ordered'),
           },
           {
             label: 'Insert Scene Break (* * *)',
@@ -862,7 +1059,121 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     },
   });
 
-  // Fixed formatting & tool controls (icon-only where iconic, short symbol glyphs for B/I/H2/* * *)
+  const fontChoices = getAllAvailableFontChoices();
+  const currentFontVal = state.settings.editorFontFamily || '';
+  const fontFamilySelect = el(
+    'select',
+    {
+      className: 'bv-select qv-editor-font-select',
+      tooltip: {
+        title: 'Writing Typeface',
+        short: 'Choose the font family used on the manuscript sheet.',
+      },
+      attrs: { 'aria-label': 'Manuscript font family' },
+      on: {
+        change: () => {
+          actions.updateSettings({ editorFontFamily: fontFamilySelect.value });
+        },
+      },
+    },
+    el('option', {
+      text: 'Default Serif',
+      attrs: { value: '', selected: currentFontVal === '' },
+    }),
+    ...fontChoices.map((fc) =>
+      el('option', {
+        text: fc.label,
+        attrs: {
+          value: fc.id,
+          selected: currentFontVal === fc.id || currentFontVal === fc.cssStack,
+        },
+      }),
+    ),
+  );
+
+  const fontSizeOptions = [13, 14, 15, 16, 18, 20, 22, 24, 28];
+  const fontSizeSelect = el(
+    'select',
+    {
+      className: 'bv-select qv-editor-size-select',
+      tooltip: {
+        title: 'Font Size',
+        short: 'Adjust prose size on the writing sheet (px).',
+      },
+      attrs: { 'aria-label': 'Manuscript font size' },
+      on: {
+        change: () => {
+          const px = Number(fontSizeSelect.value);
+          if (Number.isFinite(px)) actions.updateSettings({ editorFontSizePx: px });
+        },
+      },
+    },
+    ...fontSizeOptions.map((px) =>
+      el('option', {
+        text: `${px}px`,
+        attrs: { value: px, selected: state.settings.editorFontSizePx === px },
+      }),
+    ),
+  );
+
+  const paragraphStyleSelect = el(
+    'select',
+    {
+      className: 'bv-select qv-editor-block-select',
+      tooltip: {
+        title: 'Paragraph Style',
+        short: 'Switch the active paragraph between Normal, Heading 1–3, or Blockquote.',
+      },
+      attrs: { 'aria-label': 'Paragraph block style' },
+      on: {
+        change: () => {
+          applyParagraphStyle(
+            paragraphStyleSelect.value as 'p' | 'h1' | 'h2' | 'h3' | 'blockquote',
+          );
+          paragraphStyleSelect.value = 'p';
+        },
+      },
+    },
+    el('option', { text: 'Normal', attrs: { value: 'p', selected: true } }),
+    el('option', { text: 'Heading 1', attrs: { value: 'h1' } }),
+    el('option', { text: 'Heading 2', attrs: { value: 'h2' } }),
+    el('option', { text: 'Heading 3', attrs: { value: 'h3' } }),
+    el('option', { text: 'Quote', attrs: { value: 'blockquote' } }),
+  );
+
+  const lineSpacingChoices = [
+    { val: 1.35, label: '1.35×' },
+    { val: 1.55, label: '1.55×' },
+    { val: 1.72, label: '1.72×' },
+    { val: 2.0, label: '2.0×' },
+  ];
+  const lineSpacingSelect = el(
+    'select',
+    {
+      className: 'bv-select qv-editor-lh-select',
+      tooltip: {
+        title: 'Line Spacing',
+        short: 'Adjust paragraph line height on the writing sheet.',
+      },
+      attrs: { 'aria-label': 'Paragraph line spacing' },
+      on: {
+        change: () => {
+          const lh = Number(lineSpacingSelect.value);
+          if (Number.isFinite(lh)) actions.updateSettings({ editorLineHeight: lh });
+        },
+      },
+    },
+    ...lineSpacingChoices.map((opt) =>
+      el('option', {
+        text: opt.label,
+        attrs: {
+          value: String(opt.val),
+          selected: Math.abs(state.settings.editorLineHeight - opt.val) < 0.08,
+        },
+      }),
+    ),
+  );
+
   const subbar = el(
     'div',
     { className: 'bv-subbar' },
@@ -890,6 +1201,11 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         },
         icon('redo', 14),
       ),
+      el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
+      fontFamilySelect,
+      fontSizeSelect,
+      paragraphStyleSelect,
+      el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
       el('button', {
         className: 'bv-fmt-btn',
         text: 'B',
@@ -908,10 +1224,41 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       }),
       el('button', {
         className: 'bv-fmt-btn',
-        text: 'H2',
-        tooltip: TOOLTIP_CATALOG.heading,
-        attrs: { type: 'button', 'aria-label': 'Section Heading' },
-        on: { click: applyHeadingFormat },
+        text: 'U',
+        tooltip: { title: 'Underline (Ctrl+U)', short: 'Underline selected prose.' },
+        attrs: { type: 'button', 'aria-label': 'Underline' },
+        style: { textDecoration: 'underline' },
+        on: { click: applyUnderlineFormat },
+      }),
+      el('button', {
+        className: 'bv-fmt-btn',
+        text: 'S',
+        tooltip: { title: 'Strikethrough', short: 'Strike through selected words or draft lines.' },
+        attrs: { type: 'button', 'aria-label': 'Strikethrough' },
+        style: { textDecoration: 'line-through' },
+        on: { click: applyStrikeFormat },
+      }),
+      el('button', {
+        className: 'bv-fmt-btn',
+        text: 'Tx',
+        tooltip: { title: 'Clear Formatting', short: 'Strip inline emphasis from selected text.' },
+        attrs: { type: 'button', 'aria-label': 'Clear formatting' },
+        on: { click: applyClearFormat },
+      }),
+      el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
+      el('button', {
+        className: 'bv-fmt-btn',
+        text: '• List',
+        tooltip: { title: 'Bulleted List', short: 'Start or toggle a bulleted list item.' },
+        attrs: { type: 'button', 'aria-label': 'Bulleted list' },
+        on: { click: () => applyListFormat('bullet') },
+      }),
+      el('button', {
+        className: 'bv-fmt-btn',
+        text: '1. List',
+        tooltip: { title: 'Numbered List', short: 'Start or toggle a numbered list item.' },
+        attrs: { type: 'button', 'aria-label': 'Numbered list' },
+        on: { click: () => applyListFormat('ordered') },
       }),
       el('button', {
         className: 'bv-fmt-btn',
@@ -927,6 +1274,22 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         attrs: { type: 'button', 'aria-label': 'Insert Scene Break' },
         on: { click: applySceneBreakInsert },
       }),
+      el('span', { className: 'qv-subbar-sep', attrs: { 'aria-hidden': 'true' } }),
+      ...([
+        { id: 'left', label: 'Left', short: 'Align Left' },
+        { id: 'center', label: 'Center', short: 'Align Center' },
+        { id: 'right', label: 'Right', short: 'Align Right' },
+        { id: 'justify', label: 'Justify', short: 'Justify Paragraph' },
+      ] as const).map((al) =>
+        el('button', {
+          className: 'bv-fmt-btn qv-align-btn',
+          text: al.label,
+          tooltip: { title: al.short, short: `${al.short} in the active paragraph.` },
+          attrs: { type: 'button', 'aria-label': al.short },
+          on: { click: () => applyParagraphAlignment(al.id) },
+        }),
+      ),
+      lineSpacingSelect,
       el(
         'button',
         {

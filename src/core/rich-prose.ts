@@ -2,78 +2,130 @@ export interface InlineRun {
   text: string;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
 }
 
 export type RichBlock =
   | { kind: 'heading'; level: 1 | 2 | 3; runs: InlineRun[] }
   | { kind: 'blockquote'; lines: InlineRun[][] }
+  | { kind: 'bullet-list'; items: InlineRun[][] }
+  | { kind: 'ordered-list'; items: InlineRun[][] }
   | { kind: 'hr' }
   | { kind: 'paragraph'; lines: InlineRun[][] };
 
 const SCENE_BREAK_RE = /^(?:\*\s*\*\s*\*|-\s*-\s*-|_\s*_\s*_)\s*$/;
+const BULLET_LINE_RE = /^[-*]\s+(.*)$/;
+const ORDERED_LINE_RE = /^\d+\.\s+(.*)$/;
 
 /**
- * Parses inline bold (**text**) and italic (*text*) runs without interpreting raw HTML.
+ * Parses inline **bold**, *italic*, ***both***, ~~strikethrough~~, and <u>underline</u> runs safely.
  */
 export function parseInlineMarkdownRuns(input: string): InlineRun[] {
-  const runs: InlineRun[] = [];
-  let idx = 0;
+  const parseRec = (
+    text: string,
+    style: { bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean },
+  ): InlineRun[] => {
+    const out: InlineRun[] = [];
+    const pushRun = (chunk: string, st = style) => {
+      if (!chunk) return;
+      const prev = out[out.length - 1];
+      if (
+        prev &&
+        Boolean(prev.bold) === Boolean(st.bold) &&
+        Boolean(prev.italic) === Boolean(st.italic) &&
+        Boolean(prev.underline) === Boolean(st.underline) &&
+        Boolean(prev.strike) === Boolean(st.strike)
+      ) {
+        prev.text += chunk;
+        return;
+      }
+      out.push({
+        text: chunk,
+        ...(st.bold ? { bold: true } : {}),
+        ...(st.italic ? { italic: true } : {}),
+        ...(st.underline ? { underline: true } : {}),
+        ...(st.strike ? { strike: true } : {}),
+      });
+    };
 
-  const pushText = (txt: string, bold = false, italic = false) => {
-    if (!txt) return;
-    const prev = runs[runs.length - 1];
-    if (prev && Boolean(prev.bold) === bold && Boolean(prev.italic) === italic) {
-      prev.text += txt;
-      return;
+    let idx = 0;
+    while (idx < text.length) {
+      if (text.startsWith('<u>', idx)) {
+        const close = text.indexOf('</u>', idx + 3);
+        if (close > idx + 3 && !text.slice(idx + 3, close).includes('\n')) {
+          const inner = parseRec(text.slice(idx + 3, close), { ...style, underline: true });
+          inner.forEach((r) => pushRun(r.text, r));
+          idx = close + 4;
+          continue;
+        }
+      }
+      if (text.startsWith('~~', idx)) {
+        const close = text.indexOf('~~', idx + 2);
+        if (close > idx + 2 && !text.slice(idx + 2, close).includes('\n')) {
+          const inner = parseRec(text.slice(idx + 2, close), { ...style, strike: true });
+          inner.forEach((r) => pushRun(r.text, r));
+          idx = close + 2;
+          continue;
+        }
+      }
+      if (text.startsWith('***', idx)) {
+        const close = text.indexOf('***', idx + 3);
+        if (close > idx + 3 && !text.slice(idx + 3, close).includes('\n')) {
+          const inner = parseRec(text.slice(idx + 3, close), { ...style, bold: true, italic: true });
+          inner.forEach((r) => pushRun(r.text, r));
+          idx = close + 3;
+          continue;
+        }
+      }
+      if (text.startsWith('**', idx)) {
+        const close = text.indexOf('**', idx + 2);
+        if (close > idx + 2 && !text.slice(idx + 2, close).includes('\n')) {
+          const inner = parseRec(text.slice(idx + 2, close), { ...style, bold: true });
+          inner.forEach((r) => pushRun(r.text, r));
+          idx = close + 2;
+          continue;
+        }
+      }
+      if (text[idx] === '*') {
+        const close = text.indexOf('*', idx + 1);
+        if (close > idx + 1 && !text.slice(idx + 1, close).includes('\n')) {
+          const inner = parseRec(text.slice(idx + 1, close), { ...style, italic: true });
+          inner.forEach((r) => pushRun(r.text, r));
+          idx = close + 1;
+          continue;
+        }
+      }
+      const candidates = [
+        text.indexOf('*', idx + 1),
+        text.indexOf('~~', idx + 1),
+        text.indexOf('<u>', idx + 1),
+      ].filter((pos) => pos !== -1);
+      const nextToken = candidates.length > 0 ? Math.min(...candidates) : -1;
+      if (nextToken === -1) {
+        pushRun(text.slice(idx));
+        break;
+      }
+      pushRun(text.slice(idx, nextToken));
+      idx = nextToken;
     }
-    runs.push({ text: txt, ...(bold ? { bold: true } : {}), ...(italic ? { italic: true } : {}) });
+    return out;
   };
 
-  while (idx < input.length) {
-    if (input.startsWith('***', idx)) {
-      const close = input.indexOf('***', idx + 3);
-      if (close > idx + 3 && !input.slice(idx + 3, close).includes('\n')) {
-        pushText(input.slice(idx + 3, close), true, true);
-        idx = close + 3;
-        continue;
-      }
-    }
-    if (input.startsWith('**', idx)) {
-      const close = input.indexOf('**', idx + 2);
-      if (close > idx + 2 && !input.slice(idx + 2, close).includes('\n')) {
-        pushText(input.slice(idx + 2, close), true, false);
-        idx = close + 2;
-        continue;
-      }
-    }
-    if (input[idx] === '*') {
-      const close = input.indexOf('*', idx + 1);
-      if (close > idx + 1 && !input.slice(idx + 1, close).includes('\n')) {
-        pushText(input.slice(idx + 1, close), false, true);
-        idx = close + 1;
-        continue;
-      }
-    }
-    const nextStar = input.indexOf('*', idx + 1);
-    if (nextStar === -1) {
-      pushText(input.slice(idx));
-      break;
-    }
-    pushText(input.slice(idx, nextStar));
-    idx = nextStar;
-  }
-
-  return runs;
+  return parseRec(input, {});
 }
 
 export function serializeInlineRunsToMarkdown(runs: InlineRun[]): string {
   return runs
     .map((run) => {
       if (!run.text) return '';
-      if (run.bold && run.italic) return `***${run.text}***`;
-      if (run.bold) return `**${run.text}**`;
-      if (run.italic) return `*${run.text}*`;
-      return run.text;
+      let txt = run.text;
+      if (run.bold && run.italic) txt = `***${txt}***`;
+      else if (run.bold) txt = `**${txt}**`;
+      else if (run.italic) txt = `*${txt}*`;
+      if (run.strike) txt = `~~${txt}~~`;
+      if (run.underline) txt = `<u>${txt}</u>`;
+      return txt;
     })
     .join('');
 }
@@ -89,6 +141,8 @@ export function parseMarkdownToBlocks(markdown: string): RichBlock[] {
   const blocks: RichBlock[] = [];
   let paraLines: string[] = [];
   let quoteLines: string[] = [];
+  let bulletItems: string[] = [];
+  let orderedItems: string[] = [];
 
   const flushPara = () => {
     if (paraLines.length === 0) return;
@@ -108,25 +162,47 @@ export function parseMarkdownToBlocks(markdown: string): RichBlock[] {
     quoteLines = [];
   };
 
+  const flushBullets = () => {
+    if (bulletItems.length === 0) return;
+    blocks.push({
+      kind: 'bullet-list',
+      items: bulletItems.map((line) => parseInlineMarkdownRuns(line)),
+    });
+    bulletItems = [];
+  };
+
+  const flushOrdered = () => {
+    if (orderedItems.length === 0) return;
+    blocks.push({
+      kind: 'ordered-list',
+      items: orderedItems.map((line) => parseInlineMarkdownRuns(line)),
+    });
+    orderedItems = [];
+  };
+
+  const flushAll = () => {
+    flushPara();
+    flushQuote();
+    flushBullets();
+    flushOrdered();
+  };
+
   for (const rawLine of lines) {
     const trimmed = rawLine.trim();
     if (!trimmed) {
-      flushPara();
-      flushQuote();
+      flushAll();
       continue;
     }
 
     if (SCENE_BREAK_RE.test(trimmed)) {
-      flushPara();
-      flushQuote();
+      flushAll();
       blocks.push({ kind: 'hr' });
       continue;
     }
 
     const headingMatch = rawLine.match(/^(#{1,3})\s+(.*)$/);
     if (headingMatch) {
-      flushPara();
-      flushQuote();
+      flushAll();
       const level = headingMatch[1].length as 1 | 2 | 3;
       blocks.push({ kind: 'heading', level, runs: parseInlineMarkdownRuns(headingMatch[2]) });
       continue;
@@ -135,16 +211,37 @@ export function parseMarkdownToBlocks(markdown: string): RichBlock[] {
     const quoteMatch = rawLine.match(/^>\s?(.*)$/);
     if (quoteMatch) {
       flushPara();
+      flushBullets();
+      flushOrdered();
       quoteLines.push(quoteMatch[1]);
       continue;
     }
 
+    const bulletMatch = rawLine.match(BULLET_LINE_RE);
+    if (bulletMatch) {
+      flushPara();
+      flushQuote();
+      flushOrdered();
+      bulletItems.push(bulletMatch[1]);
+      continue;
+    }
+
+    const orderedMatch = rawLine.match(ORDERED_LINE_RE);
+    if (orderedMatch) {
+      flushPara();
+      flushQuote();
+      flushBullets();
+      orderedItems.push(orderedMatch[1]);
+      continue;
+    }
+
     flushQuote();
+    flushBullets();
+    flushOrdered();
     paraLines.push(rawLine);
   }
 
-  flushPara();
-  flushQuote();
+  flushAll();
   return blocks;
 }
 
@@ -161,6 +258,16 @@ export function serializeBlocksToMarkdown(blocks: RichBlock[]): string {
           .map((line) => `> ${serializeInlineRunsToMarkdown(line)}`.trimEnd())
           .join('\n');
       }
+      if (block.kind === 'bullet-list') {
+        return block.items
+          .map((item) => `- ${serializeInlineRunsToMarkdown(item)}`.trimEnd())
+          .join('\n');
+      }
+      if (block.kind === 'ordered-list') {
+        return block.items
+          .map((item, idx) => `${idx + 1}. ${serializeInlineRunsToMarkdown(item)}`.trimEnd())
+          .join('\n');
+      }
       return block.lines.map((line) => serializeInlineRunsToMarkdown(line)).join('\n');
     })
     .filter((chunk) => chunk.length > 0)
@@ -170,24 +277,28 @@ export function serializeBlocksToMarkdown(blocks: RichBlock[]): string {
 function appendInlineRunsToDom(parent: HTMLElement, runs: InlineRun[]): void {
   for (const run of runs) {
     if (!run.text) continue;
-    const textNode = document.createTextNode(run.text);
-    if (run.bold && run.italic) {
-      const strong = document.createElement('strong');
+    let node: Node = document.createTextNode(run.text);
+    if (run.italic) {
       const em = document.createElement('em');
-      em.appendChild(textNode);
-      strong.appendChild(em);
-      parent.appendChild(strong);
-    } else if (run.bold) {
-      const strong = document.createElement('strong');
-      strong.appendChild(textNode);
-      parent.appendChild(strong);
-    } else if (run.italic) {
-      const em = document.createElement('em');
-      em.appendChild(textNode);
-      parent.appendChild(em);
-    } else {
-      parent.appendChild(textNode);
+      em.appendChild(node);
+      node = em;
     }
+    if (run.bold) {
+      const strong = document.createElement('strong');
+      strong.appendChild(node);
+      node = strong;
+    }
+    if (run.strike) {
+      const s = document.createElement('s');
+      s.appendChild(node);
+      node = s;
+    }
+    if (run.underline) {
+      const u = document.createElement('u');
+      u.appendChild(node);
+      node = u;
+    }
+    parent.appendChild(node);
   }
 }
 
@@ -222,6 +333,17 @@ export function renderMarkdownToRichElement(container: HTMLElement, markdown: st
       container.appendChild(bq);
       continue;
     }
+    if (block.kind === 'bullet-list' || block.kind === 'ordered-list') {
+      const list = document.createElement(block.kind === 'ordered-list' ? 'ol' : 'ul');
+      for (const itemRuns of block.items) {
+        const li = document.createElement('li');
+        appendInlineRunsToDom(li, itemRuns);
+        if (!li.hasChildNodes()) li.appendChild(document.createElement('br'));
+        list.appendChild(li);
+      }
+      container.appendChild(list);
+      continue;
+    }
     const p = document.createElement('p');
     block.lines.forEach((line, idx) => {
       if (idx > 0) p.appendChild(document.createElement('br'));
@@ -234,16 +356,22 @@ export function renderMarkdownToRichElement(container: HTMLElement, markdown: st
   }
 }
 
-function wrapStyledMarkdown(text: string, marker: string): string {
+function wrapStyledMarkdown(text: string, open: string, close = open): string {
   if (!text) return '';
   const lead = text.match(/^\s*/)?.[0] ?? '';
   const trail = text.match(/\s*$/)?.[0] ?? '';
   const core = text.slice(lead.length, text.length - trail.length);
   if (!core) return text;
-  return `${lead}${marker}${core}${marker}${trail}`;
+  return `${lead}${open}${core}${close}${trail}`;
 }
 
-function serializeInlineNode(node: Node, inBold = false, inItalic = false): string {
+function serializeInlineNode(
+  node: Node,
+  inBold = false,
+  inItalic = false,
+  inUnderline = false,
+  inStrike = false,
+): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return (node.textContent ?? '').replace(/\u00a0/g, ' ').replace(/\u200b/g, '');
   }
@@ -253,18 +381,29 @@ function serializeInlineNode(node: Node, inBold = false, inItalic = false): stri
   const tag = el.tagName.toUpperCase();
   if (tag === 'BR') return '\n';
 
-  const nextBold = inBold || tag === 'STRONG' || tag === 'B' || el.style.fontWeight === 'bold' || Number(el.style.fontWeight) >= 600;
+  const deco = (el.style.textDecorationLine || el.style.textDecoration || '').toLowerCase();
+  const nextBold =
+    inBold ||
+    tag === 'STRONG' ||
+    tag === 'B' ||
+    el.style.fontWeight === 'bold' ||
+    Number(el.style.fontWeight) >= 600;
   const nextItalic = inItalic || tag === 'EM' || tag === 'I' || el.style.fontStyle === 'italic';
+  const nextUnderline = inUnderline || tag === 'U' || deco.includes('underline');
+  const nextStrike = inStrike || tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || deco.includes('line-through');
 
   let inner = '';
   for (const child of Array.from(el.childNodes)) {
-    inner += serializeInlineNode(child, nextBold, nextItalic);
+    inner += serializeInlineNode(child, nextBold, nextItalic, nextUnderline, nextStrike);
   }
 
-  if (!inBold && nextBold && !inItalic && nextItalic) return wrapStyledMarkdown(inner, '***');
-  if (!inBold && nextBold) return wrapStyledMarkdown(inner, '**');
-  if (!inItalic && nextItalic) return wrapStyledMarkdown(inner, '*');
-  return inner;
+  let res = inner;
+  if (!inBold && nextBold && !inItalic && nextItalic) res = wrapStyledMarkdown(res, '***');
+  else if (!inBold && nextBold) res = wrapStyledMarkdown(res, '**');
+  else if (!inItalic && nextItalic) res = wrapStyledMarkdown(res, '*');
+  if (!inStrike && nextStrike) res = wrapStyledMarkdown(res, '~~');
+  if (!inUnderline && nextUnderline) res = wrapStyledMarkdown(res, '<u>', '</u>');
+  return res;
 }
 
 function normalizeBlockLine(raw: string): string {
@@ -320,6 +459,22 @@ export function serializeRichElementToMarkdown(container: HTMLElement): string {
             .map((line) => (line.trim() ? `> ${line}` : '>'))
             .join('\n'),
         );
+      }
+      continue;
+    }
+
+    if (tag === 'UL' || tag === 'OL') {
+      flushInlineBuffer();
+      const lis = Array.from(el.children).filter((c) => c.tagName.toUpperCase() === 'LI');
+      const lines = lis
+        .map((li, idx) => {
+          const text = normalizeBlockLine(serializeInlineNode(li)).replace(/\n+/g, ' ');
+          if (!text) return '';
+          return tag === 'OL' ? `${idx + 1}. ${text}` : `- ${text}`;
+        })
+        .filter(Boolean);
+      if (lines.length > 0) {
+        parts.push(lines.join('\n'));
       }
       continue;
     }

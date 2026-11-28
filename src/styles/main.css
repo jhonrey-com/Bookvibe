@@ -1467,6 +1467,32 @@ body.is-col-resizing {
   max-width: 100%;
 }
 
+.qv-subbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.qv-editor-font-select {
+  max-width: 144px;
+}
+
+.qv-editor-size-select,
+.qv-editor-lh-select {
+  max-width: 72px;
+}
+
+.qv-editor-block-select {
+  max-width: 108px;
+}
+
+.qv-align-btn {
+  font-size: 11px;
+  padding: 0 6px;
+}
+
 /* --- Paper Canvas & Editor Split --- */
 
 .bv-editor-panes {
@@ -1651,8 +1677,26 @@ body.is-col-resizing {
   margin: 1.1em 0 0.45em;
 }
 
+.bv-prose-rich h1 {
+  font-size: 1.75em;
+}
+
 .bv-prose-rich h2 {
   font-size: 1.42em;
+}
+
+.bv-prose-rich h3 {
+  font-size: 1.18em;
+}
+
+.bv-prose-rich ul,
+.bv-prose-rich ol {
+  margin: 0.7em 0;
+  padding-left: 1.55em;
+}
+
+.bv-prose-rich li {
+  margin: 0.28em 0;
 }
 
 .bv-prose-rich blockquote {

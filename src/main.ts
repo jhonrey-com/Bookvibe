@@ -141,7 +141,7 @@ import {
   replayFullWalkthrough,
 } from './ui/onboarding';
 import { createVerticalResizer } from './ui/resizer';
-import { hideTooltip } from './ui/tooltip';
+import { attachTooltip, hideTooltip, updateTooltip, type TooltipSpec } from './ui/tooltip';
 import { TOOLTIP_CATALOG } from './ui/tooltips-catalog';
 import { openUniversalSearch } from './ui/universal-search';
 import { renderBibleView } from './views/bible';
@@ -2917,6 +2917,54 @@ function renderDesktopTabBar(): void {
   const tabStrip = desktopTabStripEl;
   const activateTabId = activateDesktopTab;
 
+  const resolveTabTooltip = (id: string): TooltipSpec => {
+    if (isEmptyTabId(id)) {
+      return {
+        title: 'New Tab',
+        short: 'Open a clean draft or jump to a studio page.',
+      };
+    }
+    if (id === SETTINGS_TAB_ID) {
+      return {
+        title: 'Settings',
+        short: 'Themes, fonts, workspace layouts, and backups.',
+      };
+    }
+    if (id === COURSE_TAB_ID) {
+      return {
+        title: 'Academy Course',
+        short: 'Interactive book writing and craft lessons.',
+      };
+    }
+    if (id === HELP_TAB_ID) {
+      return {
+        title: 'Help & FAQ',
+        short: 'Guides, file formats, and error diagnostics.',
+      };
+    }
+    if (id === MANUAL_TAB_ID) {
+      return {
+        title: 'Reference Manual',
+        short: 'Full index of controls, shortcuts, and formats.',
+      };
+    }
+    if (id === EXTENSIONS_TAB_ID) {
+      return {
+        title: 'Extensions',
+        short: 'Format inspector and .qvext add-on packs.',
+      };
+    }
+    const book = state.library.books.find((b) => b.id === id);
+    if (!book) {
+      return { title: 'Book Tab', short: 'Manuscript workspace tab.' };
+    }
+    const words = getProjectWordCount(book);
+    return {
+      title: book.title || 'Untitled Book',
+      short: `${book.author || 'Author'} · ${words.toLocaleString()} words`,
+    };
+  };
+
   const createTabElement = (id: string, initialTitle: string): HTMLElement => {
     const closeBtn = el(
       'button',
@@ -2953,7 +3001,6 @@ function renderDesktopTabBar(): void {
           tabindex: '-1',
           'aria-label': initialTitle,
           'aria-selected': 'false',
-          title: `${initialTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
         },
         on: {
           auxclick: (e) => {
@@ -2994,6 +3041,8 @@ function renderDesktopTabBar(): void {
       el('span', { className: 'qv-book-tab-title', text: initialTitle }),
       closeBtn,
     );
+
+    attachTooltip(tabEl, resolveTabTooltip(id));
 
     tabDragController.attachTab(tabEl, tabStrip, desktopTabBarEl!, {
       tabId: id,
@@ -3100,10 +3149,7 @@ function renderDesktopTabBar(): void {
     tabEl.setAttribute('tabindex', isActive ? '0' : '-1');
     tabEl.setAttribute('aria-label', tabTitle);
     tabEl.setAttribute('aria-selected', String(isActive));
-    tabEl.setAttribute(
-      'title',
-      `${tabTitle} — Drag left/right to reorder, drag out to open a new window, or drag onto another Quillvibe window to combine`,
-    );
+    updateTooltip(tabEl, resolveTabTooltip(id));
 
     const titleEl = tabEl.querySelector<HTMLElement>('.qv-book-tab-title');
     if (titleEl && titleEl.textContent !== tabTitle) {

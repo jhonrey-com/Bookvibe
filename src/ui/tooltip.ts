@@ -246,6 +246,20 @@ export function hideTooltip(): void {
   }
 }
 
+const tooltipRegistry = new WeakMap<HTMLElement, TooltipSpec>();
+
+/**
+ * Updates the tooltip content of an element already bound with attachTooltip.
+ */
+export function updateTooltip(target: HTMLElement, spec: TooltipSpec): void {
+  tooltipRegistry.set(target, spec);
+  if (activeState?.target === target) {
+    activeState.spec = spec;
+    renderTooltipContents();
+    positionTooltip();
+  }
+}
+
 /**
  * Attaches custom short hover tooltips that expand with full descriptions when clicked or F1/?.
  */
@@ -254,13 +268,17 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   if (!target.getAttribute('aria-label')) {
     target.setAttribute('aria-label', spec.title);
   }
+  const alreadyBound = tooltipRegistry.has(target);
+  tooltipRegistry.set(target, spec);
+  if (alreadyBound) return;
 
   target.addEventListener('pointerenter', () => {
     clearTimers();
     if (activeState?.pinned && activeState.target === target) return;
     showTimer = window.setTimeout(() => {
-      if (target.matches(':hover') || document.activeElement === target) {
-        showTooltipNow(target, spec, false);
+      const liveSpec = tooltipRegistry.get(target);
+      if (liveSpec && (target.matches(':hover') || document.activeElement === target)) {
+        showTooltipNow(target, liveSpec, false);
       }
     }, 180);
   });
@@ -275,7 +293,8 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   target.addEventListener('focus', () => {
     if (activeState?.pinned) return;
     if (!target.matches(':focus-visible')) return;
-    showTooltipNow(target, spec, false);
+    const liveSpec = tooltipRegistry.get(target);
+    if (liveSpec) showTooltipNow(target, liveSpec, false);
   });
 
   target.addEventListener('blur', () => {
@@ -288,8 +307,10 @@ export function attachTooltip(target: HTMLElement, spec: TooltipSpec): void {
   target.addEventListener('keydown', (e) => {
     if (e.key === '?' || e.key === 'F1') {
       e.preventDefault();
+      const liveSpec = tooltipRegistry.get(target);
+      if (!liveSpec) return;
       const nextExp = !(activeState?.target === target && activeState.expanded);
-      showTooltipNow(target, spec, nextExp);
+      showTooltipNow(target, liveSpec, nextExp);
     }
   });
 

@@ -109,6 +109,8 @@ import {
 } from '../src/core/sample-book';
 import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../src/core/settings';
 import { COURSE_MODULES, getCourseCompletionSummary } from '../src/ui/course';
+import { buildSearchCorpus } from '../src/ui/universal-search';
+import type { AppActions, AppState } from '../src/core/app-context';
 
 describe('Quillvibe Core Rebrand & Formats', () => {
   it('registers the 5 official .qv formats and moves legacy extensions to import-only', () => {
@@ -671,25 +673,85 @@ describe('Cover Studio Math, Smart Snap, Storyboard Router & Force Graph', () =>
     expect(reimported.edges).toHaveLength(2);
   });
 
-  it('round-trips rich prose Markdown blocks cleanly and exposes updated quick-fix settings defaults', () => {
+  it('round-trips rich prose Markdown blocks cleanly and filters Universal Search by workspace and platform', () => {
     expect(DEFAULT_SETTINGS.enableRichFormatting).toBe(true);
     expect(DEFAULT_SETTINGS.confirmBeforeUnlock).toBe(false);
 
     const sampleMd = [
+      '# Act I Opening',
       '## Harbor Dawn',
-      'The lantern held **steady light** over *quiet water* and ***cold stone***.',
+      'The lantern held **steady light**, *quiet water*, <u>underlined notes</u>, and ~~crossed lines~~.',
+      '- Check harbor barometer\n- Log tide height',
+      '1. Board the skiff\n2. Light the brass lamp',
       '> Old mariners never trusted a silent tide.',
       '* * *',
       'She turned back toward the pier.',
     ].join('\n\n');
 
     const blocks = parseMarkdownToBlocks(sampleMd);
-    expect(blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph', 'blockquote', 'hr', 'paragraph']);
+    expect(blocks.map((b) => b.kind)).toEqual([
+      'heading',
+      'heading',
+      'paragraph',
+      'bullet-list',
+      'ordered-list',
+      'blockquote',
+      'hr',
+      'paragraph',
+    ]);
     expect(serializeBlocksToMarkdown(blocks)).toBe(sampleMd);
 
     const blankBook = createEmptyBookProject('Untitled Book', 'Author');
     expect(blankBook.title).toBe('Untitled Book');
     expect(blankBook.parts[0].chapters[0].scenes[0].content).toBe('');
     expect(blankBook.bible.characters).toHaveLength(0);
+
+    const starterBook = normalizeProjectDefaults(createStarterBookProject());
+    const stubActions = {
+      setState: () => {},
+      updateSettings: () => {},
+      notify: () => {},
+      openLibraryModal: () => {},
+      openCollabModal: () => {},
+      openBibleEntry: () => {},
+      openNewWindow: async () => {},
+      openAnyQuillvibeFile: async () => {},
+      selectScene: () => {},
+    } as unknown as AppActions;
+
+    const baseState = {
+      project: starterBook,
+      settings: { ...DEFAULT_SETTINGS, toolTier: 'basic' as const },
+    } as AppState;
+
+    const focusedWeb = buildSearchCorpus(stubActions, baseState, {
+      platform: 'desktop-web',
+      tier: 'basic',
+    });
+    expect(focusedWeb.some((r) => r.id === 'tool-editor')).toBe(true);
+    expect(focusedWeb.some((r) => r.id === 'tool-landing')).toBe(true);
+    expect(focusedWeb.some((r) => r.id === 'tool-new-window')).toBe(false);
+    expect(focusedWeb.some((r) => r.id === 'tool-corkboard')).toBe(false);
+    expect(focusedWeb.some((r) => r.id === 'tool-bible')).toBe(false);
+    expect(focusedWeb.some((r) => r.id.startsWith('bible-'))).toBe(false);
+    expect(focusedWeb.some((r) => r.id === 'help-desktop-tabs-windows')).toBe(false);
+    expect(focusedWeb.some((r) => r.id === 'err-QV-301')).toBe(false);
+
+    const focusedDesktop = buildSearchCorpus(stubActions, baseState, {
+      platform: 'desktop-app',
+      tier: 'basic',
+    });
+    expect(focusedDesktop.some((r) => r.id === 'tool-new-window')).toBe(true);
+    expect(focusedDesktop.some((r) => r.id === 'tool-landing')).toBe(false);
+    expect(focusedDesktop.some((r) => r.id === 'help-desktop-tabs-windows')).toBe(true);
+    expect(focusedDesktop.some((r) => r.id === 'tool-cover')).toBe(false);
+
+    const fullDesktop = buildSearchCorpus(
+      stubActions,
+      { ...baseState, settings: { ...DEFAULT_SETTINGS, toolTier: 'advanced' } },
+      { platform: 'desktop-app', tier: 'advanced' },
+    );
+    expect(fullDesktop.some((r) => r.id === 'tool-cover')).toBe(true);
+    expect(fullDesktop.some((r) => r.id.startsWith('bible-char-'))).toBe(true);
   });
 });
