@@ -88,7 +88,11 @@ import {
   routeForState,
   syncBrowserPath,
 } from './core/router';
-import { createStarterBookProject } from './core/sample-book';
+import {
+  createStarterBookProject,
+  createWelcomeIntroBookProject,
+  isLocalDevMockEnabled,
+} from './core/sample-book';
 import {
   DEFAULT_SETTINGS,
   applySettingsToDocument,
@@ -160,7 +164,9 @@ import { renderSettingsPageView, setSettingsPageTab } from './views/settings-mod
 import { renderTypesetView } from './views/typeset';
 import { hasCoverHistory, performCoverRedo, performCoverUndo } from './views/cover';
 
-const starter = createStarterBookProject();
+const starter = isLocalDevMockEnabled()
+  ? createStarterBookProject()
+  : createWelcomeIntroBookProject();
 const initialLibrary = createInitialLibrary(starter);
 
 const projectHistory = new ProjectHistoryStack<BookProject>(45);

@@ -2,7 +2,11 @@ import { defaultBookCover } from './cover';
 import { seedGraphFromProject } from './graph';
 import { ensureAuthorIdentity } from './identity';
 import { createPartNode, newId } from './manuscript';
-import { createStarterBookProject } from './sample-book';
+import {
+  createStarterBookProject,
+  createWelcomeIntroBookProject,
+  isLocalDevMockEnabled,
+} from './sample-book';
 import type { BookLibraryState, BookProject } from './types';
 
 export function normalizeProjectDefaults(raw: BookProject): BookProject {
@@ -132,7 +136,10 @@ export function sortLibraryBooksByLatest(books: BookProject[]): BookProject[] {
 }
 
 export function createInitialLibrary(initialBook?: BookProject): BookLibraryState {
-  const first = normalizeProjectDefaults(initialBook ?? createStarterBookProject());
+  const defaultBook = isLocalDevMockEnabled()
+    ? createStarterBookProject()
+    : createWelcomeIntroBookProject();
+  const first = normalizeProjectDefaults(initialBook ?? defaultBook);
   return {
     activeBookId: first.id,
     books: [first],
@@ -223,9 +230,12 @@ export function deleteBookFromLibrary(
 }
 
 export function getActiveBookFromLibrary(library: BookLibraryState): BookProject {
+  const fallback = isLocalDevMockEnabled()
+    ? createStarterBookProject()
+    : createWelcomeIntroBookProject();
   return (
     library.books.find((b) => b.id === library.activeBookId) ??
     library.books[0] ??
-    normalizeProjectDefaults(createStarterBookProject())
+    normalizeProjectDefaults(fallback)
   );
 }

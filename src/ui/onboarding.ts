@@ -14,6 +14,7 @@ import {
 } from '../core/library';
 import { getProjectWordCount } from '../core/manuscript';
 import { syncBrowserPath } from '../core/router';
+import { WELCOME_INTRO_BOOK_ID } from '../core/sample-book';
 import type { AppThemeId, StudioViewId, ToolTier } from '../core/types';
 import { el, icon, quillvibeLogo, svgEl } from './dom';
 
@@ -284,7 +285,9 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
     (window.localStorage.getItem(SPLASH_SEEN_KEY) === '1' ||
       window.localStorage.getItem(LEGACY_SPLASH_KEY) === '1');
 
-  const isPreview = actions.getState().project.id === PREVIEW_BOOK_ID;
+  const activeBookId = actions.getState().project.id;
+  const isPreview = activeBookId === PREVIEW_BOOK_ID;
+  const isWelcomeIntro = activeBookId === WELCOME_INTRO_BOOK_ID;
 
   if (alreadyShown) {
     requestAnimationFrame(() => maybeStartSectionTour(actions.getState().activeView, actions));
@@ -511,8 +514,17 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
         on: { click: () => finishWithMode(isPreview ? 'preview' : 'skip') },
       },
       icon('quill', 15),
-      el('span', { text: isPreview ? 'Explore Sample Book' : 'Resume Active Manuscript' }),
-      el('span', { className: 'qv-welcome-link-sub', text: 'Guided workspace' }),
+      el('span', {
+        text: isPreview
+          ? 'Explore Sample Book'
+          : isWelcomeIntro
+            ? 'Start Writing'
+            : 'Resume Active Manuscript',
+      }),
+      el('span', {
+        className: 'qv-welcome-link-sub',
+        text: isWelcomeIntro ? 'Introduction & quick guide' : 'Guided workspace',
+      }),
     ),
   );
 
@@ -671,9 +683,9 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
         }),
         el('button', {
           className: 'bv-btn bv-btn-primary',
-          text: isPreview ? 'Open Sample Book' : 'Continue Writing',
+          text: isPreview ? 'Open Sample Book' : isWelcomeIntro ? 'Start Writing' : 'Continue Writing',
           attrs: { type: 'button' },
-          on: { click: () => finishWithMode(isPreview ? 'preview' : 'skip') },
+          on: { click: () => finishWithMode(isPreview || isWelcomeIntro ? 'preview' : 'skip') },
         }),
       ),
     ),

@@ -97,7 +97,12 @@ import {
 } from '../src/core/proofread';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../src/core/provenance';
 import { resolvePathToRoute, routeForState } from '../src/core/router';
-import { createStarterBookProject } from '../src/core/sample-book';
+import {
+  WELCOME_INTRO_BOOK_ID,
+  createStarterBookProject,
+  createWelcomeIntroBookProject,
+  isLocalDevMockEnabled,
+} from '../src/core/sample-book';
 import { DEFAULT_SETTINGS, formatAppWindowTitle } from '../src/core/settings';
 import { COURSE_MODULES, getCourseCompletionSummary } from '../src/ui/course';
 
@@ -389,6 +394,15 @@ describe('Manuscript, Bible, Proofread, Pagination, Course & Sync Helpers', () =
     expect(renameChapterInProject(lockedChapBook, ch0.id, 'Blocked Rename').parts[0].chapters[0].title).toBe('The Tidal Ledger');
     const lockedPartBook = togglePartLock(renamedPartBook, p0.id);
     expect(renamePartInProject(lockedPartBook, p0.id, 'Blocked Part Rename').parts[0].title).toBe('Part I — Harbor Tides');
+
+    // Public intro book starts clean without mock lore while preserving starter mock book in tests/localhost
+    expect(isLocalDevMockEnabled()).toBe(true);
+    const introBook = normalizeProjectDefaults(createWelcomeIntroBookProject());
+    expect(introBook.id).toBe(WELCOME_INTRO_BOOK_ID);
+    expect(introBook.title).toBe('Welcome to Quillvibe');
+    expect(introBook.bible.characters).toHaveLength(0);
+    expect(introBook.bible.locations).toHaveLength(0);
+    expect(introBook.parts[0].chapters[0].scenes[0].content).toContain('Quick Start');
   });
 
   it('verifies Origin Device ID, Copyright Seal, Verified Multi-Device Co-Author tokens, PDF 1.4 export, and History Stack', async () => {

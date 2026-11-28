@@ -326,3 +326,126 @@ export function createStarterBookProject(): BookProject {
   project.cover = defaultBookCover(project);
   return project;
 }
+
+export const WELCOME_INTRO_BOOK_ID = 'book-quillvibe-welcome';
+
+/**
+ * Keeps the mock sample novel active on localhost dev/preview and unit tests,
+ * while public website and installed desktop releases start with a clean intro workspace.
+ */
+export function isLocalDevMockEnabled(): boolean {
+  const env = (import.meta as { env?: { MODE?: string } }).env;
+  if (env?.MODE === 'test') return true;
+  if (typeof window === 'undefined' || !window.location) return false;
+  const { protocol, hostname, port } = window.location;
+  if (protocol === 'tauri:') return false;
+  const host = hostname.toLowerCase();
+  if (host === 'tauri.localhost') return false;
+  return Boolean(port) && (host === 'localhost' || host === '127.0.0.1' || host === '[::1]');
+}
+
+/**
+ * Clean introductory book shown to public web and desktop writers on first launch.
+ */
+export function createWelcomeIntroBookProject(): BookProject {
+  const now = new Date().toISOString();
+  const introText = [
+    'Replace this page with your opening chapter, or click New Blank Book in Library when you want a fresh title.',
+    '',
+    '## Quick Start',
+    '',
+    '- **Rename Parts & Chapters:** Double-click any Part or Chapter title in the left Manuscript Binder, or right-click to rename, add scenes, or lock finished drafts.',
+    '- **Switch Workspace Layouts:** Click the Workspace badge in the bottom bar to move between Focused (quiet page), Editorial (Corkboard, Outline, Proofread, Typeset), and Full Studio (Story Bible, Story Graph, Book Cover Studio).',
+    '- **Search Anywhere:** Press Ctrl+K (or Cmd+K on Mac) to jump between scenes, Story Bible entries, FAQ articles, tools, and Academy lessons.',
+    '- **Save Backups:** Click Save (Ctrl+S) in the top bar to save or download a protected .qv archive containing your manuscript, Story Bible, graph, and cover.',
+  ].join('\n');
+
+  const project: BookProject = {
+    id: WELCOME_INTRO_BOOK_ID,
+    title: 'Welcome to Quillvibe',
+    subtitle: '',
+    author: 'Author',
+    dedication: '',
+    copyrightNotice: `Copyright © ${new Date().getFullYear()} Author. All rights reserved.`,
+    language: 'en',
+    wordTarget: 50000,
+    paperTheme: 'ivory',
+    activeAuthorLabel: 'Author',
+    authorIdentity: {
+      penName: 'Author',
+      signatureText: 'Author',
+      signatureSvgDataUrl: '',
+      authorKeyId: '',
+      publicKeyJwk: '',
+      lastSignedAt: '',
+      manuscriptDigest: '',
+      keyLockedForever: false,
+    },
+    collaborators: [],
+    publishing: {
+      imprintName: 'Independent',
+      isbn: '',
+      editionNumber: '1st Edition',
+      editorialStage: 'developmental',
+    },
+    updatedAt: now,
+    typography: {
+      trimSize: '6x9',
+      fontFamily: 'garamond',
+      fontSizePt: 11,
+      lineHeight: 1.55,
+      marginInches: 0.85,
+      dropCaps: true,
+      smartTypography: true,
+      chapterNumeralStyle: 'roman',
+      runningHeader: true,
+      includeFrontMatter: true,
+      includeTableOfContents: true,
+      includePageNumbers: true,
+    },
+    parts: [
+      {
+        id: 'part-welcome-1',
+        title: 'Part I',
+        collapsed: false,
+        chapters: [
+          {
+            id: 'chap-welcome-1',
+            title: 'Chapter 1',
+            subtitle: 'Getting Started',
+            collapsed: false,
+            scenes: [
+              {
+                id: 'scene-welcome-1',
+                title: 'Start Writing',
+                synopsis: 'Quick introduction to drafting, organizing, and exporting in Quillvibe.',
+                status: 'draft',
+                pov: '',
+                location: '',
+                timeline: '',
+                wordTarget: 1000,
+                content: introText,
+                notes: '',
+                snapshots: [],
+                proofreadMarks: [],
+                annotations: [],
+                updatedAt: now,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    bible: {
+      characters: [],
+      locations: [],
+      lore: [],
+      customCategories: [],
+      customEntries: [],
+    },
+  };
+
+  project.storyGraph = seedGraphFromProject(project);
+  project.cover = defaultBookCover(project);
+  return project;
+}

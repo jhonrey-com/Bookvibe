@@ -255,7 +255,7 @@ export function renderLandingPageView(
         }),
         el('p', {
           className: 'qv-landing-hero-lead',
-          text: 'Quillvibe is a free, open-source book writing application built for long-form authors. Open a blank book or the sample manuscript straight in your browser with no account required, save your work in protected .qv archives, or install the desktop edition for Windows, macOS, and Linux.',
+          text: 'Quillvibe is a free, open-source book writing application built for long-form authors. Open a blank book or follow the built-in quick guide straight in your browser with no account required, save your work in protected .qv archives, or install the desktop edition for Windows, macOS, and Linux.',
         }),
         el(
           'div',
@@ -310,7 +310,7 @@ export function renderLandingPageView(
   const whyCards: Array<[string, string]> = [
     [
       'No account & spellcheck off by default',
-      'Open a blank book or sample project immediately without creating an account. Spellcheck red underlines stay off while drafting (toggleable in Settings) and Undo/Redo (Ctrl+Z / Ctrl+Y) works across every studio.',
+      'Open a blank book immediately without creating an account. Spellcheck red underlines stay off while drafting (toggleable in Settings) and Undo/Redo (Ctrl+Z / Ctrl+Y) works across every studio.',
     ],
     [
       '15 traditional proofreading marks',

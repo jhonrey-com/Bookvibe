@@ -28,7 +28,7 @@ export const HELP_FAQ_ARTICLES: readonly HelpFaqArticle[] = [
     category: 'Getting Started',
     platform: 'both',
     title: 'Welcome Screen, Themes & Workspace Layouts',
-    summary: 'Open a blank book, explore the sample book, match your device theme, or pick Focused, Editorial, or Full Studio layout.',
+    summary: 'Open a blank book, read the starter guide, match your device theme, or pick Focused, Editorial, or Full Studio layout.',
     details: [
       'Visit / for the Quillvibe overview landing page, /start to launch the Welcome workbench, or /write to jump directly into your active scene.',
       'Themes include Match Device (System), Ivory Light, Warm Parchment, and Obsidian Dark. All four update scrollbars, panels, and paper cleanly.',
