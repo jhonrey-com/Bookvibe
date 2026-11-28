@@ -12,6 +12,7 @@ import {
   readCompletedCourseLessons,
 } from '../ui/course';
 import { clearNode, el, icon } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 import { ICON_DIRECTORY, type IconDirectoryEntry } from '../ui/icon-directory';
 
 export type HelpTab = 'controls' | 'course' | 'tour' | 'icons' | 'guides' | 'reference';
@@ -792,6 +793,7 @@ export function renderManualPageView(container: HTMLElement, actions: AppActions
           on: { click: () => actions.openSettingsModal('editor') },
         },
       ),
+      createAppThemeButton(actions),
     ),
   );
 

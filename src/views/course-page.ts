@@ -17,6 +17,7 @@ import {
   type CourseTrackId,
 } from '../ui/course';
 import { clearNode, el, icon } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 
 const COLLAPSE_COMPLETED_KEY = 'quillvibe.courseCollapseCompleted.v1';
 
@@ -638,6 +639,7 @@ export function renderCoursePageView(container: HTMLElement, actions: AppActions
         icon('quill', 12),
         'Back to Book',
       ),
+      createAppThemeButton(actions),
     ),
   );
 

@@ -23,6 +23,10 @@ import {
   stetProofreadMark,
   updateProofreadMarkNote,
 } from '../core/proofread';
+import {
+  renderMarkdownToRichElement,
+  serializeRichElementToMarkdown,
+} from '../core/rich-prose';
 import { computeWordDiff, restoreSnapshotToScene } from '../core/snapshots';
 import { isTierAtLeast } from '../core/settings';
 import type { PaperTheme, ProofreadMark, ProofreadMarkKind } from '../core/types';
@@ -90,6 +94,223 @@ function insertAtLineStart(textarea: HTMLTextAreaElement, prefix: string, action
   textarea.focus();
   textarea.setSelectionRange(start + prefix.length, start + prefix.length);
   actions.updateActiveSceneTextQuietly('content', nextValue);
+}
+
+function getSelectionRangeInRich(richEl: HTMLElement): Range | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!richEl.contains(range.commonAncestorContainer)) return null;
+  return range;
+}
+
+function setCaretAtEndOfNode(node: Node): void {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function findDirectRichBlock(richEl: HTMLElement, node: Node | null): HTMLElement | null {
+  let cur: Node | null = node;
+  while (cur && cur !== richEl) {
+    if (cur.parentNode === richEl && cur.nodeType === Node.ELEMENT_NODE) {
+      return cur as HTMLElement;
+    }
+    cur = cur.parentNode;
+  }
+  return null;
+}
+
+function applyRichInlineCommand(
+  richEl: HTMLElement,
+  command: 'bold' | 'italic',
+  fallbackTag: 'strong' | 'em',
+  onSync: () => void,
+): void {
+  richEl.focus();
+  if (!getSelectionRangeInRich(richEl)) {
+    setCaretAtEndOfNode(richEl);
+  }
+  try {
+    if (typeof document.execCommand === 'function' && document.execCommand(command, false)) {
+      onSync();
+      return;
+    }
+  } catch {
+    // Fallback below if execCommand is unavailable
+  }
+  const range = getSelectionRangeInRich(richEl);
+  if (!range) return;
+  const wrapper = document.createElement(fallbackTag);
+  if (range.collapsed) {
+    wrapper.textContent = 'text';
+    range.insertNode(wrapper);
+  } else {
+    wrapper.appendChild(range.extractContents());
+    range.insertNode(wrapper);
+  }
+  setCaretAtEndOfNode(wrapper);
+  onSync();
+}
+
+function toggleRichBlockElement(
+  richEl: HTMLElement,
+  tag: 'H2' | 'BLOCKQUOTE',
+  onSync: () => void,
+): void {
+  richEl.focus();
+  let range = getSelectionRangeInRich(richEl);
+  if (!range) {
+    setCaretAtEndOfNode(richEl);
+    range = getSelectionRangeInRich(richEl);
+  }
+  const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
+  const currentTag = block?.tagName.toUpperCase();
+  const nextTag = currentTag === tag ? 'p' : tag.toLowerCase();
+
+  if (block) {
+    const replacement = document.createElement(nextTag);
+    while (block.firstChild) {
+      replacement.appendChild(block.firstChild);
+    }
+    if (!replacement.hasChildNodes()) {
+      replacement.appendChild(document.createElement('br'));
+    }
+    block.replaceWith(replacement);
+    setCaretAtEndOfNode(replacement);
+  } else {
+    const replacement = document.createElement(nextTag);
+    replacement.appendChild(document.createElement('br'));
+    richEl.appendChild(replacement);
+    setCaretAtEndOfNode(replacement);
+  }
+  onSync();
+}
+
+function insertRichSceneBreak(richEl: HTMLElement, onSync: () => void): void {
+  richEl.focus();
+  const range = getSelectionRangeInRich(richEl);
+  const block = findDirectRichBlock(richEl, range?.startContainer ?? null);
+  const hr = document.createElement('hr');
+  hr.className = 'bv-scene-break';
+  const nextPara = document.createElement('p');
+  nextPara.appendChild(document.createElement('br'));
+
+  if (block && block.parentNode === richEl) {
+    block.after(hr, nextPara);
+  } else {
+    richEl.append(hr, nextPara);
+  }
+  setCaretAtEndOfNode(nextPara);
+  onSync();
+}
+
+function insertPlainTextAtRichCaret(richEl: HTMLElement, text: string, onSync: () => void): void {
+  richEl.focus();
+  const clean = text.replace(/\r\n/g, '\n');
+  try {
+    if (typeof document.execCommand === 'function' && document.execCommand('insertText', false, clean)) {
+      onSync();
+      return;
+    }
+  } catch {
+    // Fallback to manual Range insertion
+  }
+  const range = getSelectionRangeInRich(richEl) ?? (() => {
+    const r = document.createRange();
+    r.selectNodeContents(richEl);
+    r.collapse(false);
+    return r;
+  })();
+  range.deleteContents();
+  const txtNode = document.createTextNode(clean);
+  range.insertNode(txtNode);
+  range.setStartAfter(txtNode);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  onSync();
+}
+
+function getRichMarkdownCursorOffset(richEl: HTMLElement): number {
+  const range = getSelectionRangeInRich(richEl);
+  if (!range) return serializeRichElementToMarkdown(richEl).length;
+  const prefixRange = document.createRange();
+  prefixRange.setStart(richEl, 0);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const scratch = document.createElement('div');
+  scratch.appendChild(prefixRange.cloneContents());
+  return serializeRichElementToMarkdown(scratch).length;
+}
+
+function openUnlockConfirmDialog(targetLabel: string, onConfirm: () => void): void {
+  const existing = document.getElementById('qv-confirm-unlock-backdrop');
+  existing?.remove();
+
+  const close = () => backdrop.remove();
+
+  const unlockBtn = el('button', {
+    className: 'bv-btn bv-btn-primary',
+    text: 'Unlock Section',
+    attrs: { type: 'button' },
+    on: {
+      click: () => {
+        close();
+        onConfirm();
+      },
+    },
+  });
+
+  const cancelBtn = el('button', {
+    className: 'bv-btn',
+    text: 'Keep Locked',
+    attrs: { type: 'button' },
+    on: { click: close },
+  });
+
+  const dialog = el(
+    'div',
+    {
+      className: 'qv-confirm-unlock-dialog',
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Confirm unlock chapter or part' },
+      on: { click: (e) => e.stopPropagation() },
+    },
+    el(
+      'div',
+      { style: { display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-amber)' } },
+      icon('unlock', 16),
+      el('strong', { text: 'Unlock Finalized Section?', style: { fontSize: '14px', color: 'var(--text-primary)' } }),
+    ),
+    el('p', {
+      className: 'bv-label',
+      text: `${targetLabel} is currently locked. Unlocking allows prose and title edits again.`,
+      style: { margin: '4px 0 8px' },
+    }),
+    el('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px' } }, cancelBtn, unlockBtn),
+  );
+
+  const backdrop = el(
+    'div',
+    {
+      className: 'qv-confirm-unlock-backdrop',
+      id: 'qv-confirm-unlock-backdrop',
+      on: {
+        click: close,
+        keydown: (e) => {
+          if (e.key === 'Escape') close();
+        },
+      },
+    },
+    dialog,
+  );
+
+  document.body.appendChild(backdrop);
+  unlockBtn.focus();
 }
 
 function resolveSelectionFromProofSheet(sheet: HTMLElement): { start: number; end: number } | null {
@@ -179,6 +400,24 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   const sessionPerms = getActiveSessionPermissions(state.project);
   const lockStatus = isSceneLocked(state.project, scene.id);
   const canEditThisScene = sessionPerms.canEditProse && !lockStatus.locked;
+  const useRichFormatting = state.settings.enableRichFormatting;
+
+  const ensureDraftEditable = (): boolean => {
+    if (!sessionPerms.canEditProse) {
+      actions.notify('Prose editing is locked for your collaborator role.');
+      return false;
+    }
+    if (lockStatus.locked) {
+      actions.notify(`Section locked (${lockStatus.reason}). Click the top lock seal to unlock.`);
+      return false;
+    }
+    if (isProofMode || state.editorSubMode === 'diff') {
+      actions.setState({ editorSubMode: 'draft' }, true);
+      actions.notify('Switched to Draft mode for text editing.');
+      return false;
+    }
+    return true;
+  };
 
   const proseTextarea = el('textarea', {
     className: `bv-prose-textarea${state.typewriterMode ? ' is-typewriter' : ''}`,
@@ -194,8 +433,105 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
   proseTextarea.value = scene.content;
 
   const syncTextareaHeight = () => {
+    if (useRichFormatting) return;
     proseTextarea.style.height = 'auto';
     proseTextarea.style.height = `${Math.max(460, proseTextarea.scrollHeight + 12)}px`;
+  };
+
+  const proseRich = el('div', {
+    className: `bv-prose-rich${state.typewriterMode ? ' is-typewriter' : ''}${canEditThisScene ? '' : ' is-readonly'}`,
+    attrs: {
+      role: 'textbox',
+      'aria-multiline': 'true',
+      'aria-label': 'Scene rich prose editor',
+      'data-placeholder': 'Begin writing this scene…',
+      contenteditable: canEditThisScene ? 'true' : 'false',
+      spellcheck: state.settings.enableSpellcheck ? 'true' : 'false',
+      autocorrect: state.settings.enableSpellcheck ? 'on' : 'off',
+      tabindex: '0',
+    },
+  });
+
+  if (useRichFormatting) {
+    renderMarkdownToRichElement(proseRich, scene.content);
+  }
+
+  const syncRichToState = () => {
+    if (!canEditThisScene) return;
+    const nextMd = serializeRichElementToMarkdown(proseRich);
+    actions.updateActiveSceneTextQuietly('content', nextMd);
+  };
+
+  const focusProseSurface = () => {
+    if (useRichFormatting) {
+      proseRich.focus();
+    } else {
+      proseTextarea.focus();
+    }
+  };
+
+  const applyBoldFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      applyRichInlineCommand(proseRich, 'bold', 'strong', syncRichToState);
+    } else {
+      wrapSelection(proseTextarea, '**', '**', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyItalicFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      applyRichInlineCommand(proseRich, 'italic', 'em', syncRichToState);
+    } else {
+      wrapSelection(proseTextarea, '*', '*', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyHeadingFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      toggleRichBlockElement(proseRich, 'H2', syncRichToState);
+    } else {
+      insertAtLineStart(proseTextarea, '## ', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applyQuoteFormat = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      toggleRichBlockElement(proseRich, 'BLOCKQUOTE', syncRichToState);
+    } else {
+      insertAtLineStart(proseTextarea, '> ', actions);
+      syncTextareaHeight();
+    }
+  };
+
+  const applySceneBreakInsert = () => {
+    if (!ensureDraftEditable()) return;
+    if (useRichFormatting) {
+      insertRichSceneBreak(proseRich, syncRichToState);
+    } else {
+      const pos = proseTextarea.selectionStart;
+      const cur = proseTextarea.value;
+      const insertion = '\n\n* * *\n\n';
+      const nextVal = cur.slice(0, pos) + insertion + cur.slice(pos);
+      proseTextarea.value = nextVal;
+      proseTextarea.focus();
+      proseTextarea.setSelectionRange(pos + insertion.length, pos + insertion.length);
+      syncTextareaHeight();
+      actions.updateActiveSceneTextQuietly('content', nextVal);
+    }
+  };
+
+  const getActiveCursorOffset = (): number => {
+    if (useRichFormatting) {
+      return getRichMarkdownCursorOffset(proseRich);
+    }
+    return proseTextarea.selectionStart;
   };
 
   proseTextarea.addEventListener('input', () => {
@@ -207,28 +543,59 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     if (!canEditThisScene) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
-      wrapSelection(proseTextarea, '**', '**', actions);
-      syncTextareaHeight();
+      applyBoldFormat();
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
       e.preventDefault();
-      wrapSelection(proseTextarea, '*', '*', actions);
-      syncTextareaHeight();
+      applyItalicFormat();
     }
   });
 
-  attachContextMenu(proseTextarea, () => {
-    const start = proseTextarea.selectionStart;
-    const end = proseTextarea.selectionEnd;
-    const hasSelection = end > start;
+  proseRich.addEventListener('input', () => {
+    syncRichToState();
+  });
+
+  proseRich.addEventListener('paste', (e) => {
+    if (!canEditThisScene) return;
+    const plain = e.clipboardData?.getData('text/plain');
+    if (typeof plain !== 'string') return;
+    e.preventDefault();
+    insertPlainTextAtRichCaret(proseRich, plain, syncRichToState);
+  });
+
+  proseRich.addEventListener('keydown', (e) => {
+    if (!canEditThisScene) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      applyBoldFormat();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      applyItalicFormat();
+    }
+  });
+
+  const activeProseSurface: HTMLElement = useRichFormatting ? proseRich : proseTextarea;
+
+  attachContextMenu(activeProseSurface, () => {
+    const start = useRichFormatting ? 0 : proseTextarea.selectionStart;
+    const end = useRichFormatting ? 0 : proseTextarea.selectionEnd;
+    const domSel = useRichFormatting ? window.getSelection()?.toString() ?? '' : '';
+    const hasSelection = useRichFormatting ? domSel.length > 0 : end > start;
     const groups: ContextMenuGroup[] = [
       {
         heading: 'Writing & Selection',
         items: [
           {
             label: 'Cut Selection',
-            disabled: !hasSelection,
+            disabled: !hasSelection || !canEditThisScene,
             shortcut: 'Ctrl+X',
             onSelect: () => {
+              if (useRichFormatting) {
+                if (domSel) void navigator.clipboard?.writeText(domSel);
+                const r = getSelectionRangeInRich(proseRich);
+                r?.deleteContents();
+                syncRichToState();
+                return;
+              }
               const selText = proseTextarea.value.slice(start, end);
               void navigator.clipboard?.writeText(selText);
               const nextVal = proseTextarea.value.slice(0, start) + proseTextarea.value.slice(end);
@@ -243,17 +610,22 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             disabled: !hasSelection,
             shortcut: 'Ctrl+C',
             onSelect: () => {
-              const selText = proseTextarea.value.slice(start, end);
+              const selText = useRichFormatting ? domSel : proseTextarea.value.slice(start, end);
               void navigator.clipboard?.writeText(selText);
               actions.notify('Copied selection');
             },
           },
           {
             label: 'Paste Plain Text',
+            disabled: !canEditThisScene,
             shortcut: 'Ctrl+V',
             onSelect: () => {
               void navigator.clipboard?.readText().then((clip) => {
                 if (!clip) return;
+                if (useRichFormatting) {
+                  insertPlainTextAtRichCaret(proseRich, clip, syncRichToState);
+                  return;
+                }
                 const nextVal = proseTextarea.value.slice(0, start) + clip + proseTextarea.value.slice(end);
                 proseTextarea.value = nextVal;
                 proseTextarea.setSelectionRange(start + clip.length, start + clip.length);
@@ -268,45 +640,26 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         heading: 'Formatting',
         items: [
           {
-            label: 'Bold (**text**)',
+            label: useRichFormatting ? 'Bold' : 'Bold (**text**)',
             shortcut: 'Ctrl+B',
-            onSelect: () => {
-              wrapSelection(proseTextarea, '**', '**', actions);
-              syncTextareaHeight();
-            },
+            onSelect: applyBoldFormat,
           },
           {
-            label: 'Italic (*text*)',
+            label: useRichFormatting ? 'Italic' : 'Italic (*text*)',
             shortcut: 'Ctrl+I',
-            onSelect: () => {
-              wrapSelection(proseTextarea, '*', '*', actions);
-              syncTextareaHeight();
-            },
+            onSelect: applyItalicFormat,
           },
           {
-            label: 'Heading (##)',
-            onSelect: () => {
-              insertAtLineStart(proseTextarea, '## ', actions);
-              syncTextareaHeight();
-            },
+            label: 'Heading (H2)',
+            onSelect: applyHeadingFormat,
           },
           {
-            label: 'Epigraph / Blockquote (>)',
-            onSelect: () => {
-              insertAtLineStart(proseTextarea, '> ', actions);
-              syncTextareaHeight();
-            },
+            label: 'Epigraph / Blockquote',
+            onSelect: applyQuoteFormat,
           },
           {
             label: 'Insert Scene Break (* * *)',
-            onSelect: () => {
-              const insertion = '\n\n* * *\n\n';
-              const nextVal = proseTextarea.value.slice(0, start) + insertion + proseTextarea.value.slice(end);
-              proseTextarea.value = nextVal;
-              proseTextarea.setSelectionRange(start + insertion.length, start + insertion.length);
-              syncTextareaHeight();
-              actions.updateActiveSceneTextQuietly('content', nextVal);
-            },
+            onSelect: applySceneBreakInsert,
           },
         ],
       },
@@ -322,7 +675,8 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
             label: 'Split Scene at Cursor',
             icon: 'split-scene',
             onSelect: () => {
-              const res = splitSceneAtOffset(actions.getState().project, scene.id, proseTextarea.selectionStart);
+              if (!ensureDraftEditable()) return;
+              const res = splitSceneAtOffset(actions.getState().project, scene.id, getActiveCursorOffset());
               if (!res.newSceneId) {
                 actions.notify('Place cursor inside prose before splitting.');
                 return;
@@ -495,19 +849,6 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       )
     : null;
 
-  const ensureDraftEditable = (): boolean => {
-    if (lockStatus.locked) {
-      actions.notify(`${lockStatus.reason}. Unlock it first to edit prose.`);
-      return false;
-    }
-    if (isProofMode || state.editorSubMode === 'diff') {
-      actions.setState({ editorSubMode: 'draft' }, true);
-      actions.notify('Switched to Draft mode for text editing.');
-      return false;
-    }
-    return true;
-  };
-
   const imageFileInput = el('input', {
     attrs: { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', multiple: true },
     style: { display: 'none' },
@@ -553,75 +894,38 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         className: 'bv-fmt-btn',
         text: 'B',
         tooltip: TOOLTIP_CATALOG.bold,
-        attrs: { type: 'button', 'aria-label': 'Bold Markdown' },
+        attrs: { type: 'button', 'aria-label': 'Bold' },
         style: { fontWeight: '700' },
-        on: {
-          click: () => {
-            if (!ensureDraftEditable()) return;
-            wrapSelection(proseTextarea, '**', '**', actions);
-            syncTextareaHeight();
-          },
-        },
+        on: { click: applyBoldFormat },
       }),
       el('button', {
         className: 'bv-fmt-btn',
         text: 'I',
         tooltip: TOOLTIP_CATALOG.italic,
-        attrs: { type: 'button', 'aria-label': 'Italic Markdown' },
+        attrs: { type: 'button', 'aria-label': 'Italic' },
         style: { fontStyle: 'italic' },
-        on: {
-          click: () => {
-            if (!ensureDraftEditable()) return;
-            wrapSelection(proseTextarea, '*', '*', actions);
-            syncTextareaHeight();
-          },
-        },
+        on: { click: applyItalicFormat },
       }),
       el('button', {
         className: 'bv-fmt-btn',
         text: 'H2',
         tooltip: TOOLTIP_CATALOG.heading,
         attrs: { type: 'button', 'aria-label': 'Section Heading' },
-        on: {
-          click: () => {
-            if (!ensureDraftEditable()) return;
-            insertAtLineStart(proseTextarea, '## ', actions);
-            syncTextareaHeight();
-          },
-        },
+        on: { click: applyHeadingFormat },
       }),
       el('button', {
         className: 'bv-fmt-btn',
         text: '❝',
         tooltip: TOOLTIP_CATALOG.quote,
         attrs: { type: 'button', 'aria-label': 'Epigraph Blockquote' },
-        on: {
-          click: () => {
-            if (!ensureDraftEditable()) return;
-            insertAtLineStart(proseTextarea, '> ', actions);
-            syncTextareaHeight();
-          },
-        },
+        on: { click: applyQuoteFormat },
       }),
       el('button', {
         className: 'bv-fmt-btn',
         text: '* * *',
         tooltip: TOOLTIP_CATALOG.sceneBreak,
         attrs: { type: 'button', 'aria-label': 'Insert Scene Break' },
-        on: {
-          click: () => {
-            if (!ensureDraftEditable()) return;
-            const pos = proseTextarea.selectionStart;
-            const cur = proseTextarea.value;
-            const insertion = '\n\n* * *\n\n';
-            const nextVal = cur.slice(0, pos) + insertion + cur.slice(pos);
-            proseTextarea.value = nextVal;
-            proseTextarea.focus();
-            proseTextarea.setSelectionRange(pos + insertion.length, pos + insertion.length);
-            syncTextareaHeight();
-            actions.updateActiveSceneTextQuietly('content', nextVal);
-          },
-        },
+        on: { click: applySceneBreakInsert },
       }),
       el(
         'button',
@@ -649,7 +953,7 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
                   const res = splitSceneAtOffset(
                     actions.getState().project,
                     scene.id,
-                    proseTextarea.selectionStart,
+                    getActiveCursorOffset(),
                   );
                   if (!res.newSceneId) {
                     actions.notify('Place cursor inside Draft prose before splitting.');
@@ -758,59 +1062,71 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
     return;
   }
 
-  const readOnlyBanner = lockStatus.locked
+  const performChapterUnlock = () => {
+    if (lockStatus.scope === 'part' && lockStatus.partId) {
+      actions.mutateProject((prev) => togglePartLock(prev, lockStatus.partId!, false));
+    } else if (lockStatus.chapterId) {
+      actions.mutateProject((prev) => toggleChapterLock(prev, lockStatus.chapterId!, false));
+    }
+    actions.notify('Unlocked for editing');
+  };
+
+  const lockSealButton = lockStatus.locked
     ? el(
-        'div',
-        { className: 'qv-readonly-banner qv-chapter-locked-banner', attrs: { role: 'status' } },
-        icon('lock', 14),
-        el('span', {
-          text: `Finalized · ${lockStatus.reason}. Prose and title are read-only until unlocked.`,
-        }),
-        el(
-          'button',
-          {
-            className: 'bv-mini-btn',
-            attrs: { type: 'button' },
-            on: {
-              click: () => {
-                if (lockStatus.scope === 'part' && lockStatus.partId) {
-                  actions.mutateProject((prev) => togglePartLock(prev, lockStatus.partId!, false));
-                } else if (lockStatus.chapterId) {
-                  actions.mutateProject((prev) => toggleChapterLock(prev, lockStatus.chapterId!, false));
-                }
-                actions.notify('Unlocked for editing');
-              },
+        'button',
+        {
+          className: 'qv-lock-seal-btn',
+          tooltip: {
+            title: `Locked (${lockStatus.reason})`,
+            short: state.settings.confirmBeforeUnlock
+              ? 'Click to confirm unlocking this section for editing.'
+              : 'Click to unlock this section for editing.',
+          },
+          attrs: {
+            type: 'button',
+            'aria-label': `Locked (${lockStatus.reason}). Click to unlock`,
+          },
+          on: {
+            click: () => {
+              if (actions.getState().settings.confirmBeforeUnlock) {
+                const targetName =
+                  lockStatus.scope === 'part' ? `Part “${part.title}”` : `Chapter “${chapter.title}”`;
+                openUnlockConfirmDialog(targetName, performChapterUnlock);
+              } else {
+                performChapterUnlock();
+              }
             },
           },
-          icon('unlock', 12),
-          'Unlock',
-        ),
+        },
+        icon('lock', 14),
       )
-    : !sessionPerms.canEditProse
-      ? el(
-          'div',
-          { className: 'qv-readonly-banner', attrs: { role: 'status' } },
-          el('span', {
-            text: 'Prose editing is locked for your current collaborator role. You can read or add proofread marks and notes.',
-          }),
-          el('button', {
-            className: 'bv-mini-btn',
-            text: 'Switch to Proofread Mode',
-            attrs: { type: 'button' },
-            on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
-          }),
-        )
-      : null;
+    : null;
+
+  const readOnlyBanner = !sessionPerms.canEditProse
+    ? el(
+        'div',
+        { className: 'qv-readonly-banner', attrs: { role: 'status' } },
+        el('span', {
+          text: 'Prose editing is locked for your current collaborator role. You can read or add proofread marks and notes.',
+        }),
+        el('button', {
+          className: 'bv-mini-btn',
+          text: 'Switch to Proofread Mode',
+          attrs: { type: 'button' },
+          on: { click: () => actions.setState({ editorSubMode: 'proofread' }, true) },
+        }),
+      )
+    : null;
 
   const sceneImagesStudio = renderSceneImageComposer(scene, actions, () => {
-    proseTextarea.focus();
-    proseTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    focusProseSurface();
+    activeProseSurface.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
   const paperSheet = el(
     'div',
     {
-      className: 'bv-paper-sheet',
+      className: `bv-paper-sheet${lockStatus.locked ? ' is-chapter-sealed' : ''}`,
       on: {
         dragover: (e) => {
           if (e.dataTransfer?.types.includes('Files')) {
@@ -834,11 +1150,12 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
         },
       },
     },
+    ...(lockSealButton ? [lockSealButton] : []),
     paperFloatNav,
     sceneHeading,
     ...(readOnlyBanner ? [readOnlyBanner] : []),
     ...(sceneImagesStudio ? [sceneImagesStudio] : []),
-    proseTextarea,
+    activeProseSurface,
   );
 
   const paperScroll = el(
@@ -848,6 +1165,22 @@ export function renderEditorView(container: HTMLElement, actions: AppActions): v
       dataset: { paper: state.project.paperTheme },
     },
     paperSheet,
+  );
+
+  // Ensure wheel / trackpad scrolling directly inside the auto-sized textarea always scrolls the paper container on Chromium & WebView2
+  proseTextarea.addEventListener(
+    'wheel',
+    (e) => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (proseTextarea.scrollHeight <= proseTextarea.clientHeight + 4) {
+        if (Math.abs(e.deltaY) > 0 || Math.abs(e.deltaX) > 0) {
+          paperScroll.scrollTop += e.deltaY;
+          paperScroll.scrollLeft += e.deltaX;
+          if (e.cancelable) e.preventDefault();
+        }
+      }
+    },
+    { passive: false },
   );
 
   panes.appendChild(paperScroll);

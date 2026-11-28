@@ -95,6 +95,10 @@ import {
   addProofreadMark,
   computeCleanProofPreview,
 } from '../src/core/proofread';
+import {
+  parseMarkdownToBlocks,
+  serializeBlocksToMarkdown,
+} from '../src/core/rich-prose';
 import { getPublisherProvenance, verifyPublisherProvenance } from '../src/core/provenance';
 import { resolvePathToRoute, routeForState } from '../src/core/router';
 import {
@@ -665,5 +669,27 @@ describe('Cover Studio Math, Smart Snap, Storyboard Router & Force Graph', () =>
     expect(reimported.groups).toHaveLength(1);
     expect(reimported.nodes).toHaveLength(3);
     expect(reimported.edges).toHaveLength(2);
+  });
+
+  it('round-trips rich prose Markdown blocks cleanly and exposes updated quick-fix settings defaults', () => {
+    expect(DEFAULT_SETTINGS.enableRichFormatting).toBe(true);
+    expect(DEFAULT_SETTINGS.confirmBeforeUnlock).toBe(false);
+
+    const sampleMd = [
+      '## Harbor Dawn',
+      'The lantern held **steady light** over *quiet water* and ***cold stone***.',
+      '> Old mariners never trusted a silent tide.',
+      '* * *',
+      'She turned back toward the pier.',
+    ].join('\n\n');
+
+    const blocks = parseMarkdownToBlocks(sampleMd);
+    expect(blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph', 'blockquote', 'hr', 'paragraph']);
+    expect(serializeBlocksToMarkdown(blocks)).toBe(sampleMd);
+
+    const blankBook = createEmptyBookProject('Untitled Book', 'Author');
+    expect(blankBook.title).toBe('Untitled Book');
+    expect(blankBook.parts[0].chapters[0].scenes[0].content).toBe('');
+    expect(blankBook.bible.characters).toHaveLength(0);
   });
 });

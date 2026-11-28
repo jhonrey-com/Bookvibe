@@ -9,6 +9,7 @@ import {
   validateExternalExtensionManifest,
 } from '../core/plugins';
 import { el, icon } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 import { showExtensionsModal } from './extensions-modal';
 
 interface StarterTemplate {
@@ -383,6 +384,7 @@ export function renderDeveloperPageView(container: HTMLElement, actions: AppActi
               icon('quill', 14),
               'Back to Writing',
             ),
+            createAppThemeButton(actions),
           ),
         ),
       ),

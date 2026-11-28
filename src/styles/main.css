@@ -1510,6 +1510,7 @@ body.is-col-resizing {
 }
 
 .bv-paper-sheet {
+  position: relative;
   margin: 0 auto;
   width: 100%;
   min-width: 0;
@@ -1587,11 +1588,10 @@ body.is-col-resizing {
   border-bottom-color: rgba(130, 140, 160, 0.32);
 }
 
-.bv-prose-textarea {
+.bv-prose-textarea,
+.bv-prose-rich {
   width: 100%;
   min-height: 460px;
-  overflow: hidden;
-  resize: none;
   background: transparent;
   border: 0;
   padding: 0;
@@ -1599,15 +1599,76 @@ body.is-col-resizing {
   font-size: var(--bv-editor-size, 18px);
   line-height: var(--bv-editor-lh, 1.72);
   letter-spacing: 0.003em;
+  overscroll-behavior: auto;
 }
 
-.bv-prose-textarea:focus {
+.bv-prose-textarea {
+  overflow: hidden;
+  resize: none;
+}
+
+.bv-prose-textarea:focus,
+.bv-prose-rich:focus {
   outline: none;
 }
 
-.bv-prose-textarea.is-typewriter {
+.bv-prose-textarea.is-typewriter,
+.bv-prose-rich.is-typewriter {
   padding-top: 22vh;
   padding-bottom: 32vh;
+}
+
+.bv-prose-rich {
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.bv-prose-rich.is-readonly {
+  cursor: default;
+}
+
+.bv-prose-rich:empty::before {
+  content: attr(data-placeholder);
+  opacity: 0.44;
+  pointer-events: none;
+}
+
+.bv-prose-rich p {
+  margin: 0 0 0.85em;
+}
+
+.bv-prose-rich p:last-child {
+  margin-bottom: 0;
+}
+
+.bv-prose-rich h1,
+.bv-prose-rich h2,
+.bv-prose-rich h3 {
+  font-family: var(--font-serif-garamond);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.1em 0 0.45em;
+}
+
+.bv-prose-rich h2 {
+  font-size: 1.42em;
+}
+
+.bv-prose-rich blockquote {
+  margin: 1em 0;
+  padding: 4px 0 4px 16px;
+  border-left: 2px solid rgba(185, 137, 62, 0.55);
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.bv-prose-rich hr.bv-scene-break {
+  border: 0;
+  height: 1px;
+  width: 96px;
+  margin: 1.5em auto;
+  background: rgba(128, 136, 152, 0.45);
 }
 
 /* --- Split Reference & Revision Diff Pane --- */
@@ -7399,7 +7460,6 @@ select.bv-select,
 .bv-split-body,
 .bv-scroll-view,
 .bv-editor-scroll,
-.bv-prose-textarea,
 .bv-cork-scroll,
 .bv-outline-scroll,
 .bv-bible-list,
@@ -8167,5 +8227,170 @@ select.bv-select,
 
   .qv-landing-hero {
     padding: 28px 0 30px;
+  }
+}
+
+/* --- Chapter / Part Outline Lock Seal --- */
+.bv-paper-sheet.is-chapter-sealed {
+  border: 1.5px solid var(--accent-amber) !important;
+  box-shadow: 0 0 0 1px rgba(185, 137, 62, 0.14);
+}
+
+.qv-lock-seal-btn {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent-amber);
+  background: var(--bg-surface);
+  color: var(--accent-amber);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 4;
+  transition: transform 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.bv-paper-scroll[data-paper='obsidian'] .qv-lock-seal-btn {
+  background: #191815;
+}
+
+.bv-paper-scroll[data-paper='parchment'] .qv-lock-seal-btn {
+  background: #f7f2e8;
+}
+
+.bv-paper-scroll[data-paper='ivory'] .qv-lock-seal-btn {
+  background: #ffffff;
+}
+
+.qv-lock-seal-btn:hover {
+  transform: translate(-50%, -50%) scale(1.07);
+  box-shadow: 0 4px 12px rgba(185, 137, 62, 0.24);
+}
+
+.qv-lock-seal-btn:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+}
+
+.qv-confirm-unlock-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 980;
+  background: rgba(8, 8, 12, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.qv-confirm-unlock-dialog {
+  width: min(400px, 100%);
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  padding: 18px 20px;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- First-Launch Logo Intro Animation Stage --- */
+.qv-splash-intro-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.qv-splash-intro-stage.is-fading-out {
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+}
+
+.qv-splash-intro-emblem {
+  animation: qvLogoReveal 580ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.qv-splash-intro-wordmark {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--accent-ivory);
+  animation: qvWordmarkReveal 620ms cubic-bezier(0.22, 1, 0.36, 1) 110ms both;
+}
+
+.qv-splash-intro-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  animation: qvWordmarkReveal 620ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both;
+}
+
+.qv-welcome-frame.is-waiting-logo-intro {
+  opacity: 0;
+  transform: translateY(10px) scale(0.99);
+  pointer-events: none;
+}
+
+.qv-welcome-frame.is-entering {
+  animation: qvWelcomeEnter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes qvLogoReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.84);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes qvWordmarkReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes qvWelcomeEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qv-splash-intro-emblem,
+  .qv-splash-intro-wordmark,
+  .qv-splash-intro-sub,
+  .qv-welcome-frame.is-entering,
+  .qv-lock-seal-btn {
+    animation: none !important;
+    transition: none !important;
   }
 }

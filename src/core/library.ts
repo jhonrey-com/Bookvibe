@@ -4,7 +4,6 @@ import { ensureAuthorIdentity } from './identity';
 import { createPartNode, newId } from './manuscript';
 import {
   createStarterBookProject,
-  createWelcomeIntroBookProject,
   isLocalDevMockEnabled,
 } from './sample-book';
 import type { BookLibraryState, BookProject } from './types';
@@ -138,7 +137,7 @@ export function sortLibraryBooksByLatest(books: BookProject[]): BookProject[] {
 export function createInitialLibrary(initialBook?: BookProject): BookLibraryState {
   const defaultBook = isLocalDevMockEnabled()
     ? createStarterBookProject()
-    : createWelcomeIntroBookProject();
+    : createEmptyBookProject('Untitled Book', 'Author');
   const first = normalizeProjectDefaults(initialBook ?? defaultBook);
   return {
     activeBookId: first.id,
@@ -232,7 +231,7 @@ export function deleteBookFromLibrary(
 export function getActiveBookFromLibrary(library: BookLibraryState): BookProject {
   const fallback = isLocalDevMockEnabled()
     ? createStarterBookProject()
-    : createWelcomeIntroBookProject();
+    : createEmptyBookProject('Untitled Book', 'Author');
   return (
     library.books.find((b) => b.id === library.activeBookId) ??
     library.books[0] ??

@@ -14,7 +14,7 @@ import {
 } from '../core/library';
 import { getProjectWordCount } from '../core/manuscript';
 import { syncBrowserPath } from '../core/router';
-import { WELCOME_INTRO_BOOK_ID } from '../core/sample-book';
+import { isLocalDevMockEnabled } from '../core/sample-book';
 import type { AppThemeId, StudioViewId, ToolTier } from '../core/types';
 import { el, icon, quillvibeLogo, svgEl } from './dom';
 
@@ -286,8 +286,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       window.localStorage.getItem(LEGACY_SPLASH_KEY) === '1');
 
   const activeBookId = actions.getState().project.id;
-  const isPreview = activeBookId === PREVIEW_BOOK_ID;
-  const isWelcomeIntro = activeBookId === WELCOME_INTRO_BOOK_ID;
+  const isPreview = isLocalDevMockEnabled() && activeBookId === PREVIEW_BOOK_ID;
 
   if (alreadyShown) {
     requestAnimationFrame(() => maybeStartSectionTour(actions.getState().activeView, actions));
@@ -298,9 +297,19 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
   let chosenTier: ToolTier = actions.getState().settings.toolTier;
   let chosenTheme: AppThemeId = actions.getState().settings.appTheme;
   let finished = false;
+  const reducedAtOpen =
+    actions.getState().settings.reducedMotionOverride === 'reduce' ||
+    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+
+  const focusActiveProseSurface = () => {
+    requestAnimationFrame(() => {
+      const prose = document.querySelector('.bv-prose-rich, .bv-prose-textarea') as HTMLElement | null;
+      prose?.focus();
+    });
+  };
 
   const finishWithMode = (
-    mode: 'course' | 'blank' | 'preview' | 'open' | 'import-doc' | 'book' | 'skip',
+    mode: 'course' | 'help' | 'blank' | 'preview' | 'open' | 'import-doc' | 'book' | 'skip',
     bookId?: string,
   ) => {
     if (finished) return;
@@ -312,7 +321,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
     }
 
     actions.updateSettings({ toolTier: chosenTier, appTheme: chosenTheme });
-    if (mode !== 'course') {
+    if (mode !== 'course' && mode !== 'help') {
       syncBrowserPath('/write', true);
     }
 
@@ -327,10 +336,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
         const fresh = createEmptyBookProject('Untitled Book', 'Author');
         const lib = upsertBookInLibrary(actions.getState().library, fresh);
         actions.replaceLibrary(lib);
-        requestAnimationFrame(() => {
-          const prose = document.querySelector('.bv-prose-textarea') as HTMLTextAreaElement | null;
-          prose?.focus();
-        });
+        focusActiveProseSurface();
       } else if (mode === 'book' && bookId) {
         markSectionSeen(actions.getState().activeView);
         const switched = switchActiveBook(actions.getState().library, bookId);
@@ -347,12 +353,16 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       } else if (mode === 'course') {
         markAllSectionsSeen();
         actions.openCoursePage();
+      } else if (mode === 'help') {
+        markAllSectionsSeen();
+        actions.openHelpPage();
       } else if (mode === 'preview') {
         actions.setState({}, true);
         maybeStartSectionTour(actions.getState().activeView, actions, true);
       } else {
         actions.setState({}, true);
         markSectionSeen(actions.getState().activeView);
+        focusActiveProseSurface();
       }
     };
 
@@ -515,15 +525,11 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       },
       icon('quill', 15),
       el('span', {
-        text: isPreview
-          ? 'Explore Sample Book'
-          : isWelcomeIntro
-            ? 'Start Writing'
-            : 'Resume Active Manuscript',
+        text: isPreview ? 'Explore Sample Book' : 'Start Writing Now',
       }),
       el('span', {
         className: 'qv-welcome-link-sub',
-        text: isWelcomeIntro ? 'Introduction & quick guide' : 'Guided workspace',
+        text: isPreview ? 'Guided sample' : 'Open clean draft page',
       }),
     ),
   );
@@ -539,16 +545,36 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
     el(
       'div',
       { style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '0' } },
-      el('strong', { text: 'Take Complete Book Course', style: { fontSize: '14px' } }),
+      el('strong', { text: 'Take Complete Book Course (/course)', style: { fontSize: '14px' } }),
       el('span', {
         className: 'bv-label',
-        text: '23 modules · 71 lessons across Manuscript, Story Graph, Cover Studio, Website & Desktop editions.',
+        text: 'Step-by-step lessons for Manuscript drafting, Story Bible, Cover Studio & Publishing.',
       }),
     ),
     el('span', { className: 'qv-welcome-course-arrow', text: '→' }),
   );
 
-  const subtitle = 'Book writing, worldbuilding, and typesetting studio.';
+  const helpCardBtn = el(
+    'button',
+    {
+      className: 'qv-welcome-course-card',
+      attrs: { type: 'button' },
+      on: { click: () => finishWithMode('help') },
+    },
+    el('span', { style: { color: 'var(--accent-amber)', flexShrink: '0', marginTop: '2px' } }, icon('help', 18)),
+    el(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: '0' } },
+      el('strong', { text: 'Open Help Center & FAQ (/help)', style: { fontSize: '14px' } }),
+      el('span', {
+        className: 'bv-label',
+        text: 'Quick workspace setup answers, file formats, shortcuts, and offline backup guides.',
+      }),
+    ),
+    el('span', { className: 'qv-welcome-course-arrow', text: '→' }),
+  );
+
+  const subtitle = 'Offline book writing, worldbuilding, and print/EPUB studio.';
 
   const desktopTitlebar = isTauriRuntime()
     ? el(
@@ -652,7 +678,7 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       el(
         'div',
         { className: 'qv-welcome-col' },
-        el('div', {}, el('h2', { className: 'qv-welcome-section-title', text: 'Walkthroughs & Learning' }), courseCardBtn),
+        el('div', {}, el('h2', { className: 'qv-welcome-section-title', text: 'Walkthroughs & Guidance' }), courseCardBtn, helpCardBtn),
         ...(env !== 'mobile-web'
           ? [
               el(
@@ -670,22 +696,22 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
       { className: 'qv-welcome-foot' },
       el('span', {
         className: 'bv-label',
-        text: 'All manuscripts stay local on your device unless you export or sync them.',
+        text: 'Start with a clean book, learn as you go, or open /course and /help anytime.',
       }),
       el(
         'div',
         { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
         el('button', {
           className: 'bv-btn',
-          text: 'Skip to Editor',
+          text: 'Open Editor',
           attrs: { type: 'button' },
           on: { click: () => finishWithMode('skip') },
         }),
         el('button', {
           className: 'bv-btn bv-btn-primary',
-          text: isPreview ? 'Open Sample Book' : isWelcomeIntro ? 'Start Writing' : 'Continue Writing',
+          text: isPreview ? 'Open Sample Book' : 'Start Clean Book',
           attrs: { type: 'button' },
-          on: { click: () => finishWithMode(isPreview || isWelcomeIntro ? 'preview' : 'skip') },
+          on: { click: () => finishWithMode(isPreview ? 'preview' : 'blank') },
         }),
       ),
     ),
@@ -696,6 +722,34 @@ export function maybeRunFirstLaunchSplash(actions: AppActions, forceShow = false
     { className: `bv-splash-overlay qv-splash-${env}`, id: 'bv-splash-overlay' },
     frame,
   );
+
+  if (!reducedAtOpen && !forceShow) {
+    frame.classList.add('is-waiting-logo-intro');
+    const logoIntro = el(
+      'div',
+      {
+        className: 'qv-splash-intro-stage',
+        attrs: { role: 'status', 'aria-label': 'Quillvibe Studio launching' },
+      },
+      el('div', { className: 'qv-splash-intro-emblem' }, quillvibeLogo(env === 'mobile-web' ? 62 : 76)),
+      el('div', { className: 'qv-splash-intro-wordmark', text: 'Quillvibe' }),
+      el('div', { className: 'qv-splash-intro-sub', text: 'Local-first book studio' }),
+    );
+    splash.appendChild(logoIntro);
+
+    let revealed = false;
+    const revealStartPage = () => {
+      if (revealed) return;
+      revealed = true;
+      logoIntro.classList.add('is-fading-out');
+      frame.classList.remove('is-waiting-logo-intro');
+      frame.classList.add('is-entering');
+      window.setTimeout(() => logoIntro.remove(), 260);
+    };
+
+    logoIntro.addEventListener('click', revealStartPage);
+    window.setTimeout(revealStartPage, 950);
+  }
 
   document.body.appendChild(splash);
 }

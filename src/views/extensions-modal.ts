@@ -24,6 +24,7 @@ import type {
   QuillvibePluginManifest,
 } from '../core/types';
 import { clearNode, el, icon } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 import { LiquidGlassControl } from '../ui/liquid-glass';
 import { TOOLTIP_CATALOG } from '../ui/tooltips-catalog';
 
@@ -896,6 +897,7 @@ export function renderExtensionsPageView(container: HTMLElement, actions: AppAct
         },
         'Settings',
       ),
+      createAppThemeButton(actions),
     ),
   );
 

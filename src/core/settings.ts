@@ -41,6 +41,8 @@ export const DEFAULT_SETTINGS: QuillvibeSettings = {
   alarmRingtone: 'warm-chime',
   alarmVolume: 0.65,
   enableSpellcheck: false,
+  enableRichFormatting: true,
+  confirmBeforeUnlock: false,
   enableDesktopBookTabs: true,
   enableSmoothAnimations: true,
   linkPaperThemeToAppTheme: false,
@@ -131,6 +133,10 @@ export function sanitizeSettings(raw: Partial<QuillvibeSettings>): QuillvibeSett
     alarmRingtone: normalizeAlarmRingtone(raw.alarmRingtone),
     alarmVolume: cleanVol,
     enableSpellcheck: raw.enableSpellcheck !== undefined ? Boolean(raw.enableSpellcheck) : false,
+    enableRichFormatting:
+      raw.enableRichFormatting !== undefined ? Boolean(raw.enableRichFormatting) : true,
+    confirmBeforeUnlock:
+      raw.confirmBeforeUnlock !== undefined ? Boolean(raw.confirmBeforeUnlock) : false,
     enableDesktopBookTabs: raw.enableDesktopBookTabs !== undefined ? Boolean(raw.enableDesktopBookTabs) : true,
     enableSmoothAnimations: raw.enableSmoothAnimations !== undefined ? Boolean(raw.enableSmoothAnimations) : true,
     linkPaperThemeToAppTheme: raw.linkPaperThemeToAppTheme !== undefined ? Boolean(raw.linkPaperThemeToAppTheme) : false,

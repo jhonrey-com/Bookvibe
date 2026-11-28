@@ -1,7 +1,8 @@
 import type { AppActions, AppState } from '../core/app-context';
 import { isTauriRuntime } from '../core/bridge';
 import { getAllScenes } from '../core/manuscript';
-import type { AppThemeId } from '../core/types';
+import { isTierAtLeast } from '../core/settings';
+import type { AppThemeId, ToolTier } from '../core/types';
 import { setCoursePageSelection } from '../views/course-page';
 import { HELP_FAQ_ARTICLES, setHelpPageArticle, setHelpPageSearch } from '../views/help-page';
 import { CONTROL_REFERENCE_ITEMS } from './controls-catalog';
@@ -42,17 +43,9 @@ function openHelpTarget(actions: AppActions, options: { articleId?: string; quer
 
 function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultItem[] {
   const items: SearchResultItem[] = [];
+  const activeTier = state.settings.toolTier;
 
-  const ensureTier = (minTier: 'intermediate' | 'advanced') => {
-    const cur = state.settings.toolTier;
-    if (minTier === 'advanced' && cur !== 'advanced') {
-      actions.updateSettings({ toolTier: 'advanced' });
-    } else if (minTier === 'intermediate' && cur === 'basic') {
-      actions.updateSettings({ toolTier: 'intermediate' });
-    }
-  };
-
-  // 1. Studio Tools, Views & Quick Actions
+  // 1. Studio Tools, Views & Quick Actions filtered by active workspace layout
   const toolEntries: Array<{
     id: string;
     iconName: IconName;
@@ -60,6 +53,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     subtitle: string;
     badge: string;
     keywords: string;
+    minTier: ToolTier;
     boost?: number;
     run: () => void;
   }> = [
@@ -70,6 +64,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Draft chapters, toggle Proofread marks, Split View, and Revision Diff.',
       badge: 'Workspace',
       keywords: 'write draft manuscript scene proofread split diff',
+      minTier: 'basic',
       boost: 15,
       run: () => actions.setState({ activeView: 'editor' }, true),
     },
@@ -80,11 +75,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Arrange scenes visually and track scene word targets.',
       badge: 'Editorial',
       keywords: 'corkboard cards synopsis index arrange reorder',
+      minTier: 'intermediate',
       boost: 12,
-      run: () => {
-        ensureTier('intermediate');
-        actions.setState({ activeView: 'corkboard' }, true);
-      },
+      run: () => actions.setState({ activeView: 'corkboard' }, true),
     },
     {
       id: 'tool-outline',
@@ -93,11 +86,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Filter scenes by POV, status, timeline, location, or export CSV.',
       badge: 'Editorial',
       keywords: 'outline ledger table csv pacing status pov timeline',
+      minTier: 'intermediate',
       boost: 12,
-      run: () => {
-        ensureTier('intermediate');
-        actions.setState({ activeView: 'outline' }, true);
-      },
+      run: () => actions.setState({ activeView: 'outline' }, true),
     },
     {
       id: 'tool-bible',
@@ -106,11 +97,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Manage Characters, Locations, Lore, Portraits, and custom world shelves.',
       badge: 'Full Studio',
       keywords: 'story bible characters locations lore worldbuilding wiki',
+      minTier: 'advanced',
       boost: 12,
-      run: () => {
-        ensureTier('advanced');
-        actions.setState({ activeView: 'bible' }, true);
-      },
+      run: () => actions.setState({ activeView: 'bible' }, true),
     },
     {
       id: 'tool-graph',
@@ -119,11 +108,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Spatial Storyboard & 60 FPS Force Graph synced to your book.',
       badge: 'Full Studio',
       keywords: 'story graph nodes canvas storyboard force mindmap',
+      minTier: 'advanced',
       boost: 12,
-      run: () => {
-        ensureTier('advanced');
-        actions.setState({ activeView: 'graph' }, true);
-      },
+      run: () => actions.setState({ activeView: 'graph' }, true),
     },
     {
       id: 'tool-typeset',
@@ -132,11 +119,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Configure trim size, margins, drop caps, running headers, and typography.',
       badge: 'Editorial',
       keywords: 'typeset print pdf epub trim font margin drop cap interior',
+      minTier: 'intermediate',
       boost: 12,
-      run: () => {
-        ensureTier('intermediate');
-        actions.setState({ activeView: 'typeset', typesetSubTab: 'interior' }, true);
-      },
+      run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'interior' }, true),
     },
     {
       id: 'tool-cover',
@@ -145,11 +130,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Design front, spine, back, and dust-jacket wraps with PNG/SVG/PDF export.',
       badge: 'Full Studio',
       keywords: 'book cover studio spine jacket wrap vector svg png qvdesign',
+      minTier: 'advanced',
       boost: 13,
-      run: () => {
-        ensureTier('advanced');
-        actions.setState({ activeView: 'typeset', typesetSubTab: 'cover' }, true);
-      },
+      run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'cover' }, true),
     },
     {
       id: 'tool-publish',
@@ -158,11 +141,9 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Export Print PDF, EPUB 3, .docx, .qv archive, ISBN, and Copyright Seals.',
       badge: 'Publishing',
       keywords: 'publish export docx pdf epub qv isbn seal copyright key',
+      minTier: 'intermediate',
       boost: 11,
-      run: () => {
-        ensureTier('intermediate');
-        actions.setState({ activeView: 'typeset', typesetSubTab: 'publish' }, true);
-      },
+      run: () => actions.setState({ activeView: 'typeset', typesetSubTab: 'publish' }, true),
     },
     {
       id: 'tool-library',
@@ -171,6 +152,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Switch books, create a new book, or configure Pen Name & Author Key.',
       badge: 'Modal',
       keywords: 'library switch book create new author key pen name signature',
+      minTier: 'basic',
       boost: 11,
       run: () => actions.openLibraryModal(),
     },
@@ -181,6 +163,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Manage co-author roles, proofreader permissions, and LAN / HTTPS sync.',
       badge: 'Full Studio',
       keywords: 'collaborate wifi bluetooth pin co-author proofreader permissions sync',
+      minTier: 'advanced',
       boost: 10,
       run: () => actions.openCollabModal(),
     },
@@ -191,6 +174,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: `${COURSE_MODULES.length} structured modules covering craft, worldbuilding, cover & publishing.`,
       badge: 'Academy',
       keywords: 'course academy lessons learn writing dialogue pacing tutorial',
+      minTier: 'basic',
       boost: 12,
       run: () => openCourseTarget(actions),
     },
@@ -201,6 +185,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Browse guides, QV error diagnostics, file formats, and web/desktop help.',
       badge: 'Help',
       keywords: 'help faq support error code qv manual troubleshooting',
+      minTier: 'basic',
       boost: 12,
       run: () => actions.setState({ activeView: 'help' }, true),
     },
@@ -211,6 +196,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Change theme, Workspace Layout, custom fonts (.ttf/.otf/.woff2), or backup archives.',
       badge: 'Settings',
       keywords: 'settings preferences theme dark light parchment ivory fonts updates layout',
+      minTier: 'basic',
       boost: 11,
       run: () => actions.setState({ activeView: 'settings' }, true),
     },
@@ -221,6 +207,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Inspect .qv / .qvbible / .qvscene / .qvstyle / .qvdesign or load .qvext packs.',
       badge: 'Formats',
       keywords: 'extensions qvext formats qv qvbible qvscene qvstyle qvdesign',
+      minTier: 'advanced',
       boost: 9,
       run: () => actions.setState({ activeView: 'extensions' }, true),
     },
@@ -231,6 +218,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Cycle through Quillvibe paper and studio color themes smoothly.',
       badge: 'Action',
       keywords: 'theme dark mode light mode ivory parchment obsidian switch cycle',
+      minTier: 'basic',
       boost: 10,
       run: () => {
         const order: AppThemeId[] = ['system', 'ivory', 'parchment', 'obsidian'];
@@ -247,6 +235,7 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'Load a saved Quillvibe file from your computer (Ctrl+O).',
       badge: 'Ctrl+O',
       keywords: 'open file load import qv qvbible qvscene',
+      minTier: 'basic',
       boost: 8,
       run: () => void actions.openAnyQuillvibeFile(),
     },
@@ -260,12 +249,14 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
       subtitle: 'View Quillvibe features overview, README links, and desktop downloads.',
       badge: 'Home',
       keywords: 'landing home overview download windows mac linux readme open source',
+      minTier: 'basic',
       boost: 8,
       run: () => actions.setState({ activeView: 'landing' }, true),
     });
   }
 
   for (const t of toolEntries) {
+    if (!isTierAtLeast(activeTier, t.minTier)) continue;
     items.push({
       id: t.id,
       group: 'Tools & Workspaces',
@@ -280,9 +271,10 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     });
   }
 
-  // 2. Book Writing Course Modules & Lessons
+  // 2. Book Writing Course Modules & Lessons filtered by active workspace layout
   for (const mod of COURSE_MODULES) {
     for (const lesson of mod.lessons) {
+      if (!isTierAtLeast(activeTier, lesson.minTier)) continue;
       items.push({
         id: `course-${lesson.id}`,
         group: 'Book Writing Course',
@@ -362,76 +354,66 @@ function buildSearchCorpus(actions: AppActions, state: AppState): SearchResultIt
     });
   }
 
-  for (const ch of state.project.bible.characters) {
-    items.push({
-      id: `bible-char-${ch.id}`,
-      group: 'Manuscript & Story Bible',
-      scope: 'book',
-      iconName: 'bible',
-      title: ch.name,
-      subtitle: `${ch.role || 'Character'} — ${ch.motivation || ch.notes || ''}`.trim(),
-      badge: 'Character',
-      searchText: `${ch.name} ${ch.aliases} ${ch.role} ${ch.motivation} ${ch.appearance} ${ch.notes}`.toLowerCase(),
-      scoreBoost: 8,
-      run: () => {
-        ensureTier('advanced');
-        actions.openBibleEntry('characters', ch.id);
-      },
-    });
-  }
+  if (isTierAtLeast(activeTier, 'advanced')) {
+    for (const ch of state.project.bible.characters) {
+      items.push({
+        id: `bible-char-${ch.id}`,
+        group: 'Manuscript & Story Bible',
+        scope: 'book',
+        iconName: 'bible',
+        title: ch.name,
+        subtitle: `${ch.role || 'Character'} — ${ch.motivation || ch.notes || ''}`.trim(),
+        badge: 'Character',
+        searchText: `${ch.name} ${ch.aliases} ${ch.role} ${ch.motivation} ${ch.appearance} ${ch.notes}`.toLowerCase(),
+        scoreBoost: 8,
+        run: () => actions.openBibleEntry('characters', ch.id),
+      });
+    }
 
-  for (const loc of state.project.bible.locations) {
-    items.push({
-      id: `bible-loc-${loc.id}`,
-      group: 'Manuscript & Story Bible',
-      scope: 'book',
-      iconName: 'bible',
-      title: loc.name,
-      subtitle: `${loc.region || 'Location'} — ${loc.atmosphere || loc.notes || ''}`.trim(),
-      badge: 'Location',
-      searchText: `${loc.name} ${loc.region} ${loc.atmosphere} ${loc.notes}`.toLowerCase(),
-      scoreBoost: 8,
-      run: () => {
-        ensureTier('advanced');
-        actions.openBibleEntry('locations', loc.id);
-      },
-    });
-  }
+    for (const loc of state.project.bible.locations) {
+      items.push({
+        id: `bible-loc-${loc.id}`,
+        group: 'Manuscript & Story Bible',
+        scope: 'book',
+        iconName: 'bible',
+        title: loc.name,
+        subtitle: `${loc.region || 'Location'} — ${loc.atmosphere || loc.notes || ''}`.trim(),
+        badge: 'Location',
+        searchText: `${loc.name} ${loc.region} ${loc.atmosphere} ${loc.notes}`.toLowerCase(),
+        scoreBoost: 8,
+        run: () => actions.openBibleEntry('locations', loc.id),
+      });
+    }
 
-  for (const lore of state.project.bible.lore) {
-    items.push({
-      id: `bible-lore-${lore.id}`,
-      group: 'Manuscript & Story Bible',
-      scope: 'book',
-      iconName: 'bible',
-      title: lore.name,
-      subtitle: `${lore.category || 'Lore'} — ${lore.summary || lore.notes || ''}`.trim(),
-      badge: 'Lore',
-      searchText: `${lore.name} ${lore.category} ${lore.summary} ${lore.notes}`.toLowerCase(),
-      scoreBoost: 8,
-      run: () => {
-        ensureTier('advanced');
-        actions.openBibleEntry('lore', lore.id);
-      },
-    });
-  }
+    for (const lore of state.project.bible.lore) {
+      items.push({
+        id: `bible-lore-${lore.id}`,
+        group: 'Manuscript & Story Bible',
+        scope: 'book',
+        iconName: 'bible',
+        title: lore.name,
+        subtitle: `${lore.category || 'Lore'} — ${lore.summary || lore.notes || ''}`.trim(),
+        badge: 'Lore',
+        searchText: `${lore.name} ${lore.category} ${lore.summary} ${lore.notes}`.toLowerCase(),
+        scoreBoost: 8,
+        run: () => actions.openBibleEntry('lore', lore.id),
+      });
+    }
 
-  for (const custom of state.project.bible.customEntries ?? []) {
-    items.push({
-      id: `bible-custom-${custom.id}`,
-      group: 'Manuscript & Story Bible',
-      scope: 'book',
-      iconName: 'bible',
-      title: custom.name,
-      subtitle: custom.subtitle || custom.summary || custom.notes || 'Story Bible Entry',
-      badge: 'Bible',
-      searchText: `${custom.name} ${custom.subtitle} ${custom.summary} ${custom.notes}`.toLowerCase(),
-      scoreBoost: 8,
-      run: () => {
-        ensureTier('advanced');
-        actions.openBibleEntry(custom.categoryId, custom.id);
-      },
-    });
+    for (const custom of state.project.bible.customEntries ?? []) {
+      items.push({
+        id: `bible-custom-${custom.id}`,
+        group: 'Manuscript & Story Bible',
+        scope: 'book',
+        iconName: 'bible',
+        title: custom.name,
+        subtitle: custom.subtitle || custom.summary || custom.notes || 'Story Bible Entry',
+        badge: 'Bible',
+        searchText: `${custom.name} ${custom.subtitle} ${custom.summary} ${custom.notes}`.toLowerCase(),
+        scoreBoost: 8,
+        run: () => actions.openBibleEntry(custom.categoryId, custom.id),
+      });
+    }
   }
 
   return items;

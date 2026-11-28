@@ -40,6 +40,7 @@ import type {
   WindowTitleMode,
 } from '../core/types';
 import { clearNode, el, icon, quillvibeLogo } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 
 export type SettingsTab = 'fonts' | 'editor' | 'publishing' | 'developer';
 
@@ -794,6 +795,29 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
         },
       });
 
+      const richFormattingChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-rich-formatting',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.enableRichFormatting },
+        on: {
+          change: () => {
+            actions.updateSettings({ enableRichFormatting: richFormattingChk.checked });
+            actions.setState({}, true);
+          },
+        },
+      });
+
+      const confirmUnlockChk = el('input', {
+        className: 'bv-lever',
+        id: 'qv-set-confirm-unlock',
+        attrs: { type: 'checkbox', role: 'switch', checked: settings.confirmBeforeUnlock },
+        on: {
+          change: () => {
+            actions.updateSettings({ confirmBeforeUnlock: confirmUnlockChk.checked });
+          },
+        },
+      });
+
       const tourChk = el('input', {
         className: 'bv-lever',
         id: 'bv-set-tours',
@@ -987,6 +1011,18 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-motion' }, text: 'Motion' }), motionSel),
             el('div', { className: 'bv-field' }, el('label', { className: 'bv-label', attrs: { for: 'bv-set-default-fmt' }, text: 'Default Save / Export Extension' }), defaultFmtSel),
             el('div', { className: 'bv-field' }, saveDelayLabel, saveDelaySlider),
+            el(
+              'label',
+              { className: 'bv-check-row', attrs: { for: 'qv-set-rich-formatting' } },
+              richFormattingChk,
+              el('span', { text: 'Show rich formatting (Bold, Italic, Headings) while writing (turn off for raw Markdown)' }),
+            ),
+            el(
+              'label',
+              { className: 'bv-check-row', attrs: { for: 'qv-set-confirm-unlock' } },
+              confirmUnlockChk,
+              el('span', { text: 'Ask for confirmation before unlocking locked chapters or parts' }),
+            ),
             el('label', { className: 'bv-check-row', attrs: { for: 'bv-set-spellcheck' } }, spellcheckChk, el('span', { text: 'Enable strict word spellcheck underlines while drafting' })),
             el('label', { className: 'bv-check-row', attrs: { for: 'qv-set-smooth-anim' } }, smoothAnimChk, el('span', { text: 'Enable smooth animations & transitions for Binder, Inspector, and menus' })),
             ...(isTauriRuntime()
@@ -1592,15 +1628,19 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
     el(
       'div',
       { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
-      el(
-        'button',
-        {
-          className: 'bv-mini-btn',
-          attrs: { type: 'button' },
-          on: { click: () => showUpdateCheckDialog(actions) },
-        },
-        `v${CURRENT_QUILLVIBE_VERSION} · Check Updates`,
-      ),
+      ...(isTauriRuntime()
+        ? [
+            el(
+              'button',
+              {
+                className: 'bv-mini-btn',
+                attrs: { type: 'button' },
+                on: { click: () => showUpdateCheckDialog(actions) },
+              },
+              `v${CURRENT_QUILLVIBE_VERSION} · Check Updates`,
+            ),
+          ]
+        : []),
       el(
         'button',
         {
@@ -1610,6 +1650,7 @@ export function renderSettingsPageView(container: HTMLElement, actions: AppActio
           on: { click: () => actions.openHelpModal('course') },
         },
       ),
+      createAppThemeButton(actions),
     ),
   );
 

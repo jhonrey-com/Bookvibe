@@ -3,6 +3,7 @@ import { isTauriRuntime } from '../core/bridge';
 import { QUILLVIBE_EXTENSIONS } from '../core/extensions';
 import { CONTROL_REFERENCE_ITEMS } from '../ui/controls-catalog';
 import { clearNode, el, icon } from '../ui/dom';
+import { createAppThemeButton } from '../ui/theme-button';
 import { QUILLVIBE_ERROR_CATALOG } from '../ui/error-dialog';
 
 export interface HelpFaqArticle {
@@ -404,6 +405,7 @@ export function renderHelpPageView(container: HTMLElement, actions: AppActions):
           icon('quill', 14),
           'Back to Writing',
         ),
+        createAppThemeButton(actions),
       ),
     ),
     el(

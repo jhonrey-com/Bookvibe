@@ -246,6 +246,8 @@ export interface QuillvibeSettings {
   alarmRingtone: AlarmRingtoneId;
   alarmVolume: number;
   enableSpellcheck: boolean;
+  enableRichFormatting: boolean;
+  confirmBeforeUnlock: boolean;
   enableDesktopBookTabs: boolean;
   enableSmoothAnimations: boolean;
   linkPaperThemeToAppTheme: boolean;

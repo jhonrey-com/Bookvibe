@@ -63,6 +63,7 @@ import { resolveEffectiveFontCss } from './core/fonts';
 import { ensureAuthorIdentity, stripPrivateAuthorSecrets } from './core/identity';
 import {
   addBookToLibrary,
+  createEmptyBookProject,
   createInitialLibrary,
   getActiveBookFromLibrary,
   normalizeProjectDefaults,
@@ -90,7 +91,6 @@ import {
 } from './core/router';
 import {
   createStarterBookProject,
-  createWelcomeIntroBookProject,
   isLocalDevMockEnabled,
 } from './core/sample-book';
 import {
@@ -166,7 +166,7 @@ import { hasCoverHistory, performCoverRedo, performCoverUndo } from './views/cov
 
 const starter = isLocalDevMockEnabled()
   ? createStarterBookProject()
-  : createWelcomeIntroBookProject();
+  : createEmptyBookProject('Untitled Book', 'Author');
 const initialLibrary = createInitialLibrary(starter);
 
 const projectHistory = new ProjectHistoryStack<BookProject>(45);
